@@ -1,0 +1,960 @@
+{
+  "meta": {
+    "schemaVersion": 1,
+    "fixture": true,
+    "asOf": "2026-10-21T12:00:00-05:00",
+    "currency": "USD"
+  },
+  "freelancers": [
+    {
+      "id": "FR-001",
+      "displayName": "Sebastian",
+      "studioName": "Mi estudio"
+    }
+  ],
+  "clients": [
+    {
+      "id": "CL-001",
+      "freelancerId": "FR-001",
+      "name": "Luna Studio",
+      "contactName": "Valeria",
+      "initials": "LS"
+    },
+    {
+      "id": "CL-002",
+      "freelancerId": "FR-001",
+      "name": "Norte Café",
+      "contactName": "Andrés",
+      "initials": "NC"
+    },
+    {
+      "id": "CL-003",
+      "freelancerId": "FR-001",
+      "name": "Casa Oliva",
+      "contactName": "Lucía",
+      "initials": "CO"
+    },
+    {
+      "id": "CL-004",
+      "freelancerId": "FR-001",
+      "name": "Forma Digital",
+      "contactName": "Daniel",
+      "initials": "FD"
+    },
+    {
+      "id": "CL-005",
+      "freelancerId": "FR-001",
+      "name": "Marea",
+      "contactName": "Sofía",
+      "initials": "MA"
+    }
+  ],
+  "projects": [
+    {
+      "id": "SP-001",
+      "clientId": "CL-001",
+      "name": "Campaña de lanzamiento",
+      "service": "Edición de video",
+      "status": "active"
+    },
+    {
+      "id": "SP-002",
+      "clientId": "CL-002",
+      "name": "Identidad de marca",
+      "service": "Diseño",
+      "status": "active"
+    },
+    {
+      "id": "SP-003",
+      "clientId": "CL-003",
+      "name": "Sesión de consultoría",
+      "service": "Consultoría",
+      "status": "active"
+    },
+    {
+      "id": "SP-004",
+      "clientId": "CL-004",
+      "name": "Landing de producto",
+      "service": "Desarrollo web",
+      "status": "active"
+    },
+    {
+      "id": "SP-005",
+      "clientId": "CL-005",
+      "name": "Contenido de octubre",
+      "service": "Contenido",
+      "status": "active"
+    }
+  ],
+  "documents": [
+    {
+      "id": "DOC-SP-001",
+      "projectId": "SP-001",
+      "title": "Presupuesto y alcance",
+      "addedAt": "2026-10-08T10:00:00-05:00"
+    },
+    {
+      "id": "DOC-SP-002",
+      "projectId": "SP-002",
+      "title": "Acuerdo y condiciones de pago",
+      "addedAt": "2026-10-08T10:00:00-05:00"
+    },
+    {
+      "id": "DOC-SP-003",
+      "projectId": "SP-003",
+      "title": "Reserva y política de cancelación",
+      "addedAt": "2026-10-08T10:00:00-05:00"
+    },
+    {
+      "id": "DOC-SP-004",
+      "projectId": "SP-004",
+      "title": "Presupuesto y alcance",
+      "addedAt": "2026-10-08T10:00:00-05:00"
+    },
+    {
+      "id": "DOC-SP-005",
+      "projectId": "SP-005",
+      "title": "Acuerdo y condiciones de pago",
+      "addedAt": "2026-10-08T10:00:00-05:00"
+    },
+    {
+      "id": "DOC-SP-001-condiciones",
+      "projectId": "SP-001",
+      "title": "Condiciones del servicio",
+      "addedAt": "2026-10-09T10:00:00-05:00"
+    },
+    {
+      "id": "DOC-SP-001-solicitud",
+      "projectId": "SP-001",
+      "title": "Correo de solicitud de cambio",
+      "addedAt": "2026-10-14T10:00:00-05:00"
+    },
+    {
+      "id": "DOC-SP-001-propuesta",
+      "projectId": "SP-001",
+      "title": "Propuesta de cambio",
+      "addedAt": "2026-10-16T10:00:00-05:00"
+    },
+    {
+      "id": "DOC-SP-001-entrega",
+      "projectId": "SP-001",
+      "title": "Correo de entrega",
+      "addedAt": "2026-10-20T10:00:00-05:00"
+    },
+    {
+      "id": "DOC-SP-002-condiciones",
+      "projectId": "SP-002",
+      "title": "Condiciones del servicio",
+      "addedAt": "2026-10-09T10:00:00-05:00"
+    },
+    {
+      "id": "DOC-SP-002-solicitud",
+      "projectId": "SP-002",
+      "title": "Correo de solicitud de cambio",
+      "addedAt": "2026-10-14T10:00:00-05:00"
+    },
+    {
+      "id": "DOC-SP-002-propuesta",
+      "projectId": "SP-002",
+      "title": "Propuesta de cambio",
+      "addedAt": "2026-10-16T10:00:00-05:00"
+    },
+    {
+      "id": "DOC-SP-002-entrega",
+      "projectId": "SP-002",
+      "title": "Correo de entrega",
+      "addedAt": "2026-10-20T10:00:00-05:00"
+    },
+    {
+      "id": "DOC-SP-003-condiciones",
+      "projectId": "SP-003",
+      "title": "Condiciones del servicio",
+      "addedAt": "2026-10-09T10:00:00-05:00"
+    },
+    {
+      "id": "DOC-SP-003-solicitud",
+      "projectId": "SP-003",
+      "title": "Correo de solicitud de cambio",
+      "addedAt": "2026-10-14T10:00:00-05:00"
+    },
+    {
+      "id": "DOC-SP-003-propuesta",
+      "projectId": "SP-003",
+      "title": "Propuesta de cambio",
+      "addedAt": "2026-10-16T10:00:00-05:00"
+    },
+    {
+      "id": "DOC-SP-003-entrega",
+      "projectId": "SP-003",
+      "title": "Correo de entrega",
+      "addedAt": "2026-10-20T10:00:00-05:00"
+    },
+    {
+      "id": "DOC-SP-004-condiciones",
+      "projectId": "SP-004",
+      "title": "Condiciones del servicio",
+      "addedAt": "2026-10-09T10:00:00-05:00"
+    },
+    {
+      "id": "DOC-SP-004-solicitud",
+      "projectId": "SP-004",
+      "title": "Correo de solicitud de cambio",
+      "addedAt": "2026-10-14T10:00:00-05:00"
+    },
+    {
+      "id": "DOC-SP-004-propuesta",
+      "projectId": "SP-004",
+      "title": "Propuesta de cambio",
+      "addedAt": "2026-10-16T10:00:00-05:00"
+    },
+    {
+      "id": "DOC-SP-004-entrega",
+      "projectId": "SP-004",
+      "title": "Correo de entrega",
+      "addedAt": "2026-10-20T10:00:00-05:00"
+    },
+    {
+      "id": "DOC-SP-005-condiciones",
+      "projectId": "SP-005",
+      "title": "Condiciones del servicio",
+      "addedAt": "2026-10-09T10:00:00-05:00"
+    },
+    {
+      "id": "DOC-SP-005-solicitud",
+      "projectId": "SP-005",
+      "title": "Correo de solicitud de cambio",
+      "addedAt": "2026-10-14T10:00:00-05:00"
+    },
+    {
+      "id": "DOC-SP-005-propuesta",
+      "projectId": "SP-005",
+      "title": "Propuesta de cambio",
+      "addedAt": "2026-10-16T10:00:00-05:00"
+    },
+    {
+      "id": "DOC-SP-005-entrega",
+      "projectId": "SP-005",
+      "title": "Correo de entrega",
+      "addedAt": "2026-10-20T10:00:00-05:00"
+    }
+  ],
+  "documentVersions": [
+    {
+      "id": "VER-SP-001-1",
+      "documentId": "DOC-SP-001",
+      "version": 1,
+      "status": "accepted",
+      "content": "Video de lanzamiento de 60 segundos en formato horizontal. Incluye dos revisiones. No incluye adaptaciones a otros formatos ni subtítulos.",
+      "acceptedAt": "2026-10-08T10:00:00-05:00"
+    },
+    {
+      "id": "VER-SP-002-1",
+      "documentId": "DOC-SP-002",
+      "version": 1,
+      "status": "accepted",
+      "content": "Identidad de marca entregada. Importe pendiente US$450. Fecha límite de pago 15 de octubre de 2026. Fecha de referencia de la demo 21 de octubre de 2026.",
+      "acceptedAt": "2026-10-08T10:00:00-05:00"
+    },
+    {
+      "id": "VER-SP-003-1",
+      "documentId": "DOC-SP-003",
+      "version": 1,
+      "status": "accepted",
+      "content": "Reserva de consultoría por US$90. Cancelación con más de 48 horas de anticipación permite reembolso completo. Con menos de 48 horas, se ofrece reprogramar. Sesión reservada para el 25 de octubre de 2026.",
+      "acceptedAt": "2026-10-08T10:00:00-05:00"
+    },
+    {
+      "id": "VER-SP-004-1",
+      "documentId": "DOC-SP-004",
+      "version": 1,
+      "status": "accepted",
+      "content": "Landing de producto de una página. Incluye versión responsive y formulario de contacto. No incluye traducciones.",
+      "acceptedAt": "2026-10-08T10:00:00-05:00"
+    },
+    {
+      "id": "VER-SP-005-1",
+      "documentId": "DOC-SP-005",
+      "version": 1,
+      "status": "accepted",
+      "content": "Contenido de octubre. Importe pendiente US$350. Fecha límite de pago 28 de octubre de 2026. Fecha de referencia de la demo 21 de octubre de 2026.",
+      "acceptedAt": "2026-10-08T10:00:00-05:00"
+    },
+    {
+      "id": "VER-SP-001-condiciones-1",
+      "documentId": "DOC-SP-001-condiciones",
+      "version": 1,
+      "status": "recorded",
+      "content": "Condiciones de ejemplo: los cambios de alcance requieren una propuesta revisada y aceptada. Las fechas y condiciones de pago se definen en el acuerdo del proyecto."
+    },
+    {
+      "id": "VER-SP-001-solicitud-1",
+      "documentId": "DOC-SP-001-solicitud",
+      "version": 1,
+      "status": "recorded",
+      "content": "Correo ficticio del cliente: quisiera revisar una entrega adicional. Este mensaje solicita evaluar el cambio; no constituye una aceptacion de precio o plazo."
+    },
+    {
+      "id": "VER-SP-001-propuesta-1",
+      "documentId": "DOC-SP-001-propuesta",
+      "version": 1,
+      "status": "draft",
+      "content": "Borrador ficticio de adenda. Alcance, precio y fecha pendientes de revision y firma. No reemplaza el acuerdo vigente."
+    },
+    {
+      "id": "VER-SP-001-entrega-1",
+      "documentId": "DOC-SP-001-entrega",
+      "version": 1,
+      "status": "recorded",
+      "content": "Correo ficticio de entrega para revision del cliente. Solicita comentarios sobre la version entregada; no acredita aceptacion ni pago."
+    },
+    {
+      "id": "VER-SP-002-condiciones-1",
+      "documentId": "DOC-SP-002-condiciones",
+      "version": 1,
+      "status": "recorded",
+      "content": "Condiciones de ejemplo: los cambios de alcance requieren una propuesta revisada y aceptada. Las fechas y condiciones de pago se definen en el acuerdo del proyecto."
+    },
+    {
+      "id": "VER-SP-002-solicitud-1",
+      "documentId": "DOC-SP-002-solicitud",
+      "version": 1,
+      "status": "recorded",
+      "content": "Correo ficticio del cliente: quisiera revisar una entrega adicional. Este mensaje solicita evaluar el cambio; no constituye una aceptacion de precio o plazo."
+    },
+    {
+      "id": "VER-SP-002-propuesta-1",
+      "documentId": "DOC-SP-002-propuesta",
+      "version": 1,
+      "status": "draft",
+      "content": "Borrador ficticio de adenda. Alcance, precio y fecha pendientes de revision y firma. No reemplaza el acuerdo vigente."
+    },
+    {
+      "id": "VER-SP-002-entrega-1",
+      "documentId": "DOC-SP-002-entrega",
+      "version": 1,
+      "status": "recorded",
+      "content": "Correo ficticio de entrega para revision del cliente. Solicita comentarios sobre la version entregada; no acredita aceptacion ni pago."
+    },
+    {
+      "id": "VER-SP-003-condiciones-1",
+      "documentId": "DOC-SP-003-condiciones",
+      "version": 1,
+      "status": "recorded",
+      "content": "Condiciones de ejemplo: los cambios de alcance requieren una propuesta revisada y aceptada. Las fechas y condiciones de pago se definen en el acuerdo del proyecto."
+    },
+    {
+      "id": "VER-SP-003-solicitud-1",
+      "documentId": "DOC-SP-003-solicitud",
+      "version": 1,
+      "status": "recorded",
+      "content": "Correo ficticio del cliente: quisiera revisar una entrega adicional. Este mensaje solicita evaluar el cambio; no constituye una aceptacion de precio o plazo."
+    },
+    {
+      "id": "VER-SP-003-propuesta-1",
+      "documentId": "DOC-SP-003-propuesta",
+      "version": 1,
+      "status": "draft",
+      "content": "Borrador ficticio de adenda. Alcance, precio y fecha pendientes de revision y firma. No reemplaza el acuerdo vigente."
+    },
+    {
+      "id": "VER-SP-003-entrega-1",
+      "documentId": "DOC-SP-003-entrega",
+      "version": 1,
+      "status": "recorded",
+      "content": "Correo ficticio de entrega para revision del cliente. Solicita comentarios sobre la version entregada; no acredita aceptacion ni pago."
+    },
+    {
+      "id": "VER-SP-004-condiciones-1",
+      "documentId": "DOC-SP-004-condiciones",
+      "version": 1,
+      "status": "recorded",
+      "content": "Condiciones de ejemplo: los cambios de alcance requieren una propuesta revisada y aceptada. Las fechas y condiciones de pago se definen en el acuerdo del proyecto."
+    },
+    {
+      "id": "VER-SP-004-solicitud-1",
+      "documentId": "DOC-SP-004-solicitud",
+      "version": 1,
+      "status": "recorded",
+      "content": "Correo ficticio del cliente: quisiera revisar una entrega adicional. Este mensaje solicita evaluar el cambio; no constituye una aceptacion de precio o plazo."
+    },
+    {
+      "id": "VER-SP-004-propuesta-1",
+      "documentId": "DOC-SP-004-propuesta",
+      "version": 1,
+      "status": "draft",
+      "content": "Borrador ficticio de adenda. Alcance, precio y fecha pendientes de revision y firma. No reemplaza el acuerdo vigente."
+    },
+    {
+      "id": "VER-SP-004-entrega-1",
+      "documentId": "DOC-SP-004-entrega",
+      "version": 1,
+      "status": "recorded",
+      "content": "Correo ficticio de entrega para revision del cliente. Solicita comentarios sobre la version entregada; no acredita aceptacion ni pago."
+    },
+    {
+      "id": "VER-SP-005-condiciones-1",
+      "documentId": "DOC-SP-005-condiciones",
+      "version": 1,
+      "status": "recorded",
+      "content": "Condiciones de ejemplo: los cambios de alcance requieren una propuesta revisada y aceptada. Las fechas y condiciones de pago se definen en el acuerdo del proyecto."
+    },
+    {
+      "id": "VER-SP-005-solicitud-1",
+      "documentId": "DOC-SP-005-solicitud",
+      "version": 1,
+      "status": "recorded",
+      "content": "Correo ficticio del cliente: quisiera revisar una entrega adicional. Este mensaje solicita evaluar el cambio; no constituye una aceptacion de precio o plazo."
+    },
+    {
+      "id": "VER-SP-005-propuesta-1",
+      "documentId": "DOC-SP-005-propuesta",
+      "version": 1,
+      "status": "draft",
+      "content": "Borrador ficticio de adenda. Alcance, precio y fecha pendientes de revision y firma. No reemplaza el acuerdo vigente."
+    },
+    {
+      "id": "VER-SP-005-entrega-1",
+      "documentId": "DOC-SP-005-entrega",
+      "version": 1,
+      "status": "recorded",
+      "content": "Correo ficticio de entrega para revision del cliente. Solicita comentarios sobre la version entregada; no acredita aceptacion ni pago."
+    }
+  ],
+  "conversations": [
+    {
+      "id": "CONV-SP-001",
+      "projectId": "SP-001",
+      "kind": "assistant"
+    },
+    {
+      "id": "CONV-SP-002",
+      "projectId": "SP-002",
+      "kind": "assistant"
+    },
+    {
+      "id": "CONV-SP-003",
+      "projectId": "SP-003",
+      "kind": "assistant"
+    },
+    {
+      "id": "CONV-SP-004",
+      "projectId": "SP-004",
+      "kind": "assistant"
+    },
+    {
+      "id": "CONV-SP-005",
+      "projectId": "SP-005",
+      "kind": "assistant"
+    }
+  ],
+  "messages": [
+    {
+      "id": "MSG-SP-001-1",
+      "conversationId": "CONV-SP-001",
+      "authorType": "user",
+      "content": "Revisemos lo que acordamos para este proyecto.",
+      "createdAt": "2026-10-09T10:00:00-05:00"
+    },
+    {
+      "id": "MSG-SP-001-2",
+      "conversationId": "CONV-SP-001",
+      "authorType": "assistant",
+      "content": "El acuerdo de ejemplo está disponible en los documentos del proyecto. Puedo mostrarlo desde «¿Qué acordamos?». No hay un modelo conectado.",
+      "createdAt": "2026-10-09T10:01:00-05:00",
+      "sourceVersionId": "VER-SP-001-1"
+    },
+    {
+      "id": "MSG-SP-001-3",
+      "conversationId": "CONV-SP-001",
+      "authorType": "client",
+      "content": "¿Podrías agregar tres versiones verticales para redes y subtítulos en inglés?",
+      "createdAt": "2026-10-21T09:00:00-05:00"
+    },
+    {
+      "id": "MSG-SP-002-1",
+      "conversationId": "CONV-SP-002",
+      "authorType": "user",
+      "content": "Revisemos lo que acordamos para este proyecto.",
+      "createdAt": "2026-10-09T10:00:00-05:00"
+    },
+    {
+      "id": "MSG-SP-002-2",
+      "conversationId": "CONV-SP-002",
+      "authorType": "assistant",
+      "content": "El acuerdo de ejemplo está disponible en los documentos del proyecto. Puedo mostrarlo desde «¿Qué acordamos?». No hay un modelo conectado.",
+      "createdAt": "2026-10-09T10:01:00-05:00",
+      "sourceVersionId": "VER-SP-002-1"
+    },
+    {
+      "id": "MSG-SP-002-3",
+      "conversationId": "CONV-SP-002",
+      "authorType": "client",
+      "content": "Gracias por la entrega. No encuentro el enlace de la factura, ¿me lo reenvías?",
+      "createdAt": "2026-10-21T09:00:00-05:00"
+    },
+    {
+      "id": "MSG-SP-003-1",
+      "conversationId": "CONV-SP-003",
+      "authorType": "user",
+      "content": "Revisemos lo que acordamos para este proyecto.",
+      "createdAt": "2026-10-09T10:00:00-05:00"
+    },
+    {
+      "id": "MSG-SP-003-2",
+      "conversationId": "CONV-SP-003",
+      "authorType": "assistant",
+      "content": "El acuerdo de ejemplo está disponible en los documentos del proyecto. Puedo mostrarlo desde «¿Qué acordamos?». No hay un modelo conectado.",
+      "createdAt": "2026-10-09T10:01:00-05:00",
+      "sourceVersionId": "VER-SP-003-1"
+    },
+    {
+      "id": "MSG-SP-003-3",
+      "conversationId": "CONV-SP-003",
+      "authorType": "client",
+      "content": "Hoy, 21 de octubre, necesito cancelar la sesión del 25. ¿Pueden devolverme la reserva?",
+      "createdAt": "2026-10-21T09:00:00-05:00"
+    },
+    {
+      "id": "MSG-SP-004-1",
+      "conversationId": "CONV-SP-004",
+      "authorType": "user",
+      "content": "Revisemos lo que acordamos para este proyecto.",
+      "createdAt": "2026-10-09T10:00:00-05:00"
+    },
+    {
+      "id": "MSG-SP-004-2",
+      "conversationId": "CONV-SP-004",
+      "authorType": "assistant",
+      "content": "El acuerdo de ejemplo está disponible en los documentos del proyecto. Puedo mostrarlo desde «¿Qué acordamos?». No hay un modelo conectado.",
+      "createdAt": "2026-10-09T10:01:00-05:00",
+      "sourceVersionId": "VER-SP-004-1"
+    },
+    {
+      "id": "MSG-SP-004-3",
+      "conversationId": "CONV-SP-004",
+      "authorType": "client",
+      "content": "Necesitamos también una versión de la página en inglés.",
+      "createdAt": "2026-10-21T09:00:00-05:00"
+    },
+    {
+      "id": "MSG-SP-005-1",
+      "conversationId": "CONV-SP-005",
+      "authorType": "user",
+      "content": "Revisemos lo que acordamos para este proyecto.",
+      "createdAt": "2026-10-09T10:00:00-05:00"
+    },
+    {
+      "id": "MSG-SP-005-2",
+      "conversationId": "CONV-SP-005",
+      "authorType": "assistant",
+      "content": "El acuerdo de ejemplo está disponible en los documentos del proyecto. Puedo mostrarlo desde «¿Qué acordamos?». No hay un modelo conectado.",
+      "createdAt": "2026-10-09T10:01:00-05:00",
+      "sourceVersionId": "VER-SP-005-1"
+    },
+    {
+      "id": "MSG-SP-005-3",
+      "conversationId": "CONV-SP-005",
+      "authorType": "client",
+      "content": "Todo recibido. Tenemos el pago programado para el 28 de octubre.",
+      "createdAt": "2026-10-21T09:00:00-05:00"
+    }
+  ],
+  "requests": [
+    {
+      "id": "REQ-SP-001",
+      "projectId": "SP-001",
+      "type": "cambios",
+      "amount": 180,
+      "currency": "USD",
+      "status": "proposed",
+      "createdAt": "2026-10-21T09:00:00-05:00",
+      "sourceMessageId": "MSG-SP-001-3",
+      "sourceVersionId": "VER-SP-001-1",
+      "sourceDocumentId": "DOC-SP-001-solicitud"
+    },
+    {
+      "id": "REQ-SP-002",
+      "projectId": "SP-002",
+      "type": "cobros",
+      "amount": 450,
+      "currency": "USD",
+      "status": "pending",
+      "createdAt": "2026-10-21T09:00:00-05:00",
+      "sourceMessageId": "MSG-SP-002-3",
+      "sourceVersionId": "VER-SP-002-1",
+      "sourceDocumentId": "DOC-SP-002-solicitud"
+    },
+    {
+      "id": "REQ-SP-003",
+      "projectId": "SP-003",
+      "type": "reembolsos",
+      "amount": 90,
+      "currency": "USD",
+      "status": "pending",
+      "createdAt": "2026-10-21T09:00:00-05:00",
+      "sourceMessageId": "MSG-SP-003-3",
+      "sourceVersionId": "VER-SP-003-1",
+      "sourceDocumentId": "DOC-SP-003-solicitud"
+    },
+    {
+      "id": "REQ-SP-004",
+      "projectId": "SP-004",
+      "type": "cambios",
+      "amount": 80,
+      "currency": "USD",
+      "status": "proposed",
+      "createdAt": "2026-10-21T09:00:00-05:00",
+      "sourceMessageId": "MSG-SP-004-3",
+      "sourceVersionId": "VER-SP-004-1",
+      "sourceDocumentId": "DOC-SP-004-solicitud"
+    },
+    {
+      "id": "REQ-SP-005",
+      "projectId": "SP-005",
+      "type": "cobros",
+      "amount": 350,
+      "currency": "USD",
+      "status": "pending",
+      "createdAt": "2026-10-21T09:00:00-05:00",
+      "sourceMessageId": "MSG-SP-005-3",
+      "sourceVersionId": "VER-SP-005-1",
+      "sourceDocumentId": "DOC-SP-005-solicitud"
+    }
+  ],
+  "invoices": [
+    {
+      "id": "INV-SP-001-BASE",
+      "projectId": "SP-001",
+      "amount": 600,
+      "currency": "USD",
+      "status": "paid",
+      "dueAt": "2026-10-10T23:59:00-05:00",
+      "paidAt": "2026-10-10T11:30:00-05:00",
+      "provider": "mock",
+      "providerReference": null
+    },
+    {
+      "id": "INV-SP-002-BASE",
+      "projectId": "SP-002",
+      "amount": 350,
+      "currency": "USD",
+      "status": "paid",
+      "dueAt": "2026-10-10T23:59:00-05:00",
+      "paidAt": "2026-10-10T11:30:00-05:00",
+      "provider": "mock",
+      "providerReference": null
+    },
+    {
+      "id": "INV-SP-002-PENDING",
+      "projectId": "SP-002",
+      "requestId": "REQ-SP-002",
+      "amount": 450,
+      "currency": "USD",
+      "status": "pending",
+      "dueAt": "2026-10-15T23:59:00-05:00",
+      "paidAt": null,
+      "provider": "mock",
+      "providerReference": null
+    },
+    {
+      "id": "INV-SP-003-BASE",
+      "projectId": "SP-003",
+      "amount": 90,
+      "currency": "USD",
+      "status": "paid",
+      "dueAt": "2026-10-10T23:59:00-05:00",
+      "paidAt": "2026-10-10T11:30:00-05:00",
+      "provider": "mock",
+      "providerReference": null
+    },
+    {
+      "id": "INV-SP-004-BASE",
+      "projectId": "SP-004",
+      "amount": 500,
+      "currency": "USD",
+      "status": "paid",
+      "dueAt": "2026-10-10T23:59:00-05:00",
+      "paidAt": "2026-10-10T11:30:00-05:00",
+      "provider": "mock",
+      "providerReference": null
+    },
+    {
+      "id": "INV-SP-005-BASE",
+      "projectId": "SP-005",
+      "amount": 200,
+      "currency": "USD",
+      "status": "paid",
+      "dueAt": "2026-10-10T23:59:00-05:00",
+      "paidAt": "2026-10-10T11:30:00-05:00",
+      "provider": "mock",
+      "providerReference": null
+    },
+    {
+      "id": "INV-SP-005-PENDING",
+      "projectId": "SP-005",
+      "requestId": "REQ-SP-005",
+      "amount": 350,
+      "currency": "USD",
+      "status": "pending",
+      "dueAt": "2026-10-28T23:59:00-05:00",
+      "paidAt": null,
+      "provider": "mock",
+      "providerReference": null
+    }
+  ],
+  "refunds": [
+    {
+      "id": "REF-SP-003",
+      "invoiceId": "INV-SP-003-BASE",
+      "requestId": "REQ-SP-003",
+      "amount": 90,
+      "currency": "USD",
+      "status": "requested",
+      "createdAt": "2026-10-21T09:00:00-05:00",
+      "completedAt": null,
+      "providerReference": null
+    }
+  ],
+  "events": [
+    {
+      "id": "EV-SP-001-1",
+      "projectId": "SP-001",
+      "type": "acuerdo",
+      "title": "Acuerdo registrado",
+      "summary": "Se registró la versión 1 del alcance y las condiciones. Aceptación ficticia para esta demo.",
+      "occurredAt": "2026-10-08T10:00:00-05:00",
+      "status": "accepted",
+      "sourceVersionId": "VER-SP-001-1",
+      "isSimulated": true
+    },
+    {
+      "id": "EV-SP-001-2",
+      "projectId": "SP-001",
+      "type": "cobros",
+      "title": "Pago recibido · ejemplo",
+      "summary": "Pago histórico ficticio. No procede de una transacción real de PayPal.",
+      "occurredAt": "2026-10-10T11:30:00-05:00",
+      "status": "completed",
+      "sourceVersionId": "VER-SP-001-1",
+      "isSimulated": true,
+      "invoiceId": "INV-SP-001-BASE"
+    },
+    {
+      "id": "EV-SP-001-3",
+      "projectId": "SP-001",
+      "type": "cambios",
+      "title": "Trabajo adicional por revisar",
+      "summary": "¿Podrías agregar tres versiones verticales para redes y subtítulos en inglés?",
+      "occurredAt": "2026-10-21T09:00:00-05:00",
+      "status": "pending",
+      "sourceVersionId": "VER-SP-001-1",
+      "isSimulated": true,
+      "requestId": "REQ-SP-001"
+    },
+    {
+      "id": "EV-SP-002-1",
+      "projectId": "SP-002",
+      "type": "acuerdo",
+      "title": "Acuerdo registrado",
+      "summary": "Se registró la versión 1 del alcance y las condiciones. Aceptación ficticia para esta demo.",
+      "occurredAt": "2026-10-08T10:00:00-05:00",
+      "status": "accepted",
+      "sourceVersionId": "VER-SP-002-1",
+      "isSimulated": true
+    },
+    {
+      "id": "EV-SP-002-2",
+      "projectId": "SP-002",
+      "type": "cobros",
+      "title": "Pago recibido · ejemplo",
+      "summary": "Pago histórico ficticio. No procede de una transacción real de PayPal.",
+      "occurredAt": "2026-10-10T11:30:00-05:00",
+      "status": "completed",
+      "sourceVersionId": "VER-SP-002-1",
+      "isSimulated": true,
+      "invoiceId": "INV-SP-002-BASE"
+    },
+    {
+      "id": "EV-SP-002-3",
+      "projectId": "SP-002",
+      "type": "cobros",
+      "title": "Cobro pendiente",
+      "summary": "Gracias por la entrega. No encuentro el enlace de la factura, ¿me lo reenvías?",
+      "occurredAt": "2026-10-21T09:00:00-05:00",
+      "status": "pending",
+      "sourceVersionId": "VER-SP-002-1",
+      "isSimulated": true,
+      "requestId": "REQ-SP-002"
+    },
+    {
+      "id": "EV-SP-003-1",
+      "projectId": "SP-003",
+      "type": "acuerdo",
+      "title": "Acuerdo registrado",
+      "summary": "Se registró la versión 1 del alcance y las condiciones. Aceptación ficticia para esta demo.",
+      "occurredAt": "2026-10-08T10:00:00-05:00",
+      "status": "accepted",
+      "sourceVersionId": "VER-SP-003-1",
+      "isSimulated": true
+    },
+    {
+      "id": "EV-SP-003-2",
+      "projectId": "SP-003",
+      "type": "cobros",
+      "title": "Pago recibido · ejemplo",
+      "summary": "Pago histórico ficticio. No procede de una transacción real de PayPal.",
+      "occurredAt": "2026-10-10T11:30:00-05:00",
+      "status": "completed",
+      "sourceVersionId": "VER-SP-003-1",
+      "isSimulated": true,
+      "invoiceId": "INV-SP-003-BASE"
+    },
+    {
+      "id": "EV-SP-003-3",
+      "projectId": "SP-003",
+      "type": "reembolsos",
+      "title": "Cancelación recibida",
+      "summary": "Hoy, 21 de octubre, necesito cancelar la sesión del 25. ¿Pueden devolverme la reserva?",
+      "occurredAt": "2026-10-21T09:00:00-05:00",
+      "status": "pending",
+      "sourceVersionId": "VER-SP-003-1",
+      "isSimulated": true,
+      "requestId": "REQ-SP-003"
+    },
+    {
+      "id": "EV-SP-004-1",
+      "projectId": "SP-004",
+      "type": "acuerdo",
+      "title": "Acuerdo registrado",
+      "summary": "Se registró la versión 1 del alcance y las condiciones. Aceptación ficticia para esta demo.",
+      "occurredAt": "2026-10-08T10:00:00-05:00",
+      "status": "accepted",
+      "sourceVersionId": "VER-SP-004-1",
+      "isSimulated": true
+    },
+    {
+      "id": "EV-SP-004-2",
+      "projectId": "SP-004",
+      "type": "cobros",
+      "title": "Pago recibido · ejemplo",
+      "summary": "Pago histórico ficticio. No procede de una transacción real de PayPal.",
+      "occurredAt": "2026-10-10T11:30:00-05:00",
+      "status": "completed",
+      "sourceVersionId": "VER-SP-004-1",
+      "isSimulated": true,
+      "invoiceId": "INV-SP-004-BASE"
+    },
+    {
+      "id": "EV-SP-004-3",
+      "projectId": "SP-004",
+      "type": "cambios",
+      "title": "Trabajo adicional por revisar",
+      "summary": "Necesitamos también una versión de la página en inglés.",
+      "occurredAt": "2026-10-21T09:00:00-05:00",
+      "status": "pending",
+      "sourceVersionId": "VER-SP-004-1",
+      "isSimulated": true,
+      "requestId": "REQ-SP-004"
+    },
+    {
+      "id": "EV-SP-005-1",
+      "projectId": "SP-005",
+      "type": "acuerdo",
+      "title": "Acuerdo registrado",
+      "summary": "Se registró la versión 1 del alcance y las condiciones. Aceptación ficticia para esta demo.",
+      "occurredAt": "2026-10-08T10:00:00-05:00",
+      "status": "accepted",
+      "sourceVersionId": "VER-SP-005-1",
+      "isSimulated": true
+    },
+    {
+      "id": "EV-SP-005-2",
+      "projectId": "SP-005",
+      "type": "cobros",
+      "title": "Pago recibido · ejemplo",
+      "summary": "Pago histórico ficticio. No procede de una transacción real de PayPal.",
+      "occurredAt": "2026-10-10T11:30:00-05:00",
+      "status": "completed",
+      "sourceVersionId": "VER-SP-005-1",
+      "isSimulated": true,
+      "invoiceId": "INV-SP-005-BASE"
+    },
+    {
+      "id": "EV-SP-005-3",
+      "projectId": "SP-005",
+      "type": "cobros",
+      "title": "Cobro pendiente",
+      "summary": "Todo recibido. Tenemos el pago programado para el 28 de octubre.",
+      "occurredAt": "2026-10-21T09:00:00-05:00",
+      "status": "pending",
+      "sourceVersionId": "VER-SP-005-1",
+      "isSimulated": true,
+      "requestId": "REQ-SP-005"
+    },
+    {
+      "id": "EV-SP-001-OLD-CHANGE",
+      "projectId": "SP-001",
+      "type": "cambios",
+      "title": "Extra descartado de común acuerdo",
+      "summary": "El cliente decidió mantener la duración original del video. No se generó un cobro.",
+      "occurredAt": "2026-10-14T14:00:00-05:00",
+      "status": "cancelled",
+      "sourceVersionId": "VER-SP-001-1",
+      "isSimulated": true
+    }
+  ],
+  "demoScenarios": [
+    {
+      "id": "SC-SP-001",
+      "requestId": "REQ-SP-001",
+      "finding": "Las adaptaciones verticales y los subtítulos no están incluidos en el presupuesto.",
+      "evidence": "«No incluye adaptaciones a otros formatos ni subtítulos».",
+      "items": [
+        {
+          "description": "3 adaptaciones verticales",
+          "unitAmount": 120,
+          "quantity": 1
+        },
+        {
+          "description": "Subtítulos en inglés",
+          "unitAmount": 60,
+          "quantity": 1
+        }
+      ]
+    },
+    {
+      "id": "SC-SP-002",
+      "requestId": "REQ-SP-002",
+      "finding": "El cliente indica que no encuentra el enlace de pago. El cobro lleva seis días de atraso.",
+      "evidence": "«No encuentro el enlace de la factura».",
+      "draft": "Hola, equipo de Norte Café. Les comparto nuevamente el enlace para el pago de US$450 por la identidad de marca entregada. La fecha acordada fue el 15 de octubre. Si tienen alguna dificultad para acceder, me avisan y lo revisamos. ¡Gracias!"
+    },
+    {
+      "id": "SC-SP-003",
+      "requestId": "REQ-SP-003",
+      "finding": "La solicitud del ejemplo cumple la condición de más de 48 horas de anticipación. Se propone revisar un reembolso completo de US$90.",
+      "evidence": "«Cancelación con más de 48 horas de anticipación permite reembolso completo».",
+      "draft": "Hola, equipo de Casa Oliva. Revisamos su cancelación de la sesión del 25 de octubre. De acuerdo con las condiciones acordadas, corresponde un reembolso de la reserva de US$90. Les confirmaremos cuando se complete."
+    },
+    {
+      "id": "SC-SP-004",
+      "requestId": "REQ-SP-004",
+      "finding": "La versión en inglés agrega una traducción que el presupuesto excluye.",
+      "evidence": "«No incluye traducciones».",
+      "items": [
+        {
+          "description": "Versión de la landing en inglés",
+          "unitAmount": 80,
+          "quantity": 1
+        }
+      ]
+    },
+    {
+      "id": "SC-SP-005",
+      "requestId": "REQ-SP-005",
+      "finding": "El pago todavía está dentro del plazo. El cliente afirma que lo programó para la fecha acordada.",
+      "evidence": "«Tenemos el pago programado para el 28 de octubre».",
+      "draft": "Hola, equipo de Marea. Gracias por confirmar la recepción y la programación del pago de US$350 para el 28 de octubre. Les dejo el enlace de pago a mano. Quedo atento a cualquier consulta."
+    }
+  ]
+}

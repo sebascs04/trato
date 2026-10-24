@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Trato. Tu espacio para acordar, cobrar y resolver como freelancer. Prototipo visual con datos ficticios.">
+  <title>Trato — Tu trabajo, bien acordado.</title>
+  <link rel="stylesheet" href="/styles.css?v=history-4">
+  <script src="/local-store.js" defer></script>
+  <script src="/payment-api.js" defer></script>
+  <script src="/payment-panel.js" defer></script>
+  <script src="/boot.js" defer></script>
+</head>
+<body class="foundation-preview">
+  <a class="skip" href="#main">Ir al contenido</a>
+  <aside class="sidebar" id="trato-sidebar">
+    <a href="#inicio" class="brand" aria-label="Trato inicio"><span class="brand-symbol">t<span>↗</span></span>trato<span class="brand-dot">.</span></a>
+    <div class="workspace"><span class="avatar">SC</span><div>Mi estudio<small>Espacio freelance</small></div><span class="workspace-chevron">⌄</span></div>
+    <span class="nav-label">TU ESPACIO</span>
+    <nav aria-label="Navegación principal">
+      <a href="#inicio" data-view="inicio" class="active"><span>◫</span>Vista general</a>
+      <a href="#clientes" data-view="clientes"><span>♧</span>Clientes</a>
+      <a href="#cambios" data-view="cambios"><span>⌘</span>Cambios y extras<span class="count">2</span></a>
+      <a href="#cobros" data-view="cobros"><span>↗</span>Cobros pendientes<span class="count">2</span></a>
+      <a href="#reembolsos" data-view="reembolsos"><span>↶</span>Reembolsos<span class="count">1</span></a>
+    </nav>
+    <div class="sidebar-note"><span class="spark">✳</span><strong>Más tiempo para crear.</strong><p>Menos conversaciones incómodas sobre dinero.</p><button class="text-button" id="tour">Explorar la demo <span>↗</span></button></div>
+    <div class="sidebar-bottom"><span class="online-dot"></span>Prototipo local <span class="version">v0.1</span></div>
+  </aside>
+  <div class="shell">
+    <header class="topbar"><button id="sidebar-toggle" class="sidebar-toggle" type="button" aria-label="Ocultar barra lateral" aria-expanded="true" aria-controls="trato-sidebar" title="Ocultar barra lateral">☰</button><div class="breadcrumb">Mi estudio <span>/</span> <strong id="crumb">Vista general</strong></div><div class="top-actions"><span class="demo-pill"><i></i>Datos de ejemplo</span><span class="avatar small">SC</span></div></header>
+    <main id="main" tabindex="-1">
+      <div class="page-heading"><div><p class="eyebrow">EL BACK OFFICE DE TU VIDA FREELANCE</p><h1 id="page-title">Tu trabajo merece<br>estar <em>bien acordado.</em></h1><p class="page-description" id="page-description">Extras que sí cobras. Pagos que avanzan. Reembolsos claros.<br>Un solo espacio para cuidar tu trabajo y la relación con tus clientes.</p></div><div class="heading-note"><span class="little-star">✳</span><p>Tú creas.<br><strong>Nosotros te ayudamos<br>a poner las cosas claras.</strong></p></div></div>
+      <section class="hero" id="hero" aria-label="Presentación de Trato"><div class="hero-copy"><span class="hero-label">PARA FREELANCERS, COMO TÚ</span><h2>«¿Puedes hacerme<br>un pequeño cambio?»</h2><p>Ese pequeño cambio también es trabajo.<br>Hazlo visible, acuerda su valor y prepara el cobro.</p><button class="button white" data-flow="cambios">Revisar un cambio <span>↗</span></button></div><div class="hero-art" aria-hidden="true"><div class="orbit orbit-one"></div><div class="orbit orbit-two"></div><span class="art-star">✳</span><div class="floating-label">Un acuerdo claro lo cambia todo.</div><div class="paper paper-back"></div><div class="paper"><div class="paper-top"><span class="mini-logo">t↗</span><span>CAMBIO DE ALCANCE</span><span>↗</span></div><h3>Nuevo trabajo.<br>Nuevo acuerdo.</h3><div class="paper-line"></div><div class="paper-item"><span>3 adaptaciones verticales</span><strong>US$120</strong></div><div class="paper-item"><span>Subtítulos en inglés</span><strong>US$60</strong></div><div class="paper-total"><span>Adicional propuesto</span><strong>US$180<span>.00</span></strong></div><span class="paper-badge">✓ Listo para revisar</span></div></div></section>
+      <section id="assistant-entry" class="assistant-entry"><div><span class="eyebrow">UN MENSAJE, UN SIGUIENTE PASO</span><h2>«Esto me escribió mi cliente…»</h2><p>Revisa su acuerdo, consulta al asistente y prepara una acción con contexto.</p></div><a class="button" href="#clientes">Abrir asistente <span>↗</span></a></section>
+      <section id="client-workspace" hidden aria-label="Espacio de clientes"></section>
+      <section class="stats" aria-label="Resumen de datos ficticios"><article><span>Extras por acordar</span><strong>US$260<span class="stat-dot purple"></span></strong><small>2 solicitudes necesitan tu revisión</small></article><article><span>Pagos por recibir</span><strong>US$800<span class="stat-dot amber"></span></strong><small>1 cobro pasó su fecha límite</small></article><article><span>Reembolsos en revisión</span><strong>US$90<span class="stat-dot blue"></span></strong><small>1 cancelación por resolver</small></article></section>
+      <section class="flow-section" id="flow-section"><div class="section-heading"><div><span class="eyebrow">CADA CONVERSACIÓN TIENE UN SIGUIENTE PASO</span><h2>¿Qué necesitas resolver?</h2></div><span class="muted desktop-only">Tú mantienes la última palabra.</span></div><div class="flow-cards"><button class="flow-card" data-flow="cambios"><span class="card-top"><span class="icon purple-icon">⌘</span><span class="card-number">01 / ACORDAR</span></span><h3>Me pidieron un cambio</h3><p>Compara la solicitud con lo acordado y prepara una propuesta por los extras.</p><span class="card-footer">Revisar alcance <span>↗</span></span></button><button class="flow-card" data-flow="cobros"><span class="card-top"><span class="icon amber-icon">↗</span><span class="card-number">02 / COBRAR</span></span><h3>Tengo un pago pendiente</h3><p>Revisa el contexto y prepara un seguimiento que cuide la relación con tu cliente.</p><span class="card-footer">Dar seguimiento <span>↗</span></span></button><button class="flow-card" data-flow="reembolsos"><span class="card-top"><span class="icon blue-icon">↶</span><span class="card-number">03 / RESOLVER</span></span><h3>Me piden un reembolso</h3><p>Consulta las condiciones del servicio y revisa una propuesta antes de decidir.</p><span class="card-footer">Revisar solicitud <span>↗</span></span></button></div></section>
+      <section class="activity"><div class="change-page-intro"><span class="eyebrow">DEL PEDIDO AL ACUERDO</span><h2>Un cambio claro, antes de empezar.</h2><p>Aquí reúnes los pedidos que pueden cambiar lo acordado con tus clientes. Abre una solicitud con la flecha de su fila para revisar el correo, consultar el análisis de ejemplo y preparar una adenda. Las partes deberán firmarla antes de actualizar el acuerdo.</p><div><span>01 · Correo fuente</span><span>02 · Lectura y acuerdo</span><span>03 · Análisis</span><span>04 · Alternativas</span><span>05 · Adenda</span></div></div><div class="section-heading"><div><span class="eyebrow">LO QUE ESTÁ EN MARCHA</span><h2 id="table-title">Tu trabajo, en perspectiva.</h2></div><button class="text-button" id="reset">Restablecer demo ↻</button></div><div class="table-scroll"><table><thead><tr><th>PROYECTO / CLIENTE</th><th>TIPO</th><th>IMPORTE</th><th>ESTADO</th><th><span class="sr-only">Acción</span></th></tr></thead><tbody id="project-rows"></tbody></table></div><div id="empty" hidden>No hay solicitudes en esta categoría.</div></section>
+      <footer class="footer"><span><b>trato.</b> Hecho para quienes trabajan por su cuenta.</span><span>Demo visual · IA, mensajes y pagos simulados</span></footer>
+    </main>
+  </div>
+  <dialog id="pdf-preview" class="pdf-preview" aria-labelledby="pdf-preview-title"><div class="pdf-preview-header"><div><span class="eyebrow">VISTA PREVIA · PDF</span><h2 id="pdf-preview-title"></h2></div><button type="button" class="close" id="pdf-preview-close" aria-label="Cerrar vista previa">×</button></div><p id="pdf-preview-note"></p><iframe id="pdf-preview-frame" title="Vista previa del PDF seleccionado" src="about:blank"></iframe><a id="pdf-preview-download" class="button secondary" download>Descargar PDF</a></dialog>
+  <dialog id="flow-dialog" aria-labelledby="dialog-title"><div class="dialog-header"><span class="eyebrow" id="dialog-eyebrow"></span><button class="close" id="close-dialog" aria-label="Cerrar">×</button></div><h2 id="dialog-title"></h2><p class="dialog-subtitle" id="dialog-subtitle"></p><div class="steps" aria-label="Etapas del flujo"><span id="step-one">1. PDF</span><span id="step-two">2. Lectura</span><span id="step-three">3. Análisis</span><span id="step-four">4. Alternativas</span><span id="step-five">5. Adenda</span><span id="step-six">6. Firma</span></div><div id="dialog-content"></div><div class="dialog-disclaimer">Ejemplo predefinido. No analiza tus textos ni conecta con IA o PayPal. No envía mensajes ni mueve dinero.</div></dialog>
+  <button class="assistant-orb" id="general-assistant-toggle" type="button" aria-label="Abrir asistente general de Trato" aria-expanded="false" aria-controls="general-assistant"><span aria-hidden="true">✳</span><span class="orb-label">Pregúntale a Trato</span><i aria-hidden="true"></i></button>
+  <section id="general-assistant" class="general-assistant" aria-labelledby="general-assistant-title" hidden>
+    <header class="general-assistant-header"><span class="general-assistant-mark" aria-hidden="true">✳</span><div><h2 id="general-assistant-title">Trato, contigo.</h2><p>Tu asistente general · Demo</p></div><button id="general-assistant-close" class="close" type="button" aria-label="Cerrar asistente general">×</button></header>
+    <div class="general-scope"><label for="general-scope">¿Qué contexto quieres consultar?</label><select id="general-scope" class="context-box"><option value="general">Todo mi estudio · resumen general</option></select><p id="general-scope-note">Vista transversal con cada dato identificado por cliente. Los chats de proyecto permanecen separados.</p></div>
+    <div id="general-messages" class="general-messages" role="log" aria-live="polite" aria-label="Conversación del asistente general"></div>
+    <div class="general-suggestions"><button type="button" data-general-question="summary">Mi resumen</button><button type="button" data-general-question="next">¿Qué reviso primero?</button><button type="button" data-general-question="help">¿Cómo me ayudas?</button></div>
+    <form id="general-chat-form"><label class="sr-only" for="general-input">Pregunta al asistente general</label><div class="general-compose"><textarea id="general-input" rows="2" required maxlength="4000" placeholder="Cuéntame, ¿qué necesitas resolver?"></textarea><button type="submit" class="general-send" aria-label="Enviar pregunta">↑</button></div><small>Respuestas de ejemplo · Sin IA ni operaciones conectadas</small></form>
+  </section>
+  <div class="toast" id="toast" role="status" hidden></div>
+
+</body>
+</html>

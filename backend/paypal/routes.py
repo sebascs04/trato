@@ -16,7 +16,7 @@ def public_payment(record):
         'provider':'paypal','environment':'sandbox','approval_url':record.approval_url,'updated_at':record.updated_at}
 
 
-def build_router(payment_service,notification_service,require_user):
+def build_router(payment_service,notification_service,require_user,*,proposal_notification_service=None):
     """P2 injects configured services and its FastAPI require_user(request) dependency.
     None payment_service leaves a visible 503; never substitutes a fake repository.
     """
@@ -31,7 +31,7 @@ def build_router(payment_service,notification_service,require_user):
         code=getattr(error,'code','PAYMENT_OPERATION_FAILED')
         status=getattr(error,'status',503)
         if isinstance(error,EmailDeliveryError):
-            status=409 if code in ('PAYMENT_NOT_READY_FOR_EMAIL','EMAIL_DELIVERY_UNCERTAIN','EMAIL_IN_PROGRESS') else 404 if code=='PAYMENT_NOT_FOUND' else 422 if code.startswith('INVALID_') else 503
+            status=409 if code in ('PAYMENT_NOT_READY_FOR_EMAIL','PAYMENT_NOT_REQUIRED','PROPOSAL_NOT_READY_FOR_EMAIL','EMAIL_DELIVERY_UNCERTAIN','EMAIL_IN_PROGRESS') else 404 if code in ('PAYMENT_NOT_FOUND','PROPOSAL_NOT_FOUND') else 422 if code.startswith('INVALID_') else 503
         # Translate known codes at the UI; do not leak exception/provider payloads.
         return JSONResponse({'error':{'code':code,'message':{'BUYER_APPROVAL_REQUIRED':'El cliente todavía no aprobó el pago.','PAYMENT_NOT_REQUIRED':'Este acuerdo no requiere un cobro adicional.','INVALID_REQUEST':'Revisa los datos de la solicitud.','EMAIL_DELIVERY_UNCERTAIN':'No se pudo confirmar el envío. Revisa antes de reenviar.','PAYPAL_SANDBOX_NOT_CONFIGURED':'Falta configurar PayPal sandbox.'}.get(code,'No se pudo completar la operación.'),'request_id':str(uuid4())}},status_code=status,headers={'Cache-Control':'no-store'})
     def identity(value):
@@ -104,5 +104,16 @@ def build_router(payment_service,notification_service,require_user):
             result=await run_in_threadpool(get_payment_service().webhook,dict(request.headers),event)
             return response(result)
         except PayPalError as error:return failure(error)
+
+    @router.post('/proposals/{proposal_id}/notifications/email')
+    async def proposal_email(proposal_id:str,request:Request,user:str=Depends(require_user)):
+        try:
+            if await body(request,empty_allowed=True):raise PayPalError('INVALID_REQUEST',status=422)
+            proposal_id=identity(proposal_id)
+            notification_key=key(request)
+            if proposal_notification_service is None:raise PayPalError('EMAIL_NOT_CONFIGURED',status=503)
+            result=await run_in_threadpool(proposal_notification_service.send,user,proposal_id,notification_key)
+            return response(result)
+        except (PayPalError,EmailDeliveryError) as error:return failure(error)
 
     return router

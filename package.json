@@ -6,8 +6,16 @@
   "scripts": {
     "dev": "node server.mjs",
     "start": "node server.mjs",
-    "check": "node --check app.js && node --check server.mjs && node --check boot.js && node --check pdf-extraction.mjs && node --check workflow-ui.js && node --check workflow-bridge.mjs && node --check local-store.js && node --check payment-api.js && node --check payment-panel.js",
+    "check": "node --check app.js && node --check server.mjs && node --check boot.js && node --check connected-workspace.mjs && node --check auth-session.mjs && node --check proxy-api.mjs && node --check pdf-extraction.mjs && node --check workflow-ui.js && node --check workflow-bridge.mjs && node --check local-store.js && node --check payment-api.js && node --check payment-panel.js && node --check gmail-connection.mjs && node --check sandbox-checkout.mjs && node --check icons.mjs && node --check proposal-workspace.mjs && node --check refund-preview.mjs && node --check simulation-threads.mjs",
     "test": "node --test tests/*.test.cjs",
-    "test:workflow": ".venv/bin/python -m unittest discover -s backend -p \"test_*.py\""
+    "test:browser": "playwright test --config=playwright.config.cjs",
+    "test:workflow": ".venv/bin/python -m unittest discover -s backend -p \"test_*.py\"",
+    "icons:build": "node scripts/build-icons.mjs"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.56.1"
+  },
+  "dependencies": {
+    "lucide-static": "1.61.0"
   }
 }

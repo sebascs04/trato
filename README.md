@@ -1,65 +1,76 @@
 # Trato
 
-Un espacio para que freelancers gestionen acuerdos, solicitudes de cambio y cobros por proyecto, con documentos y fuentes que permitan entender por qué cambió cada trato.
+Un espacio para freelancers que conecta acuerdos, solicitudes de cambio, evidencias y pagos con PayPal.
+
+Esta publicación reúne el frontend y los servicios necesarios para compartir y ejecutar el proyecto. Cada servicio conserva su carpeta y responsabilidad; no se publican credenciales, documentos del usuario, bases locales ni entornos virtuales.
 
 ## Estado actual
 
-Esta primera publicación contiene la interfaz interactiva, datos ficticios, extracción local de texto PDF, un flujo local con LangGraph y el adaptador de PayPal sandbox con sus pruebas. El análisis visible, la formalización y el recorrido de pago de la interfaz son vistas previas; todavía no están conectados a operaciones reales. No se envían correos ni se verifica una firma desde esta interfaz.
+- Clientes y proyectos privados con Supabase Auth, Postgres, Storage y políticas por propietario.
+- Ingesta PDF asíncrona mediante outbox, Redis y worker; extracción con referencias por página.
+- Propuestas/adendas versionadas, PDF por instantánea, revisión humana y envío explícito mediante Gmail OAuth.
+- Aceptación registrada mediante documento recibido y revisión humana. No se certifican firmas criptográficas.
+- Cobros PayPal Sandbox y confirmación de pago en backend. Un cambio pagado queda sólo para consulta.
+- Historial único por proyecto y carga bajo demanda. Tipografía Manrope e iconos Lucide locales.
+- Recorrido de devolución simulado con revisiones, cálculos y fuentes oficiales PayPal. No ejecuta reembolsos reales ni sandbox.
+- Mapa visual de ejemplo. Neo4j y Weaviate están previstos, todavía sin conexión.
+- Adaptadores y contratos Gemini preparados; el análisis de cambios/devoluciones que usa fixtures es explícitamente simulado. No se activa un proveedor ni se cambia a otro si falla.
 
-La API autenticada, Supabase, el procesador de documentos y el worker se desarrollan en componentes independientes. Sus repositorios locales de trabajo no se incluyen en esta publicación. Esta versión no representa todavía la entrega funcional completa del hackathon.
+## Empezar
 
-## Ejecutar la interfaz
-
-Requiere Node.js 18 o posterior. No hay dependencias npm que instalar.
+Requiere Node.js 18+, Python 3.12 y, para la ingesta conectada, Redis propio. Poppler es necesario para la lectura PDF del prototipo anterior. Los puertos están en `local-ports.json`.
 
 ```bash
 git clone https://github.com/sebascs04/trato.git
 cd trato
-npm run dev
+npm ci
 ```
 
-Abre http://localhost:5173. Para otro puerto, usa `PORT=5174 npm run dev`. El servidor escucha únicamente en la interfaz local; aún no está preparado para un despliegue público en Render.
+Sigue [la guía para colaboradores](docs/colaboradores.md) para instalar los entornos Python y configurar los servicios. Las plantillas `.env.example` no contienen las credenciales de desarrollo. Un clon no tiene acceso automático a Gmail, PayPal o Supabase de otra persona.
 
-Puedes recorrer Clientes → Nueva solicitud de cambio y usar el correo de ejemplo. Los proyectos iniciales y sus PDFs son ficticios. Los cambios y archivos incorporados desde la interfaz se guardan localmente en IndexedDB; no se suben a GitHub ni a una base remota.
-
-## Extracción y flujo local
-
-Para leer PDFs con texto seleccionable se necesita `pdftotext`, incluido en Poppler. No hay OCR conectado.
-
-El flujo de Python requiere Python 3.12 y las dependencias fijadas:
+Con los servicios configurados:
 
 ```bash
-python3 -m venv .venv
-.venv/bin/python -m pip install -r backend/requirements.lock.txt
+python3 scripts/dev-polyrepo.py --with-worker
 ```
 
-El motor guarda checkpoints en `.local/`, que no forma parte del repositorio. Consulta [el flujo ejecutable](docs/flujo-ejecutable.md) para detalles. Algunos apartados de ese documento conservan la evolución de la interfaz.
+Interfaz oficial: http://localhost:5173/#clientes. Sin configuración, muestra el error o acceso pendiente; no sustituye datos reales por ejemplos. La interfaz técnica opcional de `repos/trato-web` no es el diseño oficial.
 
-## PayPal
+## Organización
 
-El adaptador de backend implementa creación, consulta, captura, reconciliación y verificación de eventos de sandbox, además de preparación de correo. Necesita configuración privada y un repositorio autoritativo de aceptaciones y pagos para conectarse a la API. Los estados de vista previa del navegador no autorizan cobros reales.
+| Carpeta | Responsabilidad |
+| --- | --- |
+| Raíz: `index.html`, `connected-workspace.mjs`, `proposal-workspace.mjs` | Producto web, navegación y operaciones de usuario |
+| `repos/trato-api` | Autenticación, reglas de negocio, persistencia, Gmail y PayPal |
+| `repos/trato-file-processor` | Validación y extracción de documentos |
+| `repos/trato-worker` | Grafos, contratos de modelos y ejecución de trabajos |
+| `repos/trato-web` | Herramienta técnica opcional |
+| `scripts` | Arranque local, configuración privada e iconos |
+| `docs` | Arquitectura, contratos, producto e instrucciones |
+| `data` | Datos y PDFs ficticios del prototipo |
+| `backend` | Motor/adaptadores anteriores, conservados para referencia y compatibilidad |
 
-Consulta [la integración de PayPal](docs/paypal-sandbox.md). Las variables de `.env.example` están vacías y no se cargan automáticamente. Las credenciales deben permanecer en el backend.
+Los `.git` de los repositorios locales no se incluyen en esta publicación. Las carpetas de servicios son archivos normales del repositorio compartido, no submódulos que requieran acceso a repos privados.
 
 ## Comprobaciones
 
 ```bash
 npm run check
 npm test
-.venv/bin/python -m unittest discover -s backend -p 'test_paypal.py'
-.venv/bin/python -m unittest discover -s backend -p 'test_workflow.py'
+npx playwright install chromium
+npm run test:browser
 ```
 
-Las pruebas de rutas requieren FastAPI y su cliente de pruebas; no están incluidos en el lockfile del motor local.
+Las pruebas de navegador requieren el servidor local y bibliotecas de Chromium. Los tests de devoluciones arrancan el worker simulado local; no llaman a proveedores financieros ni modelos reales. Consulta los README de cada servicio para sus pruebas Python. Las pruebas Redis tienen requisitos propios y no deben apuntar a recursos de otros proyectos.
 
-## Organización
+## Documentación
 
-- `index.html`, `styles.css`, `app.js`: interfaz y recorrido por proyecto.
-- `data/`: entidades relacionadas por ID y documentos ficticios.
-- `local-store.js`: persistencia local de la interfaz.
-- `server.mjs`, `pdf-extraction.mjs`: servidor local y lectura de PDF.
-- `backend/workflow*.py`: motor y checkpoints locales.
-- `backend/paypal/`: adaptador para PayPal sandbox.
-- `tests/`, `backend/test_*.py`: pruebas.
+- [Colaboradores y configuración](docs/colaboradores.md)
+- [Ingesta conectada](docs/ingesta-conectada.md)
+- [Arquitectura de IA](docs/arquitectura-ia-trato.md)
+- [Flujo de cambios simulado](docs/worker-flujo-cambios.md)
+- [Flujo de devoluciones simulado](docs/worker-flujo-devoluciones.md)
+- [Estándar de prompts](docs/estandar-prompts.md)
+- [Propuesta del producto](docs/propuesta-ganadora.md)
 
-Esta publicación excluye credenciales, documentos aportados por usuarios, bases locales, entornos virtuales y los repositorios de trabajo anidados.
+No está desplegado públicamente ni preparado como un servicio de producción. El objetivo inmediato es completar y validar un recorrido funcional para la hackathon.

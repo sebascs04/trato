@@ -1,0 +1,9 @@
+{
+  "web": 5173,
+  "tools": 5174,
+  "api": 8100,
+  "file_processor": 8101,
+  "redis_reserved": 6380,
+  "weaviate_http_reserved": 8180,
+  "weaviate_grpc_reserved": 51052
+}

@@ -1,0 +1,12 @@
+<!doctype html>
+<html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="referrer" content="no-referrer"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'"><title>Conectar Gmail · Trato</title><style>body{font:16px system-ui;background:#f7f6fb;color:#252237;max-width:32rem;margin:20vh auto;padding:2rem}h1{font-size:1.5rem}</style></head><body><h1>Conectar Gmail a Trato</h1><p id="result">Completando autorización…</p><script>
+(() => {
+  const params=new URLSearchParams(location.search);
+  const data={type:'trato-gmail-callback',state:params.get('state'),code:params.get('code'),error:params.get('error')};
+  history.replaceState(null,'',location.pathname);
+  if(window.opener && data.state && (data.code || data.error)){
+    window.opener.postMessage(data,location.origin);
+    document.getElementById('result').textContent='Puedes volver a la ventana de Trato.';
+  }else document.getElementById('result').textContent='Abre tu perfil en Trato y vuelve a pulsar Conectar Gmail.';
+})();
+</script></body></html>

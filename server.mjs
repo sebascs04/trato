@@ -1,14 +1,35 @@
 import http from 'node:http';
+import {readFileSync} from 'node:fs';
 import {workflowEndpoint} from './workflow-bridge.mjs';
 import { extractPdfText, extractEmailFields } from './pdf-extraction.mjs';
 import { readFile } from 'node:fs/promises';
-const port = Number(process.env.PORT || 5173);
+import {proxyApiRequest} from './proxy-api.mjs';
+import {simulationThreadsEndpoint} from './simulation-threads.mjs';
+const localPorts = JSON.parse(readFileSync(new URL('./local-ports.json', import.meta.url), 'utf8'));
+const port = Number(process.env.PORT || localPorts.web);
 const assets = new Map([
+  ['/refund-preview.mjs', ['refund-preview.mjs', 'text/javascript; charset=utf-8']],
+  ['/refund-preview.css', ['refund-preview.css', 'text/css; charset=utf-8']],
+  ['/grafo.html', ['graph-preview.html', 'text/html; charset=utf-8']],
+  ['/graph-preview.mjs', ['graph-preview.mjs', 'text/javascript; charset=utf-8']],
+  ['/graph-preview.css', ['graph-preview.css', 'text/css; charset=utf-8']],
+  ['/assets/fonts/manrope-variable.ttf', ['assets/fonts/manrope-variable.ttf', 'font/ttf']],
+  ['/icons.mjs', ['icons.mjs', 'text/javascript; charset=utf-8']],
+  ['/proposal-workspace.mjs', ['proposal-workspace.mjs', 'text/javascript; charset=utf-8']],
+  ['/paypal-payment.html', ['paypal-payment.html', 'text/html; charset=utf-8']],
+  ['/paypal-payment.mjs', ['paypal-payment.mjs', 'text/javascript; charset=utf-8']],
+  ['/sandbox-checkout.mjs', ['sandbox-checkout.mjs', 'text/javascript; charset=utf-8']],
+  ['/paypal-sandbox-return.html', ['paypal-sandbox-return.html', 'text/html; charset=utf-8']],
+  ['/gmail-connection.mjs', ['gmail-connection.mjs', 'text/javascript; charset=utf-8']],
+  ['/gmail-callback.html', ['gmail-callback.html', 'text/html; charset=utf-8']],
   ['/', ['index.html', 'text/html; charset=utf-8']],
   ['/index.html', ['index.html', 'text/html; charset=utf-8']],
   ['/styles.css', ['styles.css', 'text/css; charset=utf-8']],
   ['/app.js', ['app.js', 'text/javascript; charset=utf-8']],
   ['/boot.js', ['boot.js', 'text/javascript; charset=utf-8']],
+  ['/connected-workspace.mjs', ['connected-workspace.mjs', 'text/javascript; charset=utf-8']],
+  ['/auth-session.mjs', ['auth-session.mjs', 'text/javascript; charset=utf-8']],
+  ['/connected-workspace.css', ['connected-workspace.css', 'text/css; charset=utf-8']],
   ['/local-store.js', ['local-store.js', 'text/javascript; charset=utf-8']],
   ['/payment-api.js', ['payment-api.js', 'text/javascript; charset=utf-8']],
   ['/payment-panel.js', ['payment-panel.js', 'text/javascript; charset=utf-8']],
@@ -21,6 +42,8 @@ for (const doc of demo.documents) {
 }
 http.createServer(async (req, res) => {
   const pathname = new URL(req.url, 'http://localhost').pathname;
+  if (pathname==='/api/simulation/threads'||pathname.startsWith('/api/simulation/threads/')) {await simulationThreadsEndpoint(req,res);return;}
+  if (pathname.startsWith('/api/v1/')) {proxyApiRequest(req,res); return;}
   if (pathname === '/api/workflows') { await workflowEndpoint(req,res); return; }
   if (pathname === '/api/extract-email-pdf') {
     const json = (status, value) => { res.writeHead(status, {'Content-Type':'application/json; charset=utf-8','Cache-Control':'no-store'}); res.end(JSON.stringify(value)); };
@@ -44,7 +67,7 @@ http.createServer(async (req, res) => {
   if (!asset) { res.writeHead(404); res.end('Not found'); return; }
   try {
     const body = await readFile(new URL(asset[0], import.meta.url));
-    res.writeHead(200, { 'Content-Type': asset[1], 'Cache-Control': 'no-store' });
+    res.writeHead(200, { 'Content-Type': asset[1], 'Cache-Control': pathname==='/assets/fonts/manrope-variable.ttf'?'public, max-age=86400':'no-store' });
     res.end(body);
   } catch { res.writeHead(500); res.end('Unable to read asset'); }
 }).listen(port, '127.0.0.1', () => console.log(`Trato local: http://localhost:${port}`));

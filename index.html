@@ -1,11 +1,13 @@
 <!doctype html>
-<html lang="es">
+<html lang="es" class="trato-starting">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="description" content="Trato. Tu espacio para acordar, cobrar y resolver como freelancer. Prototipo visual con datos ficticios.">
+  <meta name="description" content="Trato. Tu espacio para organizar clientes, proyectos, documentos y acuerdos como freelancer.">
   <title>Trato — Tu trabajo, bien acordado.</title>
+  <link rel="preload" href="/assets/fonts/manrope-variable.ttf" as="font" type="font/ttf" crossorigin>
   <link rel="stylesheet" href="/styles.css?v=history-4">
+  <link rel="stylesheet" href="/connected-workspace.css">
   <script src="/local-store.js" defer></script>
   <script src="/payment-api.js" defer></script>
   <script src="/payment-panel.js" defer></script>
@@ -15,14 +17,14 @@
   <a class="skip" href="#main">Ir al contenido</a>
   <aside class="sidebar" id="trato-sidebar">
     <a href="#inicio" class="brand" aria-label="Trato inicio"><span class="brand-symbol">t<span>↗</span></span>trato<span class="brand-dot">.</span></a>
-    <div class="workspace"><span class="avatar">SC</span><div>Mi estudio<small>Espacio freelance</small></div><span class="workspace-chevron">⌄</span></div>
+    <div class="workspace"><span class="avatar">SC</span><div>Mi estudio<small>Espacio freelance</small></div><span class="workspace-chevron" data-ui-icon="chevron-down"></span></div>
     <span class="nav-label">TU ESPACIO</span>
     <nav aria-label="Navegación principal">
-      <a href="#inicio" data-view="inicio" class="active"><span>◫</span>Vista general</a>
-      <a href="#clientes" data-view="clientes"><span>♧</span>Clientes</a>
-      <a href="#cambios" data-view="cambios"><span>⌘</span>Cambios y extras<span class="count">2</span></a>
-      <a href="#cobros" data-view="cobros"><span>↗</span>Cobros pendientes<span class="count">2</span></a>
-      <a href="#reembolsos" data-view="reembolsos"><span>↶</span>Reembolsos<span class="count">1</span></a>
+      <a href="#inicio" data-view="inicio" class="active"><span data-ui-icon="layout-dashboard"></span>Vista general</a>
+      <a href="#clientes" data-view="clientes"><span data-ui-icon="users"></span>Clientes</a>
+      <a href="#cambios" data-view="cambios"><span data-ui-icon="git-compare-arrows"></span>Cambios y extras<span class="count">2</span></a>
+      <a href="#cobros" data-view="cobros"><span data-ui-icon="credit-card"></span>Cobros pendientes<span class="count">2</span></a>
+      <a href="#reembolsos" data-view="reembolsos"><span data-ui-icon="undo-2"></span>Reembolsos<span class="count">1</span></a>
     </nav>
     <div class="sidebar-note"><span class="spark">✳</span><strong>Más tiempo para crear.</strong><p>Menos conversaciones incómodas sobre dinero.</p><button class="text-button" id="tour">Explorar la demo <span>↗</span></button></div>
     <div class="sidebar-bottom"><span class="online-dot"></span>Prototipo local <span class="version">v0.1</span></div>
@@ -30,6 +32,7 @@
   <div class="shell">
     <header class="topbar"><button id="sidebar-toggle" class="sidebar-toggle" type="button" aria-label="Ocultar barra lateral" aria-expanded="true" aria-controls="trato-sidebar" title="Ocultar barra lateral">☰</button><div class="breadcrumb">Mi estudio <span>/</span> <strong id="crumb">Vista general</strong></div><div class="top-actions"><span class="demo-pill"><i></i>Datos de ejemplo</span><span class="avatar small">SC</span></div></header>
     <main id="main" tabindex="-1">
+      <p id="boot-status" role="status">Abriendo tu espacio…</p>
       <div class="page-heading"><div><p class="eyebrow">EL BACK OFFICE DE TU VIDA FREELANCE</p><h1 id="page-title">Tu trabajo merece<br>estar <em>bien acordado.</em></h1><p class="page-description" id="page-description">Extras que sí cobras. Pagos que avanzan. Reembolsos claros.<br>Un solo espacio para cuidar tu trabajo y la relación con tus clientes.</p></div><div class="heading-note"><span class="little-star">✳</span><p>Tú creas.<br><strong>Nosotros te ayudamos<br>a poner las cosas claras.</strong></p></div></div>
       <section class="hero" id="hero" aria-label="Presentación de Trato"><div class="hero-copy"><span class="hero-label">PARA FREELANCERS, COMO TÚ</span><h2>«¿Puedes hacerme<br>un pequeño cambio?»</h2><p>Ese pequeño cambio también es trabajo.<br>Hazlo visible, acuerda su valor y prepara el cobro.</p><button class="button white" data-flow="cambios">Revisar un cambio <span>↗</span></button></div><div class="hero-art" aria-hidden="true"><div class="orbit orbit-one"></div><div class="orbit orbit-two"></div><span class="art-star">✳</span><div class="floating-label">Un acuerdo claro lo cambia todo.</div><div class="paper paper-back"></div><div class="paper"><div class="paper-top"><span class="mini-logo">t↗</span><span>CAMBIO DE ALCANCE</span><span>↗</span></div><h3>Nuevo trabajo.<br>Nuevo acuerdo.</h3><div class="paper-line"></div><div class="paper-item"><span>3 adaptaciones verticales</span><strong>US$120</strong></div><div class="paper-item"><span>Subtítulos en inglés</span><strong>US$60</strong></div><div class="paper-total"><span>Adicional propuesto</span><strong>US$180<span>.00</span></strong></div><span class="paper-badge">✓ Listo para revisar</span></div></div></section>
       <section id="assistant-entry" class="assistant-entry"><div><span class="eyebrow">UN MENSAJE, UN SIGUIENTE PASO</span><h2>«Esto me escribió mi cliente…»</h2><p>Revisa su acuerdo, consulta al asistente y prepara una acción con contexto.</p></div><a class="button" href="#clientes">Abrir asistente <span>↗</span></a></section>

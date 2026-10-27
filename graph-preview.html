@@ -1,0 +1,17 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Mapa del proyecto — Trato</title>
+  <link rel="preload" href="/assets/fonts/manrope-variable.ttf" as="font" type="font/ttf" crossorigin>
+  <link rel="stylesheet" href="/graph-preview.css">
+</head>
+<body class="gd-page">
+  <main id="graph-preview" class="graph-design" aria-label="Vista previa del mapa del proyecto"><p class="gd-loading" role="status">Preparando el mapa…</p></main>
+  <script type="module">
+    import {mountGraphPreview} from '/graph-preview.mjs';
+    mountGraphPreview(document.getElementById('graph-preview'),{onBack:()=>location.assign('/#clientes'),scenario:new URLSearchParams(location.search).get('scenario')==='refund'?'refund':'change'});
+  </script>
+</body>
+</html>

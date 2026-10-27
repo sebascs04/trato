@@ -42,6 +42,7 @@ const dialog = document.querySelector('#flow-dialog');
 const content = document.querySelector('#dialog-content');
 
 function renderRows() {
+  if (window.TratoCloud?.handlesView) {window.TratoCloud.renderRows(currentView); return;}
   const rows = projects.filter(project => currentView === 'inicio' || project.type === currentView);
   document.querySelector('#project-rows').innerHTML = rows.map(project => {
     const outcome = outcomes.get(project.id);
@@ -85,9 +86,11 @@ function renderView() {
   document.querySelector('#table-title').textContent = currentView === 'inicio' ? 'Tu trabajo, en perspectiva.' : 'Solicitudes de ejemplo';
   renderRows();
   renderOverview();
+  window.TratoCloud?.syncChrome();
 }
 
 function renderOverview() {
+  if (window.TratoCloud?.handlesView) return;
   const totals = { cambios: 0, cobros: 0, reembolsos: 0 };
   const counts = { cambios: 0, cobros: 0, reembolsos: 0 };
   for (const request of demoData.requests) { totals[request.type] += request.amount; counts[request.type] += 1; }
@@ -395,6 +398,7 @@ function selectedSource() { return knowledgeDocuments.find(doc => doc.projectId 
 function getTab() { return currentView === 'kb' ? 'documentos' : currentView === 'conversaciones' ? 'asistente' : selectedClientTab; }
 function tabButton(tab, text) { return `<button type="button" class="client-tab ${getTab() === tab ? 'selected' : ''}" data-client-tab="${tab}" aria-pressed="${getTab() === tab}">${text}</button>`; }
 function renderWorkspace() {
+  if (window.TratoCloud?.handlesView) {window.TratoCloud.renderWorkspace(workspace); return;}
   const project = selectedProject(); const client = selectedClient();
   workspace.innerHTML = `<div class="workspace-controls"><div><label for="client-picker" class="field">Cliente y proyecto</label><select id="client-picker" class="context-box">${clientRecords.map(record => `<option value="${record.projectId}" ${record.projectId === project.id ? 'selected' : ''}>${record.name} · ${projects.find(item => item.id === record.projectId).name}</option>`).join('')}</select></div><span class="demo-pill">${client.id} · ${project.id}</span></div>
   <div class="client-banner"><span class="client-avatar">${project.initials}</span><div><span class="eyebrow">CLIENTE · ${client.service.toUpperCase()}</span><h2>${client.name}</h2><p>${project.name} · Contacto de ejemplo: ${client.contact}</p></div><div class="client-banner-state"><span class="badge review">${outcomes.get(project.id) || project.status}</span><small>Contexto exclusivo de este proyecto</small><button class="button new-change-button" type="button" data-new-change>＋ Nueva solicitud de cambio</button></div></div>
@@ -756,3 +760,5 @@ window.addEventListener('trato-payment-preview-updated', event=>{
   }
   persistChangeWorkspace();
 });
+
+window.TratoCloud?.attach(() => renderView());

@@ -61,4 +61,33 @@ class RoutesTest(unittest.TestCase):
         self.assertEqual(self.client.post('/api/v1/payments',headers={'Authorization':'Bearer valid-user'},json={'acceptance_id':ID}).status_code,422)
         self.assertEqual(self.service.calls,[])
 
+    def test_proposal_email_requires_session_and_configuration(self):
+        url=f'/api/v1/proposals/{ID}/notifications/email'
+        self.assertEqual(self.client.post(url,json={}).status_code,401)
+        response=self.client.post(url,headers=self.auth,json={})
+        self.assertEqual(response.status_code,503)
+        self.assertEqual(response.json()['error']['code'],'EMAIL_NOT_CONFIGURED')
+
+    def test_proposal_email_accepts_only_identity_and_idempotency_not_browser_payload(self):
+        calls=[]
+        class ProposalService:
+            def send(self,user,proposal,key):
+                calls.append((user,proposal,key))
+                return {'notification_id':ID,'status':'accepted_by_smtp'}
+        def require_user(request:Request):
+            if request.headers.get('authorization')!='Bearer valid-user':raise HTTPException(status_code=401)
+            return USER
+        app=FastAPI()
+        app.include_router(build_router(None,None,require_user,proposal_notification_service=ProposalService()))
+        client=TestClient(app)
+        url=f'/api/v1/proposals/{ID}/notifications/email'
+        for payload in [{'recipient_email':'other@example.com'},{'amount':'1.00'},{'attachment_url':'https://example.com/private.pdf'}]:
+            self.assertEqual(client.post(url,headers=self.auth,json=payload).status_code,422)
+        self.assertEqual(client.post(url,headers={'Authorization':'Bearer valid-user'},json={}).status_code,422)
+        self.assertEqual(calls,[])
+        response=client.post(url,headers=self.auth,json={})
+        self.assertEqual(response.status_code,200)
+        self.assertEqual(calls,[(USER,ID,'stable-key')])
+        self.assertEqual(response.headers['cache-control'],'no-store')
+
 if __name__=='__main__':unittest.main()

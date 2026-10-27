@@ -1,0 +1,11 @@
+{
+  "name": "trato-web",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "node dev-server.mjs",
+    "check": "node --check dev-server.mjs && node --check public/extraction.js && node --check public/session.js",
+    "test": "node --test tests/*.test.mjs"
+  }
+}

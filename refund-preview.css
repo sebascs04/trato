@@ -1,0 +1,42 @@
+.refund-preview{width:min(1180px,calc(100vw - 40px));max-width:1180px;max-height:92vh;padding:0;border:1px solid var(--line);border-radius:16px;background:var(--paper);color:var(--ink);box-shadow:0 24px 90px #211a4933;overflow:auto}
+.refund-preview::backdrop{background:#201d365c}
+.refund-preview-header{display:flex;align-items:center;justify-content:space-between;gap:20px;padding:22px 28px;border-bottom:1px solid var(--line);position:sticky;top:0;z-index:2;background:var(--paper)}
+.refund-preview-header strong{display:block;font-size:17px;font-weight:600;margin-top:6px}
+.refund-preview-mode{padding:12px 28px;margin:0;background:var(--purple-soft);font-size:12px;line-height:1.7;color:var(--purple)}
+.refund-stepper{display:flex;gap:20px;justify-content:space-between;list-style:none;margin:0;padding:22px 28px;border-bottom:1px solid var(--line);overflow-x:auto}
+.refund-stepper li{display:flex;gap:8px;align-items:center;font-size:11px;color:var(--muted);white-space:nowrap}
+.refund-stepper li>span{display:grid;place-items:center;flex-shrink:0;width:23px;height:23px;border:1px solid var(--line);border-radius:50%;font-size:10px}
+.refund-stepper [aria-current="step"]{color:var(--purple);font-weight:650}
+.refund-stepper [aria-current="step"]>span{background:var(--purple);color:white;border-color:var(--purple)}
+.refund-preview-layout{display:grid;grid-template-columns:minmax(0,1fr) 330px;align-items:start}
+.refund-main{padding:30px;margin:0;max-width:none;min-width:0}
+.refund-main h2{font-size:25px;line-height:1.35;letter-spacing:-.7px;margin:10px 0 18px;font-weight:550}
+.refund-main p{font-size:13px;line-height:1.85;color:var(--muted);margin:12px 0 20px}
+.refund-main label{display:block;font-size:12px;font-weight:600;margin:20px 0}
+.refund-main input,.refund-main textarea,.refund-main select{display:block;width:100%;margin-top:9px;padding:12px 14px;border:1px solid var(--line);border-radius:8px;background:var(--paper);color:var(--ink);font:inherit;font-weight:400;line-height:1.6}
+.refund-main input{max-width:250px}.refund-main textarea{resize:vertical;min-height:100px}
+.refund-main .button{font-size:12px;gap:12px;min-height:42px}
+.refund-main .text-button{font-size:12px;line-height:1.8;margin:8px 0}
+.refund-main blockquote{margin:18px 0;padding:16px 20px;border-left:3px solid var(--purple);background:var(--purple-soft);font-size:14px;line-height:1.8;border-radius:0 8px 8px 0}
+.refund-main .refund-fine,.refund-fine{font-size:11px;line-height:1.85;color:var(--muted);font-weight:400}
+.refund-case{display:grid;gap:10px;border:1px solid var(--line);border-radius:10px;padding:18px;margin:22px 0;font-size:12px}
+.refund-case strong{font-size:14px;font-weight:600}.refund-case span{color:var(--muted)}
+.refund-findings{padding-left:20px;font-size:13px;line-height:1.9;color:var(--ink)}.refund-findings li{padding-left:3px;margin:8px 0}
+.refund-breakdown{margin:20px 0 10px;border:1px solid var(--line);border-radius:11px;overflow:hidden}
+.refund-breakdown>div{display:flex;justify-content:space-between;align-items:center;gap:20px;padding:12px 16px;border-bottom:1px solid var(--line);font-size:12px}
+.refund-breakdown>div:last-child{border-bottom:0}.refund-breakdown dt{color:var(--muted);line-height:1.7}.refund-breakdown dd{margin:0;font-weight:600;white-space:nowrap}
+.refund-breakdown .refund-total{background:var(--purple-soft)}.refund-breakdown .refund-total dt{color:var(--purple);font-weight:600}.refund-breakdown .refund-total dd{color:var(--purple);font-size:21px}
+.refund-terms{padding:18px;border:1px solid var(--line);border-radius:10px;margin:20px 0}.refund-terms strong{font-size:12px}.refund-terms p{white-space:pre-wrap;margin-bottom:0;color:var(--ink)}
+.refund-actions{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin:20px 0}
+.refund-evidence{padding:28px 24px;background:#faf9fd;border-left:1px solid var(--line);min-height:100%;min-width:0}
+.refund-evidence h3{font-size:15px;font-weight:600;margin:0 0 8px}.refund-evidence>p{font-size:11px;line-height:1.85;color:var(--muted);margin:0 0 20px}.refund-evidence h4{font-size:11px;font-weight:650;margin:26px 0 12px;color:var(--muted)}
+.refund-evidence details{border-bottom:1px solid var(--line);padding:12px 0}.refund-evidence summary{display:flex;gap:9px;align-items:flex-start;font-size:12px;line-height:1.7;cursor:pointer;color:var(--ink);list-style:none}.refund-source-chevron{margin-left:auto;display:flex}.refund-source-chevron .ui-icon{transition:transform .15s}.refund-evidence details[open]>summary .refund-source-chevron .ui-icon{transform:rotate(180deg)}.refund-evidence summary::-webkit-details-marker{display:none}.refund-evidence .ui-icon{width:16px;height:16px;flex-shrink:0;margin-top:2px;color:var(--purple)}
+.refund-evidence details p,.refund-evidence blockquote{margin:12px 0;font-size:12px;line-height:1.85;color:var(--muted)}.refund-evidence blockquote{padding:0 0 0 12px;border-left:2px solid var(--line)}.refund-evidence small{display:block;font-size:10px;color:var(--muted);line-height:1.8}.refund-evidence a{display:inline-flex;align-items:center;gap:5px;font-size:11px;color:var(--purple);margin-top:12px;text-decoration:underline;text-underline-offset:3px}
+.refund-error{padding:14px 16px;border:1px solid #efc6bd;border-radius:8px;color:#913e2d!important;background:#fff7f5}
+.refund-busy{color:var(--purple)!important;padding:12px 0}
+.refund-outcome{border:1px solid var(--line);border-radius:10px;padding:20px;background:var(--surface-soft);margin:18px 0}.refund-outcome strong{font-size:13px}.refund-outcome small{overflow-wrap:anywhere;font-size:11px}.refund-outcome p{margin-bottom:8px}
+.refund-versions{margin-top:28px;border-top:1px solid var(--line);padding-top:18px}.refund-versions summary{cursor:pointer;font-size:12px;color:var(--purple)}.refund-versions article{padding:14px 0;border-bottom:1px solid var(--line)}.refund-versions strong{font-size:13px}.refund-versions small{font-size:11px;color:var(--muted)}.refund-versions p{margin:8px 0}
+.refund-main .refund-restart{display:block;margin-top:25px}
+.cloud-design .cloud-refund-trial{margin-top:20px;border-top:1px solid var(--line);padding-top:22px}.cloud-design .cloud-refund-trial .button{gap:12px}
+@media(max-width:850px){.refund-preview-layout{grid-template-columns:minmax(0,1fr)}.refund-evidence{min-height:0;border-left:0;border-top:1px solid var(--line)}.refund-stepper{gap:18px}.refund-main{padding:24px}}
+@media(max-width:500px){.refund-preview{width:calc(100vw - 16px);max-height:95vh;border-radius:12px}.refund-preview-header{padding:18px}.refund-preview-mode{padding:10px 18px;font-size:11px}.refund-stepper{padding:16px 18px}.refund-main{padding:22px 18px}.refund-main h2{font-size:22px}.refund-breakdown>div{padding:11px 12px;gap:12px;font-size:11px}.refund-evidence{padding:24px 18px}.refund-actions{align-items:stretch;flex-direction:column}.refund-main .button{white-space:normal;text-align:center}}

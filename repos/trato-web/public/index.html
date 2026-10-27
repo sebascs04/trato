@@ -1,0 +1,20 @@
+<!doctype html>
+<html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Trato · Documentos</title><link rel="stylesheet" href="/styles.css"><script type="module" src="/extraction.js"></script></head>
+<body><main>
+<header><span class="brand">trato<span>✳</span></span><span class="tag">CLIENTES · PROYECTOS · DOCUMENTOS</span></header>
+<h1>Un lugar para lo acordado.</h1><p class="intro">Guarda tus documentos y consulta su contenido dentro del proyecto que corresponde. Leer un archivo no verifica firmas ni aceptación.</p>
+<details><summary>Conexión de desarrollo</summary><label>URL de la API<input id="api-url" type="url" value="http://localhost:8100"></label></details>
+<section id="login-section"><form id="login-form"><h2>Tu espacio</h2>
+<label>Correo<input id="email" type="email" autocomplete="username" required></label><label>Contraseña<input id="password" type="password" autocomplete="current-password" minlength="8" required></label>
+<button type="submit">Iniciar sesión</button><button id="signup" type="button" class="secondary">Crear cuenta</button><small>Al crear una cuenta, Supabase puede enviarte un correo de confirmación. Usa una contraseña nueva para esta aplicación.</small></form></section>
+<section id="workspace" hidden><div class="session-row"><p id="identity"></p><button id="logout" class="secondary">Cerrar sesión</button></div>
+<div class="columns"><form id="client-form"><h2>Nuevo cliente</h2><label>Nombre<input id="client-name" maxlength="200" required></label><label>Correo de contacto<input id="client-email" type="email" maxlength="254"></label><button>Guardar cliente</button></form>
+<form id="project-form"><h2>Nuevo proyecto</h2><label>Cliente<select id="client-selector" required></select></label><label>Nombre<input id="project-name" maxlength="200" required></label><button>Crear proyecto</button></form></div>
+<form id="extract-form"><h2>Incorporar documento</h2><label>Proyecto<select id="project-selector" required></select></label><label>Título<input id="document-title" maxlength="200" required></label>
+<label>Tipo<select id="document-kind"><option value="reference">Referencia</option><option value="initial_agreement">Acuerdo inicial · por verificar</option><option value="email_request">Pedido del cliente</option><option value="addendum">Adenda · por verificar</option><option value="delivery">Entrega</option></select></label>
+<label>Archivo<input id="document" type="file" accept=".pdf,.docx" required></label><small>PDF o DOCX · máximo 10 MB · sin OCR ni formato .doc antiguo.</small><button id="extract">Guardar y leer documento ↗</button></form>
+<section><div class="session-row"><h2>Documentos del proyecto</h2><button id="refresh" class="secondary">Actualizar</button></div><div id="documents"></div></section>
+<section id="result" hidden><h2>Contenido extraído</h2><p id="metadata"></p><div id="warnings"></div><div id="segments"></div></section>
+<section><h2>Historial</h2><div id="events"></div></section></section><p id="status" role="status" aria-live="polite"></p>
+</main></body></html>

@@ -16,9 +16,11 @@ function loadApp() {
     });
     return elements.get(selector);
   };
+  const catalog=JSON.parse(readFileSync(new URL('../locales/es.mjs', `file://${__filename}`),'utf8').replace(/^export default /,'').replace(/;\s*$/,''));
+  const uiText=key=>{assert.ok(Object.hasOwn(catalog,key),'Missing Spanish translation: '+key);return catalog[key];};
   const context = vm.createContext({
     document: { querySelector: element, querySelectorAll() { return []; }, addEventListener() {} },
-    location: { hash: '#inicio' }, window: { TRATO_DATA: JSON.parse(readFileSync(new URL('../data/demo.json', `file://${__filename}`), 'utf8')), addEventListener() {} },
+    location: { hash: '#inicio' }, window: { TratoI18n:{uiText,uiLocale:()=> 'es-PE'}, TRATO_DATA: JSON.parse(readFileSync(new URL('../data/demo.json', `file://${__filename}`), 'utf8')), addEventListener() {} },
     Intl, setTimeout, clearTimeout,
   });
   vm.runInContext(readFileSync(new URL('../app.js', `file://${__filename}`), 'utf8'), context);

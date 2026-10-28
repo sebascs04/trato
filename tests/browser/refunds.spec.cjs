@@ -32,7 +32,7 @@ async function accept(page){
 test('refund simulation runs through the actual generic worker and keeps PayPal sources separate from project evidence',async({page})=>{
  const errors=[],businessWrites=[];page.on('pageerror',e=>errors.push(e.message));page.on('request',r=>{if(r.method()==='POST'&&/\/api\/v1\//.test(r.url()))businessWrites.push(r.url());});
  await open(page);await draft(page);
- await page.locator('.refund-evidence summary').filter({hasText:'PayPal Perú'}).click();
+ await page.locator('.refund-evidence > details:not(.refund-connections) > summary').filter({hasText:'PayPal Perú'}).click();
  await expect(page.locator('.refund-evidence')).toContainText('Perú · pagos por artículos o servicios');
  await expect(page.getByRole('link',{name:'Abrir fuente oficial',exact:false}).first()).toHaveAttribute('href','https://www.paypal.com/pe/cshelp/article/how-do-i-issue-a-refund-help101');
  await expect(page.locator('.refund-breakdown .refund-total')).toContainText('100.00');
@@ -123,7 +123,7 @@ test('project refund tab opens the simulation only after explicit selection',asy
  const requests=[];page.on('request',r=>requests.push(new URL(r.url()).pathname));
  await page.route('**/api/v1/**',route=>{
   const path=new URL(route.request().url()).pathname;
-  const data=path.endsWith('/config')?{supabase_url:'https://tests.supabase.invalid',publishable_key:'sb_publishable_test'}:path==='/api/v1/clients'?[{id:'client',name:'Cliente privado'}]:path==='/api/v1/projects'?[{id:'project',client_id:'client',name:'Proyecto privado'}]:path.endsWith('/request-status')?{can_register:true,closures:[],active_request:null}:[];
+  const data=path.endsWith('/config')?{supabase_url:'https://tests.supabase.invalid',publishable_key:'sb_publishable_test'}:path==='/api/v1/session'?{user_id:'owner'}:path==='/api/v1/clients'?[{id:'client',name:'Cliente privado'}]:path==='/api/v1/projects'?[{id:'project',client_id:'client',name:'Proyecto privado'}]:path.endsWith('/request-status')?{can_register:true,closures:[],active_request:null}:[];
   return route.fulfill({json:{data}});
  });
  await page.addInitScript(()=>sessionStorage.setItem('trato:tests.supabase.invalid:session',JSON.stringify({access_token:'test',refresh_token:'test',expires_at:9999999999,user:{id:'owner',email:'sender@example.invalid'}})));
@@ -135,4 +135,40 @@ test('project refund tab opens the simulation only after explicit selection',asy
  await expect(page.locator('.refund-preview-mode')).toContainText('Caso de ejemplo independiente');
  expect(requests.filter(p=>p.startsWith('/api/simulation/'))).toHaveLength(0);
  expect(requests.filter(p=>p==='/refund-preview.mjs')).toHaveLength(1);
+});
+
+test('refund evidence map follows this checkpoint and keeps acceptance on its version',async({page})=>{
+ await open(page);await draft(page);
+ const map=page.locator('.refund-connections');
+ await map.locator(':scope > summary').click();
+ await expect(map).toContainText('Pago original');
+ await expect(map).toContainText('Propuesta de cierre v1');
+ await expect(map).not.toContainText('Aceptación registrada');
+ await expect(map).not.toContainText('Casa Oliva');
+ await page.getByRole('button',{name:'Simular envío al cliente',exact:false}).click();
+ await page.getByRole('button',{name:'Simular aceptación',exact:true}).click();
+ await map.locator(':scope > summary').click();
+ await expect(map).toContainText('Aceptación registrada · v1');
+ await page.getByRole('button',{name:'Autorizar devolución simulada',exact:false}).click();
+ await page.getByRole('button',{name:'Simular resultado pendiente',exact:true}).click();
+ await expect(page.locator('.refund-main')).toContainText('sigue en PENDING');
+ await expect(page.locator('.refund-main')).toHaveAttribute('aria-busy','false');
+ await map.locator(':scope > summary').click();
+ const payment=map.locator('li').filter({has:page.getByText('Pago original',{exact:true})}).first();
+ await payment.locator('summary').click();
+ await expect(payment).toContainText('COMPLETED');
+ const refund=map.locator('li').filter({has:page.getByText('Devolución',{exact:true})}).first();
+ await refund.locator('summary').click();
+ await expect(refund).toContainText('PENDING');
+ await expect(refund).toContainText('Ejecuta el importe de esta versión');
+ await page.screenshot({path:'.local/browser-tests/refund-evidence-map.png',fullPage:true});
+});
+
+test('refund proposal saves and simulates sending from a single explicit submit',async({page})=>{
+ await open(page);await start(page);
+ await expect(page.getByRole('heading',{name:'Lo acordado y lo que permite PayPal',exact:true})).toBeVisible();
+ await page.getByRole('button',{name:'Guardar y simular envío',exact:false}).click();
+ await expect(page.getByRole('heading',{name:'El cliente revisa la propuesta v1',exact:true})).toBeVisible();
+ await expect(page.getByRole('button',{name:'Simular envío al cliente',exact:false})).toHaveCount(0);
+ await expect(page.getByRole('button',{name:'Autorizar devolución simulada',exact:false})).toHaveCount(0);
 });

@@ -37,9 +37,9 @@ class ProposalWorkflow:
         if config.environment!='sandbox':raise ApiError('LIVE_PAYMENTS_DISABLED',503)
         if not all((config.client_id,config.client_secret,config.merchant_id)):raise ApiError('PAYPAL_SANDBOX_NOT_CONFIGURED',503)
         return PayPalSandboxClient(config.client_id,config.client_secret,config.merchant_id)
-    def context(self,repo,proposal_id,revision_id,kind):
+    def context(self,repo,proposal_id,revision_id,kind,*,allow_unreviewed=False):
         if not self.gmail:raise ApiError('GMAIL_NOT_CONFIGURED',503)
-        snapshot=repo.get_revision(proposal_id,revision_id)
+        snapshot=repo.get_revision(proposal_id,revision_id,collections=('artifacts','reviews')+(('payments',) if kind=='payment' else ()))
         proposal,revision=snapshot['proposal'],snapshot['revision']
         if proposal['current_revision_id']!=revision_id:raise ApiError('PROPOSAL_REVISION_CONFLICT',409)
         if proposal.get('locked_at'):raise ApiError('CHANGE_READ_ONLY',409)
@@ -47,7 +47,8 @@ class ProposalWorkflow:
         clients=repo.rows('clients',{'select':'name,contact_email','id':'eq.'+project['client_id']})
         if not clients or not clients[0]['contact_email']:raise ApiError('CLIENT_EMAIL_REQUIRED',409)
         client=clients[0]
-        if len(snapshot['artifacts'])!=1 or len(snapshot['reviews'])!=1:raise ApiError('PROPOSAL_REVIEW_REQUIRED',409)
+        draft_preview=allow_unreviewed and kind=='adenda' and not snapshot['reviews']
+        if len(snapshot['artifacts'])!=1 or (len(snapshot['reviews'])!=1 and not draft_preview):raise ApiError('PROPOSAL_REVIEW_REQUIRED',409)
         artifact=snapshot['artifacts'][0]
         doc=repo.document(artifact['document_id'])
         content=repo.download(doc)
@@ -55,7 +56,7 @@ class ProposalWorkflow:
         attachment=PdfAttachment(doc['original_filename'],content,artifact['sha256'])
         amount=f'{revision["additional_minor"]//100}.{revision["additional_minor"]%100:02d}'
         if kind=='adenda':
-            if proposal['status']!='ready_for_review':raise ApiError('PROPOSAL_NOT_READY_FOR_EMAIL',409)
+            if proposal['status']!='ready_for_review' and not (draft_preview and proposal['status']=='draft'):raise ApiError('PROPOSAL_NOT_READY_FOR_EMAIL',409)
             item=ProposalEmail(proposal_id,client['contact_email'],client['name'],project['name'],revision['scope_summary'],amount,'USD',revision['deadline'],attachment)
         elif kind=='payment':
             if proposal['status']!='accepted':raise ApiError('ACCEPTANCE_REQUIRED',409)
@@ -65,8 +66,8 @@ class ProposalWorkflow:
             item=PaymentEmail(pay['id'],client['contact_email'],client['name'],project['name'],amount,'USD',pay['approval_url'],attachment)
         else:raise ApiError('INVALID_MAIL_KIND',422)
         return snapshot,item
-    def prepare_email(self,repo,owner,proposal_id,revision_id,kind):
-        snapshot,item=self.context(repo,proposal_id,revision_id,kind)
+    def prepare_email(self,repo,owner,proposal_id,revision_id,kind,*,for_preview=False):
+        snapshot,item=self.context(repo,proposal_id,revision_id,kind,allow_unreviewed=for_preview)
         status=self.gmail.status(owner)
         if not status['connected']:raise ApiError('GMAIL_NOT_CONNECTED',409)
         sender=status['email']
@@ -76,7 +77,7 @@ class ProposalWorkflow:
         digest=sha256(json.dumps(canonical,sort_keys=True).encode()).hexdigest()
         return item,{'sender':sender,'recipient':item.recipient_email,'subject':str(message['Subject']),'body':message.get_body(preferencelist=('plain',)).get_content(),'document_id':snapshot['artifacts'][0]['document_id'],'filename':item.agreement.filename,'sha256':item.agreement.sha256,'digest':digest}
     def preview(self,repo,owner,proposal_id,revision_id,kind):
-        return self.prepare_email(repo,owner,proposal_id,revision_id,kind)[1]
+        return self.prepare_email(repo,owner,proposal_id,revision_id,kind,for_preview=True)[1]
     def send(self,repo,owner,proposal_id,revision_id,kind,digest):
         item,preview=self.prepare_email(repo,owner,proposal_id,revision_id,kind)
         if not secrets.compare_digest(preview['digest'],digest):raise ApiError('EMAIL_PREVIEW_CHANGED',409)
@@ -106,7 +107,7 @@ class ProposalWorkflow:
         return self.backend().command(pay['owner_id'],'payment_apply',{'payment_id':pay['id'],'status':state,'order_id':order['id'],'capture_id':captures[0]['id'] if captures else None,'approval_url':client.approval_url(order),'amount_minor':pay['amount_minor'],'currency':pay['currency'],'merchant_id':pay['merchant_id']})
     def prepare_payment(self,repo,owner,proposal_id,revision_id):
         # Resolve owner/revision before making any provider request.
-        snapshot=repo.get_revision(proposal_id,revision_id)
+        snapshot=repo.get_revision(proposal_id,revision_id,collections=())
         if snapshot['proposal']['current_revision_id']!=revision_id:raise ApiError('PROPOSAL_REVISION_CONFLICT',409)
         client=self.provider()
         merchant=SandboxSettings.from_env().merchant_id

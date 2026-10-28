@@ -69,7 +69,7 @@ def render_pdf(snapshot, project_name, client_name):
 
 class ProposalPdfService:
     def save(self, repo, proposal_id, revision_id):
-        snapshot = repo.get_revision(proposal_id, revision_id)
+        snapshot = repo.get_revision(proposal_id, revision_id, collections=('line_items','sources','artifacts'))
         existing = snapshot['artifacts']
         if existing:
             # Return the exact stored original, even for historical revisions.
@@ -95,4 +95,6 @@ class ProposalPdfService:
         # A generated PDF needs no extraction to bind it to its structured terms.
         # Original source processing/IA belongs to its separate worker workflow.
         repo.command('attach_pdf', {'proposal_id':proposal_id, 'expected_revision_id':revision_id, 'document_id':document['id']}, 'proposal-pdf-bind-' + revision_id)
-        return repo.get_revision(proposal_id, revision_id)['artifacts'][0]
+        artifacts=repo.rows('proposal_artifacts',{'select':'document_id,sha256,created_at','proposal_id':'eq.'+proposal_id,'revision_id':'eq.'+revision_id})
+        if len(artifacts)!=1:raise ApiError('PROPOSAL_PDF_REQUIRED',409)
+        return artifacts[0]

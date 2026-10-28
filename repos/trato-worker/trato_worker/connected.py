@@ -23,6 +23,12 @@ class ConnectedPayload(StrictModel):
         return self
 
 
+class GraphPayload(StrictModel):
+    project_id: str
+    generation: int = Field(ge=1)
+    content_hash: str = Field(pattern='^[a-f0-9]{64}$')
+
+
 class ConnectedThread(StrictModel):
     type: Literal['thread']
     schema_version: Literal[1]
@@ -30,14 +36,18 @@ class ConnectedThread(StrictModel):
     thread_id: str
     event_id: str
     action: Literal['start']
-    workflow: Literal['ingest_document']
+    workflow: Literal['ingest_document','sync_project_graph']
     context: Context
-    payload: ConnectedPayload
+    payload: ConnectedPayload | GraphPayload
 
     @model_validator(mode='after')
     def ids(self):
         if any(str(UUID(v)) != v for v in (self.thread_id,self.event_id)):
             raise ValueError('Thread/evento inválidos.')
+        if (self.workflow=='ingest_document') != isinstance(self.payload,ConnectedPayload):
+            raise ValueError('Payload no corresponde al workflow.')
+        if self.workflow=='sync_project_graph' and self.payload.project_id!=self.context.project_id:
+            raise ValueError('Proyecto no corresponde al contexto.')
         return self
 
 
@@ -142,6 +152,8 @@ class ConnectedWorker:
         if claim['terminal']:
             return self.event(message,None,'snapshot',{'status':claim['status']})
         lease=claim['lease_id']
+        if message['workflow']=='sync_project_graph':
+            return self.sync_graph(message,claim)
         def progress(step):
             if on_progress:
                 on_progress(self.event(message,lease,'progress',{'step':step}))
@@ -161,6 +173,24 @@ class ConnectedWorker:
             return self.event(message,lease,'failed',{'error_code':exc.code})
         except RuntimeError:
             return self.event(message,lease,'failed',{'error_code':'INTERNAL_SERVICE_UNAVAILABLE'})
+
+    def sync_graph(self,message,claim):
+        from .graph_projection import GraphWriter,build_projection
+        import json
+        try:
+            data=json.loads(self.client.request('GET',self.client.api_url+'/internal/threads/'+message['thread_id']+'/graph-input',
+                token=self.client.worker_token,maximum=2400000,params={'lease_id':claim['lease_id']}))['data']
+            if data['generation']!=message['payload']['generation'] or data['content_hash']!=message['payload']['content_hash']:
+                raise JobError('GRAPH_CONTEXT_CONFLICT')
+            projection=build_projection(data['snapshot'],message['context'])
+            GraphWriter.from_env().sync(projection,message['context'],data['generation'],data['content_hash'])
+            return self.event(message,claim['lease_id'],'completed',{'generation':data['generation'],'content_hash':data['content_hash']})
+        except JobError as exc:
+            return self.event(message,claim['lease_id'],'failed',{'error_code':exc.code})
+        except (KeyError,ValueError,TypeError):
+            return self.event(message,claim['lease_id'],'failed',{'error_code':'INVALID_GRAPH_SOURCE'})
+        except RuntimeError:
+            return self.event(message,claim['lease_id'],'failed',{'error_code':'INTERNAL_SERVICE_UNAVAILABLE'})
 
     @staticmethod
     def event(message,lease,action,result):

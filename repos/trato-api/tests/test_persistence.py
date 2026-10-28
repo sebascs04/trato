@@ -23,10 +23,43 @@ class PersistenceTests(unittest.TestCase):
             return httpx.Response(200, json=[])
         self.assertEqual(self.repo(handler).list_clients(), [])
 
+    def test_project_directory_is_filtered_to_the_selected_client(self):
+        def handler(request):
+            self.assertEqual(request.url.params['client_id'], 'eq.'+CLIENT)
+            self.assertEqual(request.headers['authorization'], 'Bearer user-a')
+            return httpx.Response(200,json=[])
+        self.assertEqual(self.repo(handler).list_projects(CLIENT), [])
+
     def test_absent_or_foreign_document_is_404(self):
         with self.assertRaises(ApiError) as error:
             self.repo(lambda request: httpx.Response(200, json=[])).document(DOC)
         self.assertEqual(error.exception.status, 404)
+
+    def test_document_groups_use_database_links_without_loading_text_or_other_projects(self):
+        calls = []
+        def handler(request):
+            calls.append(request)
+            self.assertEqual(request.headers['authorization'], 'Bearer user-a')
+            if request.url.path.endswith('/projects'):
+                return httpx.Response(200, json=[{'id': PROJECT, 'client_id': CLIENT}])
+            self.assertEqual(request.url.params['project_id'], 'eq.' + PROJECT)
+            selection = request.url.params['select']
+            self.assertIn('request_document_id', selection)
+            self.assertIn('proposal_acceptances_returned_document_id', selection)
+            self.assertNotIn('segments', selection)
+            revision = {'revision_no': 2, 'proposal': {'request_document_id': DOC}}
+            return httpx.Response(200, json=[
+                {'id': 'pdf', 'proposal_artifacts': [{'revision_id': 'revision-2', 'revision': revision}]},
+                {'id': 'returned', 'acceptances': [{'review': {'revision': revision}}]},
+                {'id': 'feedback', 'feedback': [revision]},
+                {'id': 'unlinked', 'proposal_artifacts': []}])
+        result = self.repo(handler).list_documents(PROJECT)
+        self.assertEqual(len(calls), 2)
+        for index, role in enumerate(('addendum', 'acceptance', 'feedback')):
+            self.assertEqual(result[index]['request_links'], [{'request_document_id': DOC, 'revision_no': 2, 'role': role}])
+        self.assertEqual(result[0]['proposal_artifacts'], [{'revision_id': 'revision-2'}])
+        self.assertEqual(result[3]['request_links'], [])
+        self.assertNotIn('acceptances', result[1])
 
     def test_owner_is_not_inserted_from_browser_or_app_claims(self):
         def handler(request):

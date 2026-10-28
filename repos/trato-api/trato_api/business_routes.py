@@ -94,8 +94,8 @@ def build_business_router(settings, services, require_user, repository_factory=N
         return reply(repo.soft_delete_client(uuid(client_id)))
 
     @router.get('/projects')
-    def projects(repo=Depends(repository)):
-        return reply(repo.list_projects())
+    def projects(client_id:str|None=None,repo=Depends(repository)):
+        return reply(repo.list_projects(uuid(client_id)) if client_id is not None else repo.list_projects())
 
     @router.post('/projects')
     async def create_project(request: Request, repo=Depends(repository)):

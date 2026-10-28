@@ -56,3 +56,15 @@ El flujo no arbitra disputas, determina derechos legales ni modifica la solicitu
 - 10 pruebas unitarias nuevas del flujo: importes/comisiones, devolución parcial anterior, datos faltantes, plazo excedido, revisiones, pausas obsoletas, aislamiento, persistencia/reentrega, importe cero y resultado fallido.
 - Suite del worker: 62 pruebas descubiertas, 56 aprobadas y 6 de Redis omitidas por requerir su entorno específico. No se modificó el transporte Redis ni se usó el de QAMAQ.
 - Pruebas Chromium con la pasarela y el worker locales reales: recorrido completo, resultado pendiente/fallido, reanudación, versiones, servicio indisponible, aislamiento de sesión y separación entre estado real/simulado. Las API de negocio se doblan explícitamente en las pruebas del navegador; no hay cargos, correos o reembolsos reales.
+
+## Conexiones del recorrido — 27/10/2026
+
+En el panel de fuentes se añade **Conexiones de esta devolución**, una proyección de solo consulta del checkpoint actual. A diferencia del mapa de ejemplo de Casa Oliva, utiliza exclusivamente el caso de Estudio Norte que el usuario está recorriendo. No consulta Neo4j ni modifica el modelo del otro chat.
+
+- Enlaza el pago original, las fuentes, cada propuesta guardada y sus referencias oficiales preservadas.
+- Cada envío, aceptación, rechazo y autorización corresponde al `snapshot_id` de su propia versión. No se crea una aceptación por existir una propuesta.
+- Una devolución se enlaza a su captura y su instantánea exactas. Pago `COMPLETED` y reembolso `PENDING` permanecen separados.
+- Citas inexistentes, capturas distintas y referencias incompletas muestran error; no se rellenan relaciones con otro ejemplo. Las fuentes oficiales de cada versión conservan fecha, ámbito y resumen propios.
+- No es un historial adicional editable ni habilita operaciones. El usuario despliega únicamente el respaldo que quiere consultar.
+
+Código en `refund-preview.mjs` (`buildRefundEvidenceGraph`), estilos en `refund-preview.css`. Pruebas de referencias, citas, versiones y conservación del pago en `tests/refund-evidence.test.cjs`; prueba Chromium del recorrido en `tests/browser/refunds.spec.cjs`. La conexión de Aura y el dominio de devoluciones conectado siguen pendientes.

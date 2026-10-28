@@ -91,8 +91,8 @@ def build_proposal_router(settings,require_user,repository_factory=None,workflow
     def list_proposals(project_id:str,repo=Depends(repository)):
         return reply(repo.list_proposals(uuid(project_id)))
     @router.get('/proposals/{proposal_id}')
-    def get_proposal(proposal_id:str,repo=Depends(repository)):
-        return reply(repo.get_proposal(uuid(proposal_id)))
+    def get_proposal(proposal_id:str,summary:bool=False,repo=Depends(repository)):
+        return reply(repo.get_proposal(uuid(proposal_id),summary=True) if summary else repo.get_proposal(uuid(proposal_id)))
     @router.get('/proposals/{proposal_id}/revisions/{revision_id}')
     def get_revision(proposal_id:str,revision_id:str,repo=Depends(repository)):
         return reply(repo.get_revision(uuid(proposal_id),uuid(revision_id)))
@@ -100,7 +100,7 @@ def build_proposal_router(settings,require_user,repository_factory=None,workflow
     async def returned_pdf(proposal_id:str,revision_id:str,request:Request,filename:str,repo=Depends(repository)):
         from ..business_routes import read_bytes
         proposal_id,revision_id=uuid(proposal_id),uuid(revision_id)
-        snapshot=await run_in_threadpool(repo.get_revision,proposal_id,revision_id)
+        snapshot=await run_in_threadpool(repo.get_revision,proposal_id,revision_id,collections=('deliveries',))
         if snapshot['proposal']['current_revision_id']!=revision_id or snapshot['proposal']['status']!='ready_for_review':raise ApiError('PROPOSAL_REVISION_CONFLICT',409)
         if not any(d['kind']=='adenda' and d['status']=='accepted_by_gmail' for d in snapshot['deliveries']):raise ApiError('ADENDA_SEND_REQUIRED',409)
         if not 1<=len(filename)<=180 or not filename.lower().endswith('.pdf') or any(c in filename for c in '/\\\r\n'):raise ApiError('INVALID_FILENAME',422)
@@ -144,7 +144,7 @@ def build_proposal_router(settings,require_user,repository_factory=None,workflow
             return reply(workflow.public_payment(workflow.prepare_payment(repo,user,uuid(proposal_id),uuid(revision_id))))
         @router.post('/proposals/{proposal_id}/revisions/{revision_id}/reconcile')
         def reconcile(proposal_id:str,revision_id:str,repo=Depends(repository)):
-            snapshot=repo.get_revision(uuid(proposal_id),uuid(revision_id))
+            snapshot=repo.get_revision(uuid(proposal_id),uuid(revision_id),collections=())
             rows=repo.rows('proposal_payments',{'select':'checkout_token','revision_id':'eq.'+snapshot['revision']['id']})
             if not rows:raise ApiError('PAYMENT_NOT_FOUND',404)
             return reply(workflow.checkout(rows[0]['checkout_token'],capture=True))

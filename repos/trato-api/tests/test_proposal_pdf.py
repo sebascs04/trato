@@ -28,12 +28,12 @@ class PdfTest(unittest.TestCase):
     def test_existing_artifact_is_downloaded_not_regenerated(self):
         content=b'%PDF-original';snapshot=deepcopy(self.snapshot);snapshot['artifacts']=[{'document_id':'doc','sha256':sha256(content).hexdigest()}]
         class Repo:
-            def get_revision(self,*args):return snapshot
+            def get_revision(self,*args,**kwargs):return snapshot
             def document(self,id):return {'id':id}
             def download(self,doc):return content
         self.assertEqual(ProposalPdfService().save(Repo(),'p','r'),snapshot['artifacts'][0])
     def test_superseded_revision_cannot_generate_pdf(self):
         snapshot=deepcopy(self.snapshot);snapshot['proposal']['current_revision_id']='new'
         class Repo:
-            def get_revision(self,*args):return snapshot
+            def get_revision(self,*args,**kwargs):return snapshot
         with self.assertRaises(ApiError):ProposalPdfService().save(Repo(),'p','r')

@@ -1,0 +1,62 @@
+.graph-live .gd-top{padding-bottom:22px}.graph-live .gd-toolbar{padding:16px 30px}.graph-live .gd-scene{min-width:1000px}.graph-live .gd-node{width:220px;max-width:220px}.graph-live .gd-map{max-height:75vh}.graph-live .gd-filter{border:1px solid var(--gd-line);background:var(--gd-paper)}.graph-live .gd-edge:not(.is-active){opacity:.35}.graph-live .gd-edge.is-active path{stroke:var(--gd-accent);stroke-width:2.5px}.graph-live .gd-body{min-height:620px}
+
+.graph-live [data-live-request]{font:inherit;padding:7px 12px;border:1px solid var(--gd-line);border-radius:7px;background:var(--gd-paper);color:var(--gd-ink);max-width:320px;margin-left:8px}
+
+.graph-live.graph-live-embedded{min-height:0;border:1px solid var(--gd-line);border-radius:12px;overflow:hidden}
+.graph-live-embedded .gd-top{padding:18px 22px}
+.graph-live-embedded .gd-heading{margin:0;align-items:center;gap:15px}
+.graph-live-embedded .gd-heading h3{font-size:18px;font-weight:600;margin:0}
+.graph-live-embedded .gd-body{grid-template-columns:minmax(0,1fr) 290px;min-height:500px}
+@media(max-width:850px){.graph-live-embedded .gd-body{grid-template-columns:minmax(0,1fr)}}
+/* Un lienzo navegable ocupa la vista; los detalles se abren cuando se necesitan. */
+.graph-live .gd-body{display:block;position:relative;min-height:640px;height:75vh;max-height:950px;overflow:hidden}
+.graph-live.graph-live-embedded .gd-body{display:block;min-height:640px;height:75vh}
+.graph-live .gd-map{position:absolute;inset:0;overflow:hidden;max-height:none;min-height:0;cursor:grab;touch-action:none;outline-offset:-4px;user-select:none}
+.graph-live .gd-map.is-dragging{cursor:grabbing}
+.graph-live .gd-map:focus-visible{outline:2px solid var(--gd-accent)}
+.graph-live .gd-scene{position:absolute;left:0;top:0;min-width:0;transform-origin:0 0;will-change:transform}
+.graph-live .gd-lines{pointer-events:none}
+.graph-live .gd-edge{pointer-events:visiblePainted;cursor:pointer;opacity:.65}
+.graph-live .gd-edge .gd-edge-hit{stroke:transparent;stroke-width:22px;pointer-events:stroke}
+.graph-live .gd-edge .gd-edge-line{stroke-width:1.8px;pointer-events:stroke}
+.graph-live .gd-edge text{font-size:12px;font-weight:600;stroke-width:7px;pointer-events:all;fill:#625a77}
+.graph-live .gd-edge.is-active{opacity:1}
+.graph-live .gd-edge.is-active .gd-edge-line{stroke:#7961c5;stroke-width:2.8px}
+.graph-live .gd-edge.is-active .gd-edge-hit{stroke:transparent;stroke-width:22px}
+.graph-live .gd-edge.is-active text{fill:#57408f}
+.graph-live .gd-edge:focus-visible{outline:none}
+.graph-live .gd-edge:focus-visible .gd-edge-line{stroke:#7460d8;stroke-width:4px}
+.graph-live .gd-orbits circle{fill:none;stroke:#e2deed;stroke-width:1;stroke-dasharray:5 9}
+.graph-live .gd-node{width:220px;max-width:220px;height:112px;min-height:112px;overflow:hidden;cursor:pointer;touch-action:none}
+.graph-live .gd-node strong{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;font-size:13px;line-height:1.5}
+.graph-live .gd-node .gd-node-description{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.graph-live .gd-node.is-root{background:#efebfb;border-color:#c9bde7}
+.graph-live .gd-map-controls{position:absolute;left:18px;bottom:18px;display:flex;align-items:center;gap:4px;padding:5px;background:var(--gd-paper);border:1px solid var(--gd-line);border-radius:10px;box-shadow:0 4px 20px #3023420c;z-index:3}
+.graph-live .gd-map-controls button{min-height:36px;border:0;font-size:11px;padding:7px 10px}
+.graph-live .gd-map-controls output{min-width:42px;text-align:center;font-size:11px;color:var(--gd-muted);font-variant-numeric:tabular-nums}
+.graph-live .gd-navigation-hint{position:absolute;left:20px;top:16px;color:var(--gd-muted);font-size:11px;pointer-events:none;z-index:2}
+.graph-live .gd-space-actions{display:flex;gap:6px;margin-left:auto}
+.graph-live .gd-space-actions button{min-height:36px;font-size:12px}
+.graph-live .gd-inspector{position:absolute;top:14px;right:14px;bottom:14px;width:300px;max-width:calc(100% - 28px);min-height:0;overflow:auto;padding:28px 22px;background:var(--gd-paper);border:1px solid var(--gd-line);border-radius:12px;box-shadow:0 8px 30px #2e234215;z-index:4;user-select:text}
+.graph-live .gd-detail-close{position:absolute;right:9px;top:9px;width:36px;height:36px;display:grid;place-items:center;border:0;background:transparent;border-radius:8px;color:var(--gd-muted)}
+.graph-live .gd-inspector h2{padding-right:20px;font-size:20px}
+.graph-live .gd-relation-summary{margin-top:22px}
+.graph-live .gd-relation-summary>p{display:flex;align-items:center;justify-content:space-between;color:var(--gd-accent);font-size:12px;padding:16px 0}
+.graph-live.is-expanded{position:fixed;inset:12px;z-index:200;width:auto;max-width:none;height:calc(100vh - 24px);min-height:0;display:flex;flex-direction:column;border:1px solid var(--gd-line);border-radius:14px;box-shadow:0 24px 100px #211a4d35;overflow:hidden}
+.graph-live.is-expanded .gd-body{flex:1;min-height:0;height:auto;max-height:none}
+.graph-live.is-expanded .gd-top{flex-shrink:0;padding:16px 22px}
+.graph-live.is-expanded .gd-toolbar{flex-shrink:0;padding:10px 22px}
+
+.graph-live .gd-edge:not(.is-active){opacity:.7}
+
+.gd-dialog>.graph-live{display:flex;flex-direction:column;height:100%;min-height:0}
+.gd-dialog>.graph-live>.gd-top,.gd-dialog>.graph-live>.gd-toolbar{flex-shrink:0}
+.gd-dialog>.graph-live>.gd-body{flex:1;min-height:0;height:auto;max-height:none}
+.graph-live .gd-edge text{font-size:calc(12px * var(--gd-label-scale,1));stroke-width:calc(6px * var(--gd-label-scale,1))}
+
+/* Only connections of the selected node expose their labels. */
+.graph-live .gd-edge:not(.is-active) text{visibility:hidden;pointer-events:none}
+.graph-live .gd-edge.is-active text{visibility:visible}
+.graph-live .gd-connection-legend{display:flex;flex-direction:column;gap:7px;margin:12px 0 16px;padding:11px 12px;border-radius:8px;background:var(--gd-bg);color:var(--gd-muted);font-size:11px;line-height:1.6}
+.graph-live .gd-connection-legend>span{display:flex;align-items:center;gap:8px}
+.graph-live .gd-connection-legend .ui-icon{width:14px;height:14px;color:var(--gd-accent)}

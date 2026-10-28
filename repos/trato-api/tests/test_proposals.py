@@ -27,7 +27,7 @@ class ProposalRoutesTest(unittest.TestCase):
                 return {'proposal_id':PROPOSAL,'revision_id':REVISION,'acceptance_id':None}
             def list_proposals(self,project):calls.append(('list',project));return []
             def get_proposal(self,id):raise ApiError('PROPOSAL_NOT_FOUND',404)
-            def get_revision(self,*args):raise ApiError('REVISION_NOT_FOUND',404)
+            def get_revision(self,*args,**kwargs):raise ApiError('REVISION_NOT_FOUND',404)
         def user(request:Request):
             if request.headers.get('authorization')!='Bearer synthetic-user':raise HTTPException(401)
             return 'synthetic-owner'

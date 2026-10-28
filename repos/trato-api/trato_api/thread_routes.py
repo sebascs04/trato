@@ -37,7 +37,7 @@ def build_thread_router(settings, store_factory=None):
         except ValueError:
             raise ApiError('INVALID_THREAD', 422)
         result = await run_in_threadpool(backend.command, 'claim', {'message': message})
-        if not result['terminal']:
+        if not result['terminal'] and 'document' in result:
             result['document'] = {k: v for k,v in result['document'].items()
                                   if k in ('id','project_id','kind','original_filename','mime_type','size_bytes','sha256')}
         return JSONResponse({'data': result}, headers={'Cache-Control': 'no-store'})
@@ -47,5 +47,11 @@ def build_thread_router(settings, store_factory=None):
         backend = store(request)
         value = await run_in_threadpool(backend.original, uuid(thread_id), uuid(lease_id))
         return Response(value, media_type='application/pdf', headers={'Cache-Control':'no-store','X-Content-Type-Options':'nosniff'})
+
+    @router.get('/{thread_id}/graph-input')
+    async def graph_input(thread_id: str, lease_id: str, request: Request):
+        backend=store(request)
+        value=await run_in_threadpool(backend.command,'graph_input',{'message':{'thread_id':uuid(thread_id)},'lease_id':uuid(lease_id)})
+        return JSONResponse({'data':value},headers={'Cache-Control':'no-store'})
 
     return router

@@ -12,7 +12,7 @@ class WorkflowTest(unittest.TestCase):
   self.snapshot={'proposal':{'id':'p','project_id':'project','current_revision_id':'r','status':'ready_for_review'},'revision':{'id':'r','scope_summary':'Un video adicional','additional_minor':10,'deadline':'2026-11-12'},'artifacts':[{'document_id':'pdf','sha256':sha256(self.content).hexdigest()}],'reviews':[{}],'payments':[]}
   parent=self
   class Repo:
-   def get_revision(self,*args):return deepcopy(parent.snapshot)
+   def get_revision(self,*args,**kwargs):return deepcopy(parent.snapshot)
    def project(self,id):return {'id':id,'client_id':'c','name':'Proyecto'}
    def rows(self,*args):return [{'name':'Cliente','contact_email':'recipient@example.com'}]
    def document(self,id):return {'original_filename':'adenda-v1.pdf'}
@@ -36,6 +36,21 @@ class WorkflowTest(unittest.TestCase):
   self.assertEqual(result['status'],'accepted_by_gmail');self.assertEqual(self.sent[0][1].agreement.content,self.content)
   self.assertEqual(self.sent[0][3]['expected_sender'],'sender@example.com')
   self.assertEqual([c[1] for c in self.commands],['mail_reserve','mail_finish'])
+ def test_draft_can_preview_but_cannot_send_until_its_review_is_recorded(self):
+  self.snapshot['reviews']=[];self.snapshot['proposal']['status']='draft'
+  preview=self.flow.preview(self.repo,'owner','p','r','adenda')
+  self.assertEqual(self.sent,[]);self.assertEqual(self.commands,[])
+  with self.assertRaises(ApiError) as caught:self.flow.send(self.repo,'owner','p','r','adenda',preview['digest'])
+  self.assertEqual(caught.exception.code,'PROPOSAL_REVIEW_REQUIRED')
+  self.snapshot['reviews']=[{}];self.snapshot['proposal']['status']='ready_for_review'
+  self.flow.send(self.repo,'owner','p','r','adenda',preview['digest'])
+  self.assertEqual(len(self.sent),1)
+ def test_draft_preview_does_not_allow_missing_pdf_or_bypass_payment_acceptance(self):
+  self.snapshot['reviews']=[];self.snapshot['proposal']['status']='draft'
+  with self.assertRaises(ApiError):self.flow.preview(self.repo,'owner','p','r','payment')
+  self.snapshot['artifacts']=[]
+  with self.assertRaises(ApiError):self.flow.preview(self.repo,'owner','p','r','adenda')
+  self.assertEqual(self.sent,[]);self.assertEqual(self.commands,[])
  def test_changed_digest_never_sends(self):
   with self.assertRaises(ApiError):self.flow.send(self.repo,'owner','p','r','adenda','0'*64)
   self.assertEqual(self.sent,[]);self.assertEqual(self.commands,[])

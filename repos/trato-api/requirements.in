@@ -4,3 +4,4 @@ httpx==0.28.1
 cryptography==50.0.2
 reportlab==5.1.0
 redis==8.1.0
+neo4j==6.4.1

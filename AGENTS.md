@@ -60,3 +60,15 @@ Esta instrucción se aplica a todas las partes del proyecto y a los chats que co
 - El bloqueo comienza con el documento email_request, incluso antes de preparar la adenda. Reintentos de la misma subida conservan su idempotencia; fuentes adicionales y feedback del mismo pedido siguen permitidos.
 - Un pedido finalizado con pago verificado, uno aceptado sin adicional o un cierre explícito por rechazo/retiro libera el proyecto. No cerrar unilateralmente una aceptación registrada ni alterar cambios finalizados.
 - El backend y la base de datos deben imponer la regla bajo bloqueo del proyecto, no solo ocultar/deshabilitar el botón. Historial y documentos permanecen consultables.
+
+## Idiomas de la interfaz
+
+Preferencia de Sebastian, 27/10/2026:
+
+- Trato admite únicamente español (`es`) e inglés (`en`), seleccionables desde el perfil.
+- Todo texto nuevo o modificado de interfaz debe tener ambas traducciones en los catálogos de `locales/`, incluidos errores, estados, formularios, ayudas, títulos, etiquetas accesibles y tooltips.
+- Utilizar `uiText()` y `uiLocale()` de `i18n.mjs`. No añadir textos visibles directamente en un solo idioma ni traducir identificadores de rutas, enums del backend, claves de almacenamiento o nombres de campos.
+- Formatear fechas, cantidades y monedas con el locale seleccionado; no cambiar la moneda ni la zona horaria por cambiar de idioma.
+- No traducir automáticamente nombres, mensajes de clientes, documentos, citas, contratos o el contenido exacto de un correo que se va a enviar. Esos son datos, no etiquetas de la interfaz.
+- La configuración de idioma se incluye al preparar un ensayo/agente. No presentar un mensaje del cliente ficticio como comunicación o aceptación real.
+- Validar paridad de claves ES/EN antes de entregar cambios. Una traducción faltante es un error que debe corregirse; no incorporar fallbacks de idioma.

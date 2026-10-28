@@ -8,9 +8,16 @@ import {simulationThreadsEndpoint} from './simulation-threads.mjs';
 const localPorts = JSON.parse(readFileSync(new URL('./local-ports.json', import.meta.url), 'utf8'));
 const port = Number(process.env.PORT || localPorts.web);
 const assets = new Map([
+  ['/i18n.mjs',['i18n.mjs','text/javascript; charset=utf-8']],
+  ['/locales/es.mjs',['locales/es.mjs','text/javascript; charset=utf-8']],
+  ['/locales/en.mjs',['locales/en.mjs','text/javascript; charset=utf-8']],
+  ['/practice-workspace.mjs',['practice-workspace.mjs','text/javascript; charset=utf-8']],
+  ['/practice-workspace.css',['practice-workspace.css','text/css; charset=utf-8']],
   ['/refund-preview.mjs', ['refund-preview.mjs', 'text/javascript; charset=utf-8']],
   ['/refund-preview.css', ['refund-preview.css', 'text/css; charset=utf-8']],
   ['/grafo.html', ['graph-preview.html', 'text/html; charset=utf-8']],
+  ['/graph-live.mjs', ['graph-live.mjs', 'text/javascript; charset=utf-8']],
+  ['/graph-live.css', ['graph-live.css', 'text/css; charset=utf-8']],
   ['/graph-preview.mjs', ['graph-preview.mjs', 'text/javascript; charset=utf-8']],
   ['/graph-preview.css', ['graph-preview.css', 'text/css; charset=utf-8']],
   ['/assets/fonts/manrope-variable.ttf', ['assets/fonts/manrope-variable.ttf', 'font/ttf']],

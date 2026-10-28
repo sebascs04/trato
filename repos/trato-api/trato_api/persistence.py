@@ -86,8 +86,10 @@ class Repository:
     def soft_delete_client(self,client_id):
         return self.rpc('soft_delete_client',{'p_client_id':uuid(client_id)})
 
-    def list_projects(self):
-        return self.rows('projects', {'select': 'id,client_id,name,status,created_at', 'order': 'created_at.desc', 'limit': 100})
+    def list_projects(self,client_id=None):
+        params={'select':'id,client_id,name,status,created_at','order':'created_at.desc','limit':100}
+        if client_id is not None:params['client_id']='eq.'+uuid(client_id)
+        return self.rows('projects',params)
 
     def create_project(self, client_id, name):
         client_id = uuid(client_id)
@@ -105,8 +107,33 @@ class Repository:
 
     def list_documents(self, project_id):
         project = self.project(project_id)
-        rows = self.rows('documents', {'select': 'id,project_id,title,kind,original_filename,mime_type,size_bytes,sha256,origin_status,created_at,document_extractions(id,status,error_code,worker_thread_id,worker_threads(status,phase)),proposal_artifacts(revision_id)',
+        proposal = 'proposal:change_proposals!proposal_revisions_proposal_id_project_id_owner_id_fkey(request_document_id)'
+        revision = 'revision_no,' + proposal
+        # Explicit FK hints distinguish a returned acceptance from the document used for review.
+        artifacts = 'proposal_artifacts(revision_id,revision:proposal_revisions!proposal_artifacts_revision_id_proposal_id_project_id_owne_fkey(' + revision + '))'
+        acceptances = ('acceptances:proposal_acceptances!proposal_acceptances_returned_document_id_project_id_owner_fkey('
+                       'review:proposal_reviews!proposal_acceptances_revision_id_proposal_id_project_id_ow_fkey('
+                       'revision:proposal_revisions!proposal_reviews_revision_id_proposal_id_project_id_owner__fkey(' + revision + ')))')
+        feedback = 'feedback:proposal_revisions!proposal_revisions_feedback_document_id_project_id_owner_i_fkey(' + revision + ')'
+        select = ('id,project_id,title,kind,original_filename,mime_type,size_bytes,sha256,origin_status,created_at,'
+                  'document_extractions(id,status,error_code,worker_thread_id,worker_threads(status,phase)),') + ','.join((artifacts, acceptances, feedback))
+        rows = self.rows('documents', {'select': select,
                                        'project_id': 'eq.' + project['id'], 'order': 'created_at.desc', 'limit': 100})
+        for row in rows:
+            links = []
+            def add_link(revision, role):
+                if revision and revision.get('proposal'):
+                    link = {'request_document_id': revision['proposal']['request_document_id'],
+                            'revision_no': revision['revision_no'], 'role': role}
+                    if link not in links:
+                        links.append(link)
+            for artifact in row.get('proposal_artifacts', []):
+                add_link(artifact.pop('revision', None), 'addendum')
+            for acceptance in row.pop('acceptances', []):
+                add_link((acceptance.get('review') or {}).get('revision'), 'acceptance')
+            for revision_row in row.pop('feedback', []):
+                add_link(revision_row, 'feedback')
+            row['request_links'] = links
         return rows
 
     def document(self, document_id):

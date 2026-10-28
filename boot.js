@@ -1,6 +1,9 @@
 // Carga una fixture JSON normalizada. Una carga fallida se muestra; no se inventan datos.
 async function bootTrato() {
   try {
+    const {localizeStaticDocument,installLanguagePreference}=await import('/i18n.mjs');
+    localizeStaticDocument(document);
+    await new Promise((resolve,reject)=>{const script=document.createElement('script');script.src='/payment-panel.js';script.onload=resolve;script.onerror=()=>reject(new Error('No se pudo cargar la interfaz de pagos.'));document.head.append(script);});
     const response = await fetch('/data/demo.json', { cache: 'no-store' });
     if (!response.ok) throw new Error(`No se pudieron cargar los datos (${response.status}).`);
     const data = await response.json();
@@ -16,6 +19,9 @@ async function bootTrato() {
     try {
       const {createConnectedWorkspace} = await import('/connected-workspace.mjs');
       window.TratoCloud = createConnectedWorkspace();
+      installLanguagePreference(window.TratoCloud);
+      const {installPracticeWorkspace}=await import('/practice-workspace.mjs');
+      installPracticeWorkspace(window.TratoCloud);
       const {installProposalWorkspace} = await import('/proposal-workspace.mjs');
       installProposalWorkspace(window.TratoCloud);
       const {installGmailConnection} = await import('/gmail-connection.mjs');

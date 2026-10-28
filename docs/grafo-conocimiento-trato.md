@@ -1,3 +1,5 @@
+> Estado 27/10/2026: conexión real implementada, con alcance inicial Project→documentos/propuestas/revisiones/aceptaciones/envíos/pagos. User/Client separados quedan propuestos. Implementación y límites vigentes en [grafo-conectado.md](grafo-conectado.md); las secciones siguientes conservan el modelo original.
+
 # Grafo de conocimiento de Trato — modelo inicial
 
 Propuesta del 26 de octubre de 2026, derivada de las migraciones vigentes. Proveedor elegido por Sebastian: Neo4j AuraDB Free, junto con Weaviate. Este documento define el modelo; no crea una instancia, conexión ni sincronización.
@@ -92,3 +94,7 @@ Primera visualización propuesta: un recorrido pequeño pedido → revisión →
 ## Qué sigue
 
 Revisar este modelo con Sebastian, crear AuraDB Free propio de Trato y guardar sus credenciales de forma privada. Después implementar constraints, consultas de evidencia y sincronización acotada. Ningún paso utiliza Neo4j de QAMAQ ni añade operaciones financieras.
+
+## Conexión verificada — 27 de octubre de 2026
+
+Sebastian creó la instancia propia trato en AuraDB Free. Credenciales descargadas conservadas en .local/credentials y configuración en .env.neo4j, ambas ignoradas por Git y con permisos privados. Se verificó autenticación TLS con el controlador oficial Python y consulta de solo lectura RETURN 1 satisfactoria. No se crearon nodos, relaciones ni constraints. El controlador de esta comprobación está en un entorno temporal; aún no se añadió como dependencia de servicios. El mapa sigue usando los ejemplos: falta implementar la proyección autorizada y su consulta desde Trato. No se conecta ningún recurso de QAMAQ.

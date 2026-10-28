@@ -51,7 +51,7 @@ async function openWorkspace(page) {
   await openClient(page);
   await page.getByRole('button',{name:'Abrir proyecto Proyecto privado A',exact:true}).click();
   await expect(page.locator('.cloud-agreement')).toBeVisible();
-  await page.locator('summary').filter({hasText:'Archivos del proyecto'}).click();
+  await page.getByRole('button',{name:'Documentos: Archivos por pedido',exact:true}).click();
   await expect(page.locator('.document-library')).toContainText('Documento exclusivo A');
 }
 
@@ -80,7 +80,8 @@ test('a saved client remains visible without projects and opens its first projec
   await expect(page.locator('.cloud-dialog select')).toHaveCount(0);
   await expect(page.getByLabel('Nombre del nuevo proyecto')).toBeVisible();
   await page.reload();
-  await expect(page.locator('.cloud-client-directory')).toContainText('Mi primer cliente');
+  await expect(page.getByRole('region',{name:'Cliente seleccionado',exact:true})).toContainText('Mi primer cliente');
+  await expect(page.locator('.cloud-dialog')).not.toBeVisible();
   expect(errors).toEqual([]);
 });
 
@@ -126,7 +127,7 @@ test('switching project stays within its client, isolates documents and renders 
   await expect(page.locator('#cloud-picker')).not.toContainText('Proyecto de otro cliente');
   await page.locator('#cloud-picker').selectOption('project-b');
   await expect(page.locator('.cloud-agreement')).toBeVisible();
-  await page.locator('summary').filter({hasText:'Archivos del proyecto'}).click();
+  await page.getByRole('button',{name:'Documentos: Archivos por pedido',exact:true}).click();
   await expect(page.locator('.document-library')).toContainText('Documento exclusivo B');
   await expect(page.locator('.document-library')).not.toContainText('Documento exclusivo A');
   await page.locator('.document-button').click();
@@ -157,6 +158,7 @@ test('logout clears private data and returns to access without sample clients',a
 test('original document dialog uploads a file to the selected project with session and idempotency',async({page})=>{
   const errors=await setup(page);
   await openWorkspace(page);
+  await page.getByRole('button',{name:'Proyecto: Acuerdo y fuentes iniciales',exact:true}).click();
   await page.getByRole('button',{name:'Añadir información',exact:true}).click();
   await page.locator('.cloud-dialog [name="title"]').fill('Acuerdo guardado desde Clientes');
   await page.locator('.cloud-dialog [name="file"]').setInputFiles({name:'acuerdo.pdf',mimeType:'application/pdf',buffer:Buffer.from('%PDF-fake-browser-fixture')});
@@ -164,11 +166,12 @@ test('original document dialog uploads a file to the selected project with sessi
   await page.getByRole('button',{name:'Guardar fuente del acuerdo →',exact:true}).click();
   await expect(page.locator('.cloud-dialog')).not.toBeVisible();
   await expect(page.locator('.cloud-agreement')).toContainText('Acuerdo guardado desde Clientes');
-  await expect(page.locator('.cloud-setup-path [aria-current=step]')).toContainText('1');
+  await expect(page.locator('.cloud-setup-path')).toHaveCount(0);
   await expect(page.locator('.cloud-review')).toHaveCount(0);
-  await expect(page.getByRole('button',{name:'Revisar lo acordado →',exact:true})).toBeEnabled();
+  await expect(page.getByRole('button',{name:'Revisar lo acordado →',exact:true})).toHaveCount(0);
   await page.reload();
-  await openWorkspace(page);
+  await expect(page.locator('.client-banner h2')).toHaveText('Proyecto privado A');
+  await page.getByRole('button',{name:'Documentos: Archivos por pedido',exact:true}).click();
   await expect(page.locator('.document-library')).toContainText('Acuerdo guardado desde Clientes');
   await expect(page.locator('[data-document-kind="initial_agreement"]')).toContainText('Acuerdo guardado desde Clientes');
   await expect(page.locator('[data-document-kind="reference"]')).toContainText('Documento exclusivo A');
@@ -194,13 +197,15 @@ test('creating a client shows it immediately and its new project keeps that clie
       await route.fulfill({json:{data:project}});
     } else await route.fulfill({json:{data:projectData}});
   });
+  await expect(page.locator('.cloud-client-directory')).toBeVisible();
+  const reads=[];page.on('request',request=>{if(request.method()==='GET')reads.push(new URL(request.url()).pathname);});
   await page.getByRole('button',{name:'＋ Nuevo cliente',exact:true}).click();
   await page.getByLabel('Nombre',{exact:true}).fill('Cliente recién creado');
   await page.getByLabel('Correo de contacto').fill('cliente@example.invalid');
   await page.getByRole('button',{name:'Guardar cliente',exact:true}).click();
   await expect(page.locator('.cloud-dialog')).not.toBeVisible();
-  await expect(page.locator('.cloud-client-directory')).toContainText('Cliente recién creado');
-  await openClient(page,'Cliente recién creado');
+  await expect(page.getByRole('region',{name:'Cliente seleccionado',exact:true})).toContainText('Cliente recién creado');
+  await expect(page.getByRole('button',{name:'Abrir cliente Cliente recién creado',exact:true})).toHaveCount(0);
   await page.getByRole('button',{name:'＋ Nuevo proyecto',exact:true}).click();
   await page.getByLabel('Nombre del nuevo proyecto').fill('Primer proyecto del cliente');
   await page.getByRole('button',{name:'Crear proyecto',exact:true}).click();
@@ -211,6 +216,7 @@ test('creating a client shows it immediately and its new project keeps that clie
   await page.getByRole('button',{name:'Proyectos del cliente',exact:true}).click();
   await expect(page.locator('.cloud-project-directory')).toContainText('Primer proyecto del cliente');
   await expect(page.getByRole('button',{name:'＋ Nuevo proyecto',exact:true})).toHaveCount(1);
+  expect(reads.filter(path=>['/api/v1/session','/api/v1/clients','/api/v1/projects'].includes(path))).toEqual([]);
   expect(errors).toEqual([]);
 });
 
@@ -223,10 +229,10 @@ test('an empty project guides initial agreement before new requests without an a
   await page.screenshot({path:'.local/browser-tests/project-start.png',fullPage:true});
   await expect(page.locator('.client-tabs')).toHaveCount(0);
   await expect(page.locator('.cloud-project-journey')).toHaveCount(0);
-  await expect(page.getByRole('button',{name:'Revisar lo acordado →',exact:true})).toBeDisabled();
+  await expect(page.getByRole('button',{name:'Revisar lo acordado →',exact:true})).toHaveCount(0);
   await expect(page.getByRole('button',{name:'Registrar pedido del cliente',exact:true})).toHaveCount(0);
   await page.getByRole('button',{name:'Añadir información',exact:true}).click();
-  await expect(page.locator('.cloud-dialog')).toContainText('aunque no tengas un contrato formal');
+  await expect(page.locator('.cloud-dialog')).toContainText('Adjunta el contrato o la conversación inicial.');
   await expect(page.locator('.cloud-dialog input[name=kind]')).toHaveValue('initial_agreement');
   await expect(page.locator('.cloud-dialog select')).toHaveCount(0);
   expect(errors).toEqual([]);
@@ -237,14 +243,17 @@ test('a new client request is stored separately from initial agreement sources',
   await openClient(page);
   await page.getByRole('button',{name:'Abrir proyecto Proyecto privado A',exact:true}).click();
   await expect(page.locator('.cloud-agreement')).toContainText('Documento exclusivo A');
+  await expect(page.locator('.cloud-source-list .cloud-client-meta')).toContainText('a.pdf');
+  await expect(page.locator('.cloud-source-list .cloud-client-meta')).toContainText('24 oct. 2026');
+  await expect(page.locator('.cloud-source-list')).not.toContainText('Texto guardado');
   await page.getByRole('button',{name:'Ver documento ↗',exact:true}).click();
   await expect(page.locator('.cloud-pdf-frame')).toHaveAttribute('src',/^blob:/);
   await page.getByRole('button',{name:'Cerrar',exact:true}).click();
-  await expect(page.locator('.cloud-setup-path [aria-current=step]')).toContainText('1');
-  await page.getByRole('button',{name:'Revisar lo acordado →',exact:true}).click();
-  await expect(page.locator('.cloud-review')).toBeVisible();
-  await expect(page.locator('.cloud-setup-path [aria-current=step]')).toContainText('2');
-  await page.getByRole('button',{name:'← Volver al proyecto',exact:true}).click();
+  await expect(page.locator('.cloud-setup-path')).toHaveCount(0);
+  await expect(page.locator('.cloud-agreement')).toBeVisible();
+  await expect(page.locator('.cloud-review')).toHaveCount(0);
+  await expect(page.getByRole('button',{name:'Revisar lo acordado →',exact:true})).toHaveCount(0);
+  await page.getByRole('button',{name:'Cambios: Alcance, precio o plazo',exact:true}).click();
   await page.getByRole('button',{name:'Registrar pedido del cliente',exact:true}).click();
   await expect(page.locator('.cloud-dialog input[name=kind]')).toHaveValue('email_request');
   await page.getByLabel('¿Qué te pidió el cliente?').fill('Añadir una sección');
@@ -255,8 +264,7 @@ test('a new client request is stored separately from initial agreement sources',
   await page.getByRole('button',{name:'← Volver al proyecto',exact:true}).click();
   await expect(page.locator('.cloud-agreement')).not.toContainText('Añadir una sección');
   await page.reload();
-  await openClient(page);
-  await page.getByRole('button',{name:'Abrir proyecto Proyecto privado A',exact:true}).click();
+  await expect(page.locator('.client-banner h2')).toHaveText('Proyecto privado A');
   await expect(page.locator('#client-panel')).toContainText('Añadir una sección');
   expect(errors).toEqual([]);
 });
@@ -295,7 +303,7 @@ test('a connection failure shows retry instead of switching to sample data',asyn
 });
 
 
-test('multiple source uploads and reload keep preparation on step one until the user chooses review',async({page})=>{
+test('multiple source uploads and reload keep one initial-agreement view without duplicate review',async({page})=>{
   const errors=await setup(page,{documentData:[]});
   await openClient(page);
   await page.getByRole('button',{name:'Abrir proyecto Proyecto privado A',exact:true}).click();
@@ -305,20 +313,18 @@ test('multiple source uploads and reload keep preparation on step one until the 
     await page.locator('.cloud-dialog [name=file]').setInputFiles({name:`fuente-${index}.pdf`,mimeType:'application/pdf',buffer:Buffer.from('%PDF-test-source')});
     await page.getByRole('button',{name:'Guardar fuente del acuerdo →',exact:true}).click();
     await expect(page.locator('.cloud-dialog')).not.toBeVisible();
-    await expect(page.locator('.cloud-setup-path [aria-current=step]')).toContainText('1');
+    await expect(page.locator('.cloud-setup-path')).toHaveCount(0);
     await expect(page.locator('.cloud-review')).toHaveCount(0);
     await expect(page.locator('.cloud-requests')).toHaveCount(0);
   }
   await expect(page.locator('.cloud-source-list .cloud-client-row')).toHaveCount(2);
   await page.reload();
-  await openClient(page);
-  await page.getByRole('button',{name:'Abrir proyecto Proyecto privado A',exact:true}).click();
+  await expect(page.locator('.client-banner h2')).toHaveText('Proyecto privado A');
   await expect(page.locator('.cloud-source-list .cloud-client-row')).toHaveCount(2);
-  await expect(page.locator('.cloud-setup-path [aria-current=step]')).toContainText('1');
-  await page.getByRole('button',{name:'Revisar lo acordado →',exact:true}).click();
-  await expect(page.locator('.cloud-review')).toBeVisible();
-  await expect(page.locator('.cloud-setup-path [aria-current=step]')).toContainText('2');
-  await page.getByRole('button',{name:'← Volver al proyecto',exact:true}).click();
+  await expect(page.locator('.cloud-setup-path')).toHaveCount(0);
+  await expect(page.locator('.cloud-agreement')).toBeVisible();
+  await expect(page.locator('.cloud-review')).toHaveCount(0);
+  await expect(page.getByRole('button',{name:'Revisar lo acordado →',exact:true})).toHaveCount(0);
   await expect(page.locator('.cloud-source-list .cloud-client-row')).toHaveCount(2);
   expect(errors).toEqual([]);
 });
@@ -331,7 +337,7 @@ test('one project history shows payment and milestones newest first without inte
   {id:'mail',kind:'adenda_sent',title:'Adenda v1 enviada',request_document_id:'request',request_title:'Pedido de cambio',created_at:'2026-10-25T18:00:00Z'}];
  const errors=await setup(page,{activityData});await openClient(page);
  await page.getByRole('button',{name:'Abrir proyecto Proyecto privado A',exact:true}).click();
- await page.locator('summary').filter({hasText:'Seguimiento del proyecto'}).click();
+ await page.getByRole('button',{name:'Historial del proyecto: Historial y mapa',exact:true}).click();
  const history=page.locator('[data-cloud-history]');
  await expect(history.locator('.cloud-project-event')).toHaveCount(3);
  await expect(history.locator('.cloud-project-event').first()).toContainText('Pago confirmado · USD 0.10');
@@ -345,6 +351,7 @@ test('a saved request separates read-only history from reviewing its source comp
   await openClient(page);
   await page.getByRole('button',{name:'Abrir proyecto Proyecto privado A',exact:true}).click();
   await expect(page.getByRole('button',{name:'Ver historial',exact:true})).toHaveCount(0);
+  await page.getByRole('button',{name:'Cambios: Alcance, precio o plazo',exact:true}).click();
   await page.getByRole('button',{name:'Revisar cambio →',exact:true}).click();
   const review=page.locator('.cloud-change-review');
   await expect(review).toContainText('Pedido de tienda e inglés');
@@ -358,7 +365,7 @@ test('a saved request separates read-only history from reviewing its source comp
   await page.getByRole('button',{name:'← Volver a los pedidos',exact:true}).click();
   await expect(page.locator('.cloud-requests')).toContainText('Pedido de tienda e inglés');
   await page.getByRole('button',{name:'← Volver al proyecto',exact:true}).click();
-  await expect(page.locator('.cloud-setup-path [aria-current=step]')).toContainText('1');
+  await expect(page.locator('.cloud-setup-path')).toHaveCount(0);
   expect(errors).toEqual([]);
 });
 
@@ -394,17 +401,26 @@ test('client deletion requires confirmation and refresh hides its projects witho
  expect(errors).toEqual([]);
 });
 
-test('document groups use compact rows and newest groups appear first',async({page})=>{
+test('documents group each request with its own versions and acceptance, newest request activity first',async({page})=>{
  const initial={...doc('a'),kind:'initial_agreement',created_at:'2026-10-24T18:00:00Z'};
- const request={...doc('b'),project_id:'project-a',kind:'email_request',created_at:'2026-10-25T18:00:00Z'};
- const addendum={...doc('c'),project_id:'project-a',kind:'addendum',created_at:'2026-10-26T18:00:00Z'};
- await setup(page,{documentData:[initial,request,addendum]});await openClient(page);
+ const first={...doc('b'),id:'request-1',project_id:'project-a',title:'Agregar subtítulos',kind:'email_request',created_at:'2026-10-25T18:00:00Z'};
+ const second={...first,id:'request-2',title:'Nueva portada',created_at:'2026-10-26T18:00:00Z'};
+ const addendum={...first,id:'adenda-1',title:'Adenda v1',kind:'addendum',created_at:'2026-10-27T18:00:00Z',request_links:[{request_document_id:'request-1',revision_no:1,role:'addendum'}]};
+ const acceptance={...addendum,id:'acceptance-1',title:'Documento devuelto',request_links:[{request_document_id:'request-1',revision_no:1,role:'acceptance'}]};
+ const orphan={...addendum,id:'orphan',title:'Documento sin relación',request_links:[]};
+ await setup(page,{documentData:[initial,first,second,addendum,acceptance,orphan]});await openClient(page);
  await page.getByRole('button',{name:'Abrir proyecto Proyecto privado A',exact:true}).click();
- await page.locator('summary').filter({hasText:'Archivos del proyecto'}).click();
- expect(await page.locator('.cloud-document-group').evaluateAll(nodes=>nodes.map(n=>n.dataset.documentKind))).toEqual(['addendum','email_request','initial_agreement']);
- await expect(page.getByRole('button',{name:'Descargar original Documento exclusivo A',exact:true})).toBeVisible();
+ await page.getByRole('button',{name:'Documentos: Archivos por pedido',exact:true}).click();
+ const groups=page.locator('.cloud-document-group');
+ expect(await groups.evaluateAll(nodes=>nodes.map(n=>n.dataset.documentKind))).toEqual(['request','request','initial_agreement','unlinked']);
+ const one=page.locator('[data-document-request="request-1"]'),two=page.locator('[data-document-request="request-2"]');
+ await expect(one).toHaveAttribute('open','');
+ await expect(one).toContainText('Agregar subtítulos');await expect(one).toContainText('Adenda · v1');await expect(one).toContainText('Aceptación · v1');
+ await expect(two).not.toContainText('Adenda v1');await expect(two).not.toContainText('Documento devuelto');
+ await expect(page.locator('[data-document-kind="unlinked"]')).toContainText('Documento sin relación');
+ await expect(page.getByRole('button',{name:'Descargar original Adenda v1',exact:true})).toBeVisible();
  await expect(page.locator('.cloud-document-file').first()).toHaveCSS('margin-left','0px');
- await page.locator('.document-library').screenshot({path:'.local/browser-tests/document-library-compact.png'});
+ await page.locator('.document-library').screenshot({path:'.local/browser-tests/document-library-by-request.png'});
 });
 
 test('project history groups milestones by request and orders both groups and milestones newest first',async({page})=>{
@@ -414,7 +430,7 @@ test('project history groups milestones by request and orders both groups and mi
   {id:'new',kind:'request_registered',title:'Pedido registrado',request_document_id:'request-2',request_title:'Pedido más reciente',created_at:'2026-10-26T18:00:00Z'}];
  await setup(page,{activityData});await openClient(page);
  await page.getByRole('button',{name:'Abrir proyecto Proyecto privado A',exact:true}).click();
- await page.locator('summary').filter({hasText:'Seguimiento del proyecto'}).click();
+ await page.getByRole('button',{name:'Historial del proyecto: Historial y mapa',exact:true}).click();
  const groups=page.locator('.cloud-history-request');await expect(groups).toHaveCount(2);
  await expect(groups.first().locator('summary')).toContainText('Pedido más reciente');
  await groups.last().locator('summary').click();
@@ -474,7 +490,7 @@ test('project data is requested on demand and reopening history reuses its loade
  await expect(page.locator('.cloud-agreement')).toBeVisible();
  expect(requests.filter(path=>path.endsWith('/activity')||path.endsWith('/events'))).toHaveLength(0);
  await expect(page.locator('[data-cloud-files] .document-library')).toHaveCount(0);
- const history=page.locator('[data-cloud-resource="history"]>summary');
+ const history=page.getByRole('button',{name:'Historial del proyecto: Historial y mapa',exact:true});
  await history.click();await expect(page.locator('[data-cloud-history]')).toContainText('Los pedidos, envíos');
  expect(requests.filter(path=>path.endsWith('/activity'))).toHaveLength(1);
  await history.click();await history.click();
@@ -484,26 +500,30 @@ test('project data is requested on demand and reopening history reuses its loade
  expect(await page.evaluate(()=>document.fonts.check('500 16px Manrope'))).toBe(true);
 });
 
-test('map preview opens on demand and returns to the same project',async({page})=>{
+test('real project map opens on demand and returns to the same project',async({page})=>{
   const errors=await setup(page);
-  let graphRequests=0;
-  page.on('request',request=>{if(new URL(request.url()).pathname==='/graph-preview.mjs')graphRequests++;});
+  let graphRequests=0,graphSyncs=0;
+  page.on('request',request=>{const path=new URL(request.url()).pathname;if(path==='/graph-live.mjs')graphRequests++;if(path.endsWith('/graph/sync'))graphSyncs++;});
+  await mockProjectGraph(page);
   await openClient(page);
   await page.getByRole('button',{name:'Abrir proyecto Proyecto privado A',exact:true}).click();
   expect(graphRequests).toBe(0);
-  const tracking=page.locator('[data-cloud-resource="history"]');
+  const tracking=page.locator('.cloud-project-history');
   await expect(page.locator('.cloud-breadcrumb [data-cloud-action="graph-preview"]')).toHaveCount(0);
-  await tracking.locator(':scope > summary').click();
-  await expect(tracking.getByRole('heading',{name:'Historial',exact:true})).toBeVisible();
-  await tracking.getByRole('button',{name:'Ver mapa · vista previa',exact:true}).click();
-  await expect(page.getByRole('dialog',{name:'Vista previa del mapa del proyecto',exact:true})).toBeVisible();
-  await expect(page.locator('.gd-dialog .gd-preview-label')).toHaveText('Vista previa · ejemplo');
-  await page.locator('.gd-dialog').getByRole('button',{name:'Volver al proyecto',exact:true}).click();
-  await expect(page.locator('.gd-dialog')).toHaveCount(0);
+  await page.getByRole('button',{name:'Historial del proyecto: Historial y mapa',exact:true}).click();
+  await expect(tracking.getByRole('heading',{name:'Historial del proyecto',exact:true})).toBeVisible();
+  await tracking.getByRole('button',{name:'Mapa',exact:true}).click();
+  await expect(page.locator('.graph-live-embedded')).toBeVisible();
+  await expect(page.locator('.graph-live [data-live-node]')).toHaveCount(2);
+  await expect(page.locator('.graph-live')).not.toContainText('Luna Studio');
+  await tracking.getByRole('button',{name:'Historial',exact:true}).click();
+  await expect(page.getByRole('dialog',{name:'Mapa del proyecto',exact:true})).toHaveCount(0);
   await expect(page.locator('.client-banner h2')).toHaveText('Proyecto privado A');
   expect(graphRequests).toBe(1);
-  await expect(tracking).toHaveAttribute('open','');
-  await expect(tracking.getByRole('button',{name:'Ver mapa · vista previa',exact:true})).toBeFocused();
+  await expect(tracking.getByRole('button',{name:'Historial',exact:true})).toHaveAttribute('aria-pressed','true');
+  await tracking.getByRole('button',{name:'Mapa',exact:true}).click();
+  await expect(page.locator('.graph-live [data-live-node]')).toHaveCount(2);
+  expect(graphSyncs).toBe(1);
   await page.screenshot({path:'.local/browser-tests/project-tracking.png',fullPage:true});
   expect(errors).toEqual([]);
 });
@@ -519,11 +539,12 @@ test('project sections distinguish agreement changes from refunds without invent
  const financial=[];page.on('request',request=>{if(request.method()==='POST')financial.push(request.url());});
  await nav.getByRole('button',{name:'Devoluciones: Dinero de un pago recibido',exact:true}).click();
  await expect(page.getByRole('heading',{name:'Revisar dinero que ya se pagó',exact:true})).toBeVisible();
- await expect(page.locator('.cloud-refunds')).toContainText('todavía no está disponible');
+ await expect(page.locator('.cloud-refunds')).not.toContainText('todavía no está disponible');
  await expect(page.locator('.cloud-setup-path')).toHaveCount(0);
  await expect(page.locator('.cloud-refunds button')).toHaveCount(1);
  await expect(page.locator('.cloud-refunds button')).toHaveAttribute('data-cloud-action','refund-preview');
- await expect(page.locator('[data-cloud-resource="history"]')).toHaveCount(1);
+ await expect(nav.getByRole('button',{name:'Historial del proyecto: Historial y mapa',exact:true})).toBeVisible();
+ await expect(page.locator('.cloud-project-resources')).toHaveCount(0);
  await page.screenshot({path:'.local/browser-tests/project-refunds-navigation.png',fullPage:true});
  await page.setViewportSize({width:390,height:844});
  await expect(nav.getByRole('button',{name:/Devoluciones/})).toBeVisible();
@@ -531,4 +552,130 @@ test('project sections distinguish agreement changes from refunds without invent
  await nav.getByRole('button',{name:'Proyecto: Acuerdo y fuentes iniciales',exact:true}).click();
  await expect(page.locator('.cloud-agreement')).toBeVisible();
  expect(financial).toHaveLength(0);expect(errors).toEqual([]);
+});
+
+async function mockProjectGraph(page,{failure=false,foreign=false,pending=false}={}){
+ await page.route('**/api/v1/projects/project-a/graph**',async route=>{
+  const sync=new URL(route.request().url()).pathname.endsWith('/sync');
+  if(failure){await route.fulfill({status:503,json:{error:{code:'GRAPH_UNAVAILABLE'}}});return;}
+  await route.fulfill({json:{data:sync?{thread_id:'graph-job',status:pending?'queued':'ready'}:{generation:1,synced_at:'2026-10-27T12:00:00Z',nodes:[
+   {entity_key:'projects:project-a',source_id:'project-a',kind:'Project',project_id:foreign?'project-b':'project-a',title:'Proyecto privado A'},
+   {entity_key:'documents:doc-a',source_id:'doc-a',kind:'Document',project_id:'project-a',title:'Documento exclusivo A',business_kind:'reference'}],
+   edges:[{edge_key:'project-doc',source:'projects:project-a',target:'documents:doc-a',kind:'HAS_DOCUMENT'}]}}});
+ });
+ await page.route('**/api/v1/threads/graph-job',route=>route.fulfill({json:{data:{id:'graph-job',status:'ready'}}}));
+}
+async function openTrackingMap(page){
+ await openClient(page);await page.getByRole('button',{name:'Abrir proyecto Proyecto privado A',exact:true}).click();
+ await page.getByRole('button',{name:'Historial del proyecto: Historial y mapa',exact:true}).click();
+ await page.getByRole('button',{name:'Mapa',exact:true}).click();
+}
+test('graph connection failure remains visible without example data',async({page})=>{
+ const errors=await setup(page);await mockProjectGraph(page,{failure:true});
+ const fixture=[];page.on('request',r=>{if(r.url().includes('/data/demo.json'))fixture.push(r.url());});
+ await openTrackingMap(page);
+ await expect(page.locator('.graph-live [role="alert"]')).toContainText('No se pudo abrir el mapa');
+ await expect(page.locator('.graph-live [data-live-node]')).toHaveCount(0);
+ expect(fixture).toEqual([]);expect(errors).toEqual([]);
+});
+test('graph rejects another project and waits for thread completion',async({page})=>{
+ const errors=await setup(page);await mockProjectGraph(page,{foreign:true,pending:true});
+ await openTrackingMap(page);
+ await expect(page.locator('.graph-live [role="status"]')).toContainText('Actualizando');
+ await expect(page.locator('.graph-live [role="alert"]')).toContainText('no corresponden');
+ await expect(page.locator('.graph-live [data-live-node]')).toHaveCount(0);
+ expect(errors).toEqual([]);
+});
+test('real graph opens its private PDF and preserves selected element',async({page})=>{
+ const errors=await setup(page);await mockProjectGraph(page,{pending:true});await openTrackingMap(page);
+ await page.locator('[data-live-node="documents:doc-a"]').click();
+ await expect(page.locator('.gd-inspector')).toContainText('Documento exclusivo A');
+ await page.getByRole('button',{name:'Ver documento fuente',exact:true}).click();
+ await expect(page.getByRole('dialog',{name:'Documento fuente',exact:true})).toBeVisible();
+ await page.getByRole('button',{name:'Cerrar documento',exact:true}).click();
+ await expect(page.locator('[data-live-node="documents:doc-a"]')).toHaveAttribute('aria-pressed','true');
+ expect(errors).toEqual([]);
+});
+
+test('leaving the map ignores late sync results and cancels further polling',async({page})=>{
+ const errors=await setup(page);await mockProjectGraph(page);
+ let release;const gate=new Promise(resolve=>release=resolve),reads=[];
+ await page.route('**/api/v1/projects/project-a/graph/sync',async route=>{await gate;await route.fulfill({json:{data:{thread_id:'graph-job',status:'queued'}}});});
+ page.on('request',request=>{const path=new URL(request.url()).pathname;if(path==='/api/v1/threads/graph-job'||path==='/api/v1/projects/project-a/graph')reads.push(path);});
+ await openTrackingMap(page);
+ await expect(page.locator('.graph-live [role="status"]')).toBeVisible();
+ await page.getByRole('button',{name:'Proyecto: Acuerdo y fuentes iniciales',exact:true}).click();
+ const finished=page.waitForResponse(response=>new URL(response.url()).pathname.endsWith('/graph/sync'));
+ release();await finished;await page.waitForTimeout(150);
+ await expect(page.locator('.graph-live')).toHaveCount(0);
+ await expect(page.locator('.cloud-agreement')).toBeVisible();
+ expect(reads).toEqual([]);expect(errors).toEqual([]);
+});
+
+test('reload restores the client project and documents tab without repeating the directory journey',async({page})=>{
+ const errors=await setup(page);await openWorkspace(page);
+ await page.reload();
+ await expect(page.locator('.client-banner h2')).toHaveText('Proyecto privado A');
+ await expect(page.locator('.cloud-project-navigation [aria-current="page"]')).toContainText('Documentos');
+ await expect(page.locator('.document-library')).toContainText('Documento exclusivo A');
+ const saved=await page.evaluate(()=>JSON.parse(sessionStorage.getItem('trato:tests.supabase.invalid:session:navigation:test-user')));
+ expect(saved.projectId).toBe('project-a');expect(saved.tab).toBe('documentos');
+ expect(Object.keys(saved).sort()).toEqual(['clientId','historyView','projectId','requestId','revisionId','tab','version']);
+ expect(errors).toEqual([]);
+});
+test('reload keeps the map selected inside project history',async({page})=>{
+ const errors=await setup(page);await mockProjectGraph(page);await openTrackingMap(page);
+ await expect(page.locator('.graph-live [data-live-node]')).toHaveCount(2);
+ await page.reload();
+ await expect(page.locator('.client-banner h2')).toHaveText('Proyecto privado A');
+ await expect(page.locator('.cloud-project-navigation [aria-current="page"]')).toContainText('Historial');
+ await expect(page.getByRole('button',{name:'Mapa',exact:true})).toHaveAttribute('aria-pressed','true');
+ await expect(page.locator('.graph-live [data-live-node]')).toHaveCount(2);expect(errors).toEqual([]);
+});
+test('reload validates project access before loading its documents',async({page})=>{
+ const errors=await setup(page);await openWorkspace(page);
+ await page.route('**/api/v1/projects?*',route=>route.fulfill({json:{data:[]}}));
+ const privateReads=[];page.on('request',r=>{if(new URL(r.url()).pathname.includes('/projects/project-a/'))privateReads.push(r.url());});
+ await page.reload();
+ await expect(page.locator('.cloud-project-directory')).toContainText('todavía no tiene proyectos');
+ await expect(page.locator('.client-banner')).toHaveCount(0);expect(privateReads).toEqual([]);expect(errors).toEqual([]);
+});
+test('navigation is scoped to the verified user and logout removes its saved location',async({page})=>{
+ const errors=await setup(page);await openWorkspace(page);
+ await page.getByRole('button',{name:'Mi perfil · sesión iniciada'}).click();
+ await page.getByRole('button',{name:'Cerrar sesión',exact:true}).click();
+ expect(await page.evaluate(()=>sessionStorage.getItem('trato:tests.supabase.invalid:session:navigation:test-user'))).toBeNull();
+ expect(errors).toEqual([]);
+});
+test('another verified account does not inherit the previous account navigation',async({page})=>{
+ const errors=await setup(page);await openWorkspace(page);
+ await page.route('**/api/v1/session',route=>route.fulfill({json:{data:{user_id:'another-user'}}}));
+ const projectReads=[];page.on('request',r=>{if(new URL(r.url()).pathname==='/api/v1/projects')projectReads.push(r.url());});
+ await page.reload();
+ await expect(page.locator('.cloud-client-directory')).toBeVisible();
+ await expect(page.locator('.client-banner')).toHaveCount(0);expect(projectReads).toEqual([]);expect(errors).toEqual([]);
+});
+test('reload restores source comparison for the same authorized request',async({page})=>{
+ const errors=await setup(page,{documentData:[{...doc('a'),kind:'initial_agreement'},{...doc('a'),id:'request-a',kind:'email_request',title:'Pedido a comparar'}]});
+ await openClient(page);await page.getByRole('button',{name:'Abrir proyecto Proyecto privado A',exact:true}).click();
+ await page.getByRole('button',{name:'Ver cambios',exact:true}).click();
+ await page.getByRole('button',{name:'Revisar cambio →',exact:true}).click();
+ await expect(page.locator('.cloud-change-review')).toContainText('Pedido a comparar');
+ await page.reload();
+ await expect(page.locator('.cloud-change-review')).toContainText('Pedido a comparar');
+ await expect(page.locator('.cloud-comparison-grid')).toBeVisible();expect(errors).toEqual([]);
+});
+
+test('a failed reload preserves navigation for explicit retry instead of showing an empty project',async({page})=>{
+ const errors=await setup(page);await openWorkspace(page);
+ let unavailable=true;
+ await page.route('**/api/v1/projects/project-a/documents',route=>unavailable?route.fulfill({status:503,json:{error:{code:'PERSISTENCE_UNAVAILABLE'}}}):route.fulfill({json:{data:[doc('a')]}}));
+ await page.reload();
+ await expect(page.getByRole('button',{name:'Volver a intentar',exact:true})).toBeVisible();
+ await expect(page.locator('.document-library')).toHaveCount(0);
+ unavailable=false;
+ await page.getByRole('button',{name:'Volver a intentar',exact:true}).click();
+ await expect(page.locator('.client-banner h2')).toHaveText('Proyecto privado A');
+ await expect(page.locator('.document-library')).toContainText('Documento exclusivo A');
+ expect(errors).toEqual([]);
 });

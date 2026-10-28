@@ -1,26 +1,28 @@
+const {uiText,uiLocale}=window.TratoI18n;
 // Todos los registros y resultados son ficticios y predefinidos.
 // No se realizan peticiones a proveedores de IA, PayPal ni servicios externos.
 const demoData = window.TRATO_DATA;
-if (!demoData || demoData.meta.schemaVersion !== 1) throw new Error('Datos de Trato ausentes o incompatibles.');
+if (!demoData || demoData.meta.schemaVersion !== 1) throw new Error(uiText("Datos de Trato ausentes o incompatibles."));
 // Proyecciones de presentación: la fuente normalizada se conserva en data/demo.json.
 const projects = demoData.projects.map(project => {
   const client = demoData.clients.find(item => item.id === project.clientId);
   const request = demoData.requests.find(item => item.projectId === project.id);
   const invoice = demoData.invoices.find(item => item.requestId === request.id);
   const overdue = invoice && invoice.status === 'pending' && new Date(invoice.dueAt) < new Date(demoData.meta.asOf);
-  return { ...project, client: `${client.name} · ${project.service}`, initials: client.initials, type: request.type, amount: request.amount, status: request.type === 'cambios' ? 'Por acordar' : request.type === 'reembolsos' ? 'En revisión' : overdue ? `${Math.round((Date.parse(demoData.meta.asOf.slice(0,10)) - Date.parse(invoice.dueAt.slice(0,10))) / 86400000)} días de atraso` : 'Dentro del plazo' };
+  return { ...project, client: `${client.name} · ${project.service}`, initials: client.initials, type: request.type, amount: request.amount, status: request.type === 'cambios' ? uiText("Por acordar") : request.type === 'reembolsos' ? uiText("En revisión") : overdue ? `${Math.round((Date.parse(demoData.meta.asOf.slice(0,10)) - Date.parse(invoice.dueAt.slice(0,10))) / 86400000)} ${uiText("días de atraso")}` : uiText("Dentro del plazo") };
 });
-const labels = { inicio: 'Vista general', cambios: 'Cambios y extras', cobros: 'Cobros pendientes', reembolsos: 'Reembolsos', clientes: 'Clientes', conversaciones: 'Asistente', kb: 'Documentos y términos' };
+const labels = { ensayos:uiText('practice.title'), inicio: uiText("Vista general"), cambios: uiText("Cambios y extras"), cobros: uiText("Cobros pendientes"), reembolsos: uiText("Reembolsos"), clientes: uiText("Clientes"), conversaciones: uiText("Asistente"), kb: uiText("Documentos y términos") };
 // Vista de diseño del primer bloque; los demás recorridos se conservan para después.
-const previewViews = new Set(['inicio', 'clientes', 'conversaciones', 'kb', 'cambios']);
-const typeLabels = { cambios: 'Cambio de alcance', cobros: 'Seguimiento de pago', reembolsos: 'Solicitud de reembolso' };
+const previewViews = new Set(['inicio', 'clientes', 'conversaciones', 'kb', 'cambios', 'ensayos']);
+const typeLabels = { cambios: uiText("Cambio de alcance"), cobros: uiText("Seguimiento de pago"), reembolsos: uiText("Solicitud de reembolso") };
 const descriptions = {
-  clientes: 'Cada relación tiene su propio contexto. Mantén sus proyectos, acuerdos y conversaciones en un mismo lugar.',
-  conversaciones: 'Pregunta sobre el acuerdo o revisa lo que te escribió tu cliente. Tú decides el siguiente paso.',
-  kb: 'El contexto de cada proyecto. Consulta el alcance, las condiciones y las versiones antes de actuar.',
-  cambios: 'Cada extra merece una conversación clara. Revisa lo acordado y prepara una propuesta antes de empezar.',
-  cobros: 'Dale seguimiento al trabajo que ya hiciste. Revisa cada cobro y prepara una conversación con contexto.',
-  reembolsos: 'Resuelve las cancelaciones con claridad. Revisa las condiciones del servicio antes de tomar una decisión.',
+  ensayos:uiText('practice.subtitle'),
+  clientes: uiText("Cada relación tiene su propio contexto. Mantén sus proyectos, acuerdos y conversaciones en un mismo lugar."),
+  conversaciones: uiText("Pregunta sobre el acuerdo o revisa lo que te escribió tu cliente. Tú decides el siguiente paso."),
+  kb: uiText("El contexto de cada proyecto. Consulta el alcance, las condiciones y las versiones antes de actuar."),
+  cambios: uiText("Cada extra merece una conversación clara. Revisa lo acordado y prepara una propuesta antes de empezar."),
+  cobros: uiText("Dale seguimiento al trabajo que ya hiciste. Revisa cada cobro y prepara una conversación con contexto."),
+  reembolsos: uiText("Resuelve las cancelaciones con claridad. Revisa las condiciones del servicio antes de tomar una decisión."),
 };
 const cases = Object.fromEntries(demoData.requests.map(request => {
   const version = demoData.documentVersions.find(item => item.id === request.sourceVersionId);
@@ -31,7 +33,7 @@ const cases = Object.fromEntries(demoData.requests.map(request => {
   if (scenario.draft) result.draft = scenario.draft;
   return [request.projectId, result];
 }));
-const money = value => new Intl.NumberFormat('es-PE', { style: 'currency', currency: 'USD', currencyDisplay: 'code', maximumFractionDigits: 2 }).format(value).replace('USD', 'US$');
+const money = value => new Intl.NumberFormat(uiLocale(), { style: 'currency', currency: 'USD', currencyDisplay: 'code', maximumFractionDigits: 2 }).format(value).replace('USD', 'US$');
 const escapeHTML = value => String(value).replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[char]);
 let currentView = 'inicio';
 let activeProject;
@@ -47,12 +49,12 @@ function renderRows() {
   document.querySelector('#project-rows').innerHTML = rows.map(project => {
     const outcome = outcomes.get(project.id);
     const style = outcome ? 'done' : project.type === 'cambios' || project.type === 'reembolsos' ? 'review' : project.id === 'SP-002' ? 'overdue' : 'pending';
-    return `<tr><td><div class="project-cell"><span class="project-mark">${project.initials}</span><div><strong>${project.name}</strong><small>${project.client}</small></div></div></td><td class="type-label">${typeLabels[project.type]}</td><td class="amount">${money(project.amount)}</td><td><span class="badge ${style}">${outcome ? outcome : project.status}</span></td><td><button class="row-button" data-project="${project.id}" aria-label="Revisar ${project.name}">↗</button></td></tr>`;
+    return `<tr><td><div class="project-cell"><span class="project-mark">${project.initials}</span><div><strong>${project.name}</strong><small>${project.client}</small></div></div></td><td class="type-label">${typeLabels[project.type]}</td><td class="amount">${money(project.amount)}</td><td><span class="badge ${style}">${outcome ? outcome : project.status}</span></td><td><button class="row-button" data-project="${project.id}" aria-label="${uiText("Revisar")} ${project.name}">↗</button></td></tr>`;
   }).join('');
   const localRequests = currentView === 'cambios' ? localChangeRequests : [];
   document.querySelector('#project-rows').innerHTML += localRequests.map(request => {
     const project=projects.find(item=>item.id===request.projectId);
-    return `<tr><td><div class="project-cell"><span class="project-mark">${project.initials}</span><div><strong>${escapeHTML(request.subject)}</strong><small>${escapeHTML(project.client)}</small></div></div></td><td class="type-label">Solicitud por correo</td><td class="amount">Por definir</td><td><span class="badge review">${requestStatusLabel(request.status)}</span></td><td><button class="row-button" type="button" data-local-request="${request.id}" data-request-project="${request.projectId}" aria-label="Revisar solicitud">↗</button></td></tr>`;
+    return `<tr><td><div class="project-cell"><span class="project-mark">${project.initials}</span><div><strong>${escapeHTML(request.subject)}</strong><small>${escapeHTML(project.client)}</small></div></div></td><td class="type-label">${uiText("Solicitud por correo")}</td><td class="amount">${uiText("Por definir")}</td><td><span class="badge review">${requestStatusLabel(request.status)}</span></td><td><button class="row-button" type="button" data-local-request="${request.id}" data-request-project="${request.projectId}" aria-label="${uiText("Revisar solicitud")}">↗</button></td></tr>`;
   }).join('');
   document.querySelector('#empty').hidden = rows.length + localRequests.length > 0;
 }
@@ -68,7 +70,7 @@ function renderView() {
     if (selected) link.setAttribute('aria-current', 'page'); else link.removeAttribute('aria-current');
   });
   document.querySelector('#crumb').textContent = labels[currentView];
-  const workspaceView = ['clientes', 'conversaciones', 'kb'].includes(currentView);
+  const workspaceView = ['clientes', 'conversaciones', 'kb', 'ensayos'].includes(currentView);
   document.querySelector('#client-workspace').hidden = !workspaceView;
   document.querySelector('#assistant-entry').hidden = currentView !== 'inicio';
   document.querySelector('.stats').hidden = workspaceView;
@@ -77,13 +79,13 @@ function renderView() {
   document.querySelector('#hero').hidden = currentView !== 'inicio';
   document.querySelector('#flow-section').hidden = currentView !== 'inicio';
   if (currentView === 'inicio') {
-    document.querySelector('#page-title').innerHTML = 'Tu trabajo merece<br>estar <em>bien acordado.</em>';
-    document.querySelector('#page-description').innerHTML = 'Tus clientes, proyectos y acuerdos en un mismo lugar.<br>Empieza por dejar claro qué van a hacer juntos.';
+    document.querySelector('#page-title').innerHTML = (uiText("Tu trabajo merece")+"<br>estar <em>bien acordado.</em>");
+    document.querySelector('#page-description').innerHTML = (uiText("Tus clientes, proyectos y acuerdos en un mismo lugar.")+"<br>"+uiText("Empieza por dejar claro qué van a hacer juntos."));
   } else {
     document.querySelector('#page-title').textContent = labels[currentView];
     document.querySelector('#page-description').textContent = descriptions[currentView];
   }
-  document.querySelector('#table-title').textContent = currentView === 'inicio' ? 'Tu trabajo, en perspectiva.' : 'Solicitudes de ejemplo';
+  document.querySelector('#table-title').textContent = currentView === 'inicio' ? uiText("Tu trabajo, en perspectiva.") : uiText("Solicitudes de ejemplo");
   renderRows();
   renderOverview();
   window.TratoCloud?.syncChrome();
@@ -416,7 +418,7 @@ function renderWorkspace() {
 function renderClientRequests(panel) {
   const local=localChangeRequests.filter(item=>item.projectId===selectedProjectId).sort((a,b)=>new Date(b.createdAt)-new Date(a.createdAt));
   const savedExample=savedChangeDrafts.get(selectedProjectId);
-  panel.innerHTML=`<div class="requests-heading"><div><span class="eyebrow">SOLICITUDES DEL PROYECTO</span><h3>Retoma cada cambio donde lo dejaste.</h3><p>El recorrido solo avanza: si hay un error, crea una solicitud nueva. Una adenda pendiente sigue aquí para continuar con su firma. Guardado local en este navegador; Supabase aún no está conectado.</p></div><button class="button" type="button" data-new-change>＋ Nueva solicitud</button></div>${local.length || savedExample?`<div class="request-table"><div class="request-table-head"><span>Solicitud</span><span>Estado actual</span><span>Acción</span></div>${local.map(item=>{const draft=savedChangeDrafts.get(item.id);return `<div class="request-table-row"><div><strong>${escapeHTML(item.subject)}</strong><small>${new Intl.DateTimeFormat('es-PE',{dateStyle:'medium',timeZone:'America/Lima'}).format(new Date(item.createdAt))}</small></div><span class="badge review">${requestStatusLabel(item.status)}</span><button class="button secondary" type="button" data-local-request="${item.id}" data-request-project="${item.projectId}">${draft?.formalizedSimulated?'Ver resultado':draft?.returnedDocumentId?'Continuar revisión':draft?.sent?'Continuar con firma':draft?.prepared?'Abrir adenda':'Continuar solicitud'} ↗</button></div>`;}).join('')}${savedExample?`<div class="request-table-row"><div><strong>Solicitud de ejemplo · ${savedExample.prepared?'adenda guardada':'en curso'}</strong><small>Datos ficticios de este proyecto</small></div><span class="badge pending">${savedExample.formalizedSimulated?'Formalizado · simulación':savedExample.returnedDocumentId?'Firma por verificar':savedExample.sent?'Pendiente de firma · demo':savedExample.prepared?'Adenda preparada':'En curso'}</span><button class="button secondary" type="button" data-project="${selectedProjectId}">${requestResumeLabel(selectedProjectId)} ↗</button></div>`:''}</div>`:'<div class="empty-state">Todavía no hay solicitudes creadas en este proyecto. Registra un pedido para empezar.</div>'}`;
+  panel.innerHTML=`<div class="requests-heading"><div><span class="eyebrow">SOLICITUDES DEL PROYECTO</span><h3>Retoma cada cambio donde lo dejaste.</h3><p>El recorrido solo avanza: si hay un error, crea una solicitud nueva. Una adenda pendiente sigue aquí para continuar con su firma. Guardado local en este navegador; Supabase aún no está conectado.</p></div><button class="button" type="button" data-new-change>＋ Nueva solicitud</button></div>${local.length || savedExample?`<div class="request-table"><div class="request-table-head"><span>Solicitud</span><span>Estado actual</span><span>Acción</span></div>${local.map(item=>{const draft=savedChangeDrafts.get(item.id);return `<div class="request-table-row"><div><strong>${escapeHTML(item.subject)}</strong><small>${new Intl.DateTimeFormat(uiLocale(),{dateStyle:'medium',timeZone:'America/Lima'}).format(new Date(item.createdAt))}</small></div><span class="badge review">${requestStatusLabel(item.status)}</span><button class="button secondary" type="button" data-local-request="${item.id}" data-request-project="${item.projectId}">${draft?.formalizedSimulated?'Ver resultado':draft?.returnedDocumentId?'Continuar revisión':draft?.sent?'Continuar con firma':draft?.prepared?'Abrir adenda':'Continuar solicitud'} ↗</button></div>`;}).join('')}${savedExample?`<div class="request-table-row"><div><strong>Solicitud de ejemplo · ${savedExample.prepared?'adenda guardada':'en curso'}</strong><small>Datos ficticios de este proyecto</small></div><span class="badge pending">${savedExample.formalizedSimulated?'Formalizado · simulación':savedExample.returnedDocumentId?'Firma por verificar':savedExample.sent?'Pendiente de firma · demo':savedExample.prepared?'Adenda preparada':'En curso'}</span><button class="button secondary" type="button" data-project="${selectedProjectId}">${requestResumeLabel(selectedProjectId)} ↗</button></div>`:''}</div>`:'<div class="empty-state">Todavía no hay solicitudes creadas en este proyecto. Registra un pedido para empezar.</div>'}`;
 }
 function persistChangeWorkspace() {
   if(!window.TratoStore)return Promise.resolve();
@@ -501,7 +503,7 @@ function showRequestToast(message) {
 }
 function renderKnowledge(panel) {
   const docs = knowledgeDocuments.filter(doc => doc.projectId === selectedProjectId).sort((a,b) => Date.parse(b.addedAt) - Date.parse(a.addedAt) || a.id.localeCompare(b.id));
-  panel.innerHTML = `<div class="knowledge-layout document-library"><div class="workspace-panel"><div class="library-header"><div><span class="eyebrow">BASE DE CONOCIMIENTO</span><h3>Documentos del proyecto</h3></div></div><p>Archivo de consulta: acuerdo inicial, correos de solicitudes y adendas. Los documentos se incorporan desde el paso correspondiente; no necesitas subirlos otra vez aquí.</p><div class="source-heading">${docs.length} ${docs.length === 1 ? 'DOCUMENTO' : 'DOCUMENTOS'} · PDF <span class="document-order">Más recientes primero · fecha de incorporación</span></div><div class="document-list">${docs.map(doc => `<button type="button" class="document-button" data-preview-pdf="${doc.id}"><span class="pdf-icon">PDF</span><span><strong>${escapeHTML(doc.title)}</strong><small>v${doc.version} · ${doc.state}</small><small>${doc.isFixture || !doc.draft ? 'Correo de ejemplo · origen ficticio' : 'Carga manual · correo sin verificar'}</small><small>Incorporado: ${new Intl.DateTimeFormat('es-PE', {dateStyle:'medium', timeStyle:'short', timeZone:'America/Lima'}).format(new Date(doc.addedAt))}</small></span><span>↗</span></button>`).join('')}</div><div class="mail-channel-note"><strong>El correo es el canal del acuerdo</strong><p>La conexión con Gmail u otro proveedor está pendiente. Solo un documento firmado y verificado podrá actualizar el acuerdo vigente.</p></div></div></div>`;
+  panel.innerHTML = `<div class="knowledge-layout document-library"><div class="workspace-panel"><div class="library-header"><div><span class="eyebrow">BASE DE CONOCIMIENTO</span><h3>Documentos del proyecto</h3></div></div><p>Archivo de consulta: acuerdo inicial, correos de solicitudes y adendas. Los documentos se incorporan desde el paso correspondiente; no necesitas subirlos otra vez aquí.</p><div class="source-heading">${docs.length} ${docs.length === 1 ? 'DOCUMENTO' : 'DOCUMENTOS'} · PDF <span class="document-order">Más recientes primero · fecha de incorporación</span></div><div class="document-list">${docs.map(doc => `<button type="button" class="document-button" data-preview-pdf="${doc.id}"><span class="pdf-icon">PDF</span><span><strong>${escapeHTML(doc.title)}</strong><small>v${doc.version} · ${doc.state}</small><small>${doc.isFixture || !doc.draft ? 'Correo de ejemplo · origen ficticio' : 'Carga manual · correo sin verificar'}</small><small>Incorporado: ${new Intl.DateTimeFormat(uiLocale(), {dateStyle:'medium', timeStyle:'short', timeZone:'America/Lima'}).format(new Date(doc.addedAt))}</small></span><span>↗</span></button>`).join('')}</div><div class="mail-channel-note"><strong>El correo es el canal del acuerdo</strong><p>La conexión con Gmail u otro proveedor está pendiente. Solo un documento firmado y verificado podrá actualizar el acuerdo vigente.</p></div></div></div>`;
 
 }
 function previewPdf(id) {
@@ -580,7 +582,7 @@ function renderClientActivity(panel) {
   <div class="history-filters" role="group" aria-label="Filtrar historial">${[['all','Todo'],['acuerdo','Acuerdos'],['cambios','Cambios']].map(([value,label])=>`<button data-history-filter="${value}" class="${historyFilter===value?'selected':''}" aria-pressed="${historyFilter===value}">${label}</button>`).join('')}</div>
   <section class="timeline" aria-label="Historial del proyecto">${visible.length ? visible.map(event => {
     const version = demoData.documentVersions.find(item => item.id === event.sourceVersionId);
-    const date = new Intl.DateTimeFormat('es-PE',{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit',timeZone:'America/Lima'}).format(new Date(event.occurredAt));
+    const date = new Intl.DateTimeFormat(uiLocale(),{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit',timeZone:'America/Lima'}).format(new Date(event.occurredAt));
     const icon = {acuerdo:'▤',cambios:'⌘',cobros:'↗',reembolsos:'↶'}[event.type];
     return `<article class="timeline-event"><div class="timeline-marker ${event.type}">${icon}</div><div class="timeline-card"><div class="timeline-top"><span class="eyebrow">${eventLabels[event.type]}</span><time datetime="${escapeHTML(event.occurredAt)}">${date}</time></div><h4>${escapeHTML(event.title)}</h4><p>${escapeHTML(event.summary)}</p><div class="timeline-bottom"><span class="badge ${event.status==='completed'||event.status==='accepted'?'done':event.status==='pending'?'review':'pending'}">${event.requestStatus?requestStatusLabel(event.requestStatus):statusLabels[event.status]}</span>${event.amount !== undefined ? `<strong>${money(event.amount)}</strong>` : ''}${historySourceLinks(event)}${event.localRequestId?`<button class="text-button" data-local-request="${event.localRequestId}" data-request-project="${event.projectId}">${requestResumeLabel(event.localRequestId)} ↗</button>`:event.resumeProjectId?`<button class="text-button" data-project="${event.resumeProjectId}">${requestResumeLabel(event.resumeProjectId)} ↗</button>`:''}</div></div></article>`;
   }).join('') : '<div class="empty-state">No hay movimientos de este tipo en este proyecto.</div>'}</section>`;
@@ -741,8 +743,8 @@ function setSidebarCollapsed(collapsed) {
   document.querySelector('.shell').classList.toggle('sidebar-is-hidden',collapsed);
   const toggle=document.querySelector('#sidebar-toggle');
   toggle.setAttribute('aria-expanded',String(!collapsed));
-  toggle.setAttribute('aria-label',collapsed?'Mostrar barra lateral':'Ocultar barra lateral');
-  toggle.setAttribute('title',collapsed?'Mostrar barra lateral':'Ocultar barra lateral');
+  toggle.setAttribute('aria-label',collapsed?uiText('Mostrar barra lateral'):uiText('Ocultar barra lateral'));
+  toggle.setAttribute('title',collapsed?uiText('Mostrar barra lateral'):uiText('Ocultar barra lateral'));
 }
 document.querySelector('#sidebar-toggle').addEventListener('click',()=>{
   setSidebarCollapsed(!document.querySelector('#trato-sidebar').hidden);

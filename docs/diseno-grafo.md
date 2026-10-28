@@ -1,3 +1,5 @@
+> Actualización 27/10/2026: la entrada del proyecto ya usa el mapa conectado de graph-live.mjs. Este documento describe el ejemplo visual conservado en /grafo.html. Ver [grafo-conectado.md](grafo-conectado.md) para el funcionamiento real.
+
 # Vista previa del mapa del proyecto
 
 Diseño implementado el 26 de octubre de 2026. Entrada desde **Seguimiento del proyecto**, junto al **Historial**, mediante **Ver mapa · vista previa**, o directamente en `http://localhost:5173/grafo.html`.

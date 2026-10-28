@@ -1,12 +1,13 @@
+import {uiText,uiLocale} from './i18n.mjs';
 // Gmail authorization lives separately from the Trato login and never sends an email.
 export function installGmailConnection(cloud,{document=globalThis.document,window=globalThis.window,fetchFn=globalThis.fetch.bind(globalThis)}={}) {
   let popup=null, pendingUser=null, pendingState=null, timeout=null;
   const currentUser=()=>cloud.session?.session?.user?.id;
   const request=async(path,options={})=>{
-    if(!cloud.active) throw new Error('Inicia sesión para conectar Gmail.');
+    if(!cloud.active) throw new Error(uiText("Inicia sesión para conectar Gmail."));
     const response=await fetchFn('/api/v1/integrations/gmail'+path,{...options,headers:{Authorization:`Bearer ${await cloud.session.token()}`,...(options.body?{'Content-Type':'application/json'}:{})},signal:AbortSignal.timeout(30000)});
-    let payload;try{payload=await response.json();}catch{throw new Error('No se pudo consultar la conexión de Gmail.');}
-    if(!response.ok) throw new Error(payload.error?.message || 'No se pudo conectar Gmail.');
+    let payload;try{payload=await response.json();}catch{throw new Error(uiText("No se pudo consultar la conexión de Gmail."));}
+    if(!response.ok) throw new Error(payload.error?.message || uiText("No se pudo conectar Gmail."));
     return payload.data;
   };
   const clearPending=()=>{if(timeout)window.clearTimeout(timeout);timeout=null;popup=null;pendingUser=null;pendingState=null;};
@@ -18,37 +19,37 @@ export function installGmailConnection(cloud,{document=globalThis.document,windo
     const content=document.createElement('div');content.className='cloud-integration-content';
     const heading=document.createElement('div');heading.className='cloud-integration-heading';
     const title=document.createElement('h3');title.textContent='Gmail';
-    const badge=document.createElement('span');badge.className='cloud-connection-badge';badge.textContent='Consultando';
-    const status=document.createElement('p');status.className='cloud-integration-status';status.setAttribute('role','status');status.textContent='Consultando conexión…';
-    const button=document.createElement('button');button.type='button';button.className='button secondary';button.textContent='Conectar Gmail';button.disabled=true;
+    const badge=document.createElement('span');badge.className='cloud-connection-badge';badge.textContent=uiText("Consultando");
+    const status=document.createElement('p');status.className='cloud-integration-status';status.setAttribute('role','status');status.textContent=uiText("Consultando conexión…");
+    const button=document.createElement('button');button.type='button';button.className='button secondary';button.textContent=uiText("Conectar Gmail");button.disabled=true;
     heading.append(title,badge);content.append(heading,status);panel.append(icon,content,button);modal.querySelector('.cloud-integrations').prepend(panel);
     let connected=false;
     const update=data=>{
       connected=Boolean(data.connected);button.disabled=!data.configured;
       panel.dataset.connection=connected?'connected':data.configured?'available':'unavailable';
-      badge.textContent=connected?'Conectado':data.configured?'Sin conectar':'No disponible';
-      status.textContent=connected?data.email:data.configured?'Envía tus adendas y solicitudes de pago.':'La conexión no está disponible en este momento.';
-      button.textContent=connected?'Desconectar Gmail':'Conectar Gmail';
+      badge.textContent=connected?uiText("Conectado"):data.configured?uiText("Sin conectar"):uiText("No disponible");
+      status.textContent=connected?data.email:data.configured?uiText("Envía tus adendas y solicitudes de pago."):uiText("La conexión no está disponible en este momento.");
+      button.textContent=connected?uiText("Desconectar Gmail"):uiText("Conectar Gmail");
     };
-    const fail=error=>{panel.dataset.connection='error';badge.textContent='Revisar conexión';status.textContent=error.message;button.disabled=false;};
+    const fail=error=>{panel.dataset.connection='error';badge.textContent=uiText("Revisar conexión");status.textContent=error.message;button.disabled=false;};
     request('').then(update).catch(fail);
     button.addEventListener('click',async()=>{
       if(connected){
         button.disabled=true;
-        try {const data=await request('/disconnect',{method:'POST',body:'{}'});update(data);if(!data.revoked)status.textContent='Gmail desconectado de Trato. Puedes revisar también el acceso desde tu cuenta de Google.';}
+        try {const data=await request('/disconnect',{method:'POST',body:'{}'});update(data);if(!data.revoked)status.textContent=uiText("Gmail desconectado de Trato. Puedes revisar también el acceso desde tu cuenta de Google.");}
         catch(error){fail(error);}return;
       }
       if(popup && !popup.closed){popup.focus();return;}
       popup=window.open('about:blank','trato-gmail-authorization','popup,width=560,height=720');
-      if(!popup){fail(new Error('Permite abrir la ventana para autorizar Gmail.'));return;}
+      if(!popup){fail(new Error(uiText("Permite abrir la ventana para autorizar Gmail.")));return;}
       pendingUser=currentUser();button.disabled=true;
       try{
         const data=await request('/connect',{method:'POST',body:'{}'});
         const url=new URL(data.authorization_url);
-        if(url.origin!=='https://accounts.google.com' || url.pathname!=='/o/oauth2/v2/auth')throw new Error('La dirección de autorización no es válida.');
-        if(currentUser()!==pendingUser || !cloud.active)throw new Error('La sesión cambió. Vuelve a iniciar la conexión.');
-        pendingState=url.searchParams.get('state');popup.location.href=url.href;status.textContent='Autoriza el envío en la ventana de Google.';
-        timeout=window.setTimeout(()=>{if(popup && !popup.closed)popup.close();clearPending();if(panel.isConnected)fail(new Error('La autorización caducó. Vuelve a conectar Gmail.'));},600000);
+        if(url.origin!=='https://accounts.google.com' || url.pathname!=='/o/oauth2/v2/auth')throw new Error(uiText("La dirección de autorización no es válida."));
+        if(currentUser()!==pendingUser || !cloud.active)throw new Error(uiText("La sesión cambió. Vuelve a iniciar la conexión."));
+        pendingState=url.searchParams.get('state');popup.location.href=url.href;status.textContent=uiText("Autoriza el envío en la ventana de Google.");
+        timeout=window.setTimeout(()=>{if(popup && !popup.closed)popup.close();clearPending();if(panel.isConnected)fail(new Error(uiText("La autorización caducó. Vuelve a conectar Gmail.")));},600000);
       }catch(error){if(popup && !popup.closed)popup.close();clearPending();fail(error);}
     });
   };

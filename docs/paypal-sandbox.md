@@ -305,4 +305,4 @@ Se aplicaron migraciones `proposal_pdf_artifacts` y `proposal_delivery_payments`
 
 La primera propuesta de RPC con secreto compartido accesible por roles públicos fue rechazada por revisión automática. Se reemplazó por funciones privadas y wrapper invoker ejecutables solo por `service_role`; no hay secreto compartido alternativo ni comandos financieros disponibles para anon/authenticated. Pruebas SQL con fixtures y rollback verifican reserva única, importe exacto, bloqueo durante pago, captura única y no regresión de un pago completado. No equivalen a una captura contractual real.
 
-Lectura actual de la cuenta conectada: no había propuestas guardadas ni cliente con `customer@example.com`. Por tanto, sigue pendiente preparar/revisar la adenda y enviarla; no se inventó aceptación para crear un cobro.
+Lectura actual de la cuenta conectada: no había propuestas guardadas ni cliente con `usuario@example.com`. Por tanto, sigue pendiente preparar/revisar la adenda y enviarla; no se inventó aceptación para crear un cobro.

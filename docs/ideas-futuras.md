@@ -106,3 +106,9 @@ Inspección técnica realizada: Polpharma carga Unicorn Studio, GSAP/ScrollTrigg
 Explorar primero una sola mejora distintiva: **negociación con alternativas**. La línea de tiempo de acuerdos puede apoyarla con evidencia visual. El simulador se mantiene como experimento opcional después de validar interés. No construir cinco módulos por acumular funcionalidades.
 
 Antes de llamar disruptiva o novedosa a una idea, contrastar alternativas actuales y observar usuarios reales. El éxito del hackathon dependerá también de que la integración funcione y la demo comunique un problema específico.
+
+### Investigación del Modo ensayo · 27/10/2026
+
+Se retomó la idea 2 a petición de Sebastian. Hay testimonios freelance sobre miedo a cobrar extras y evidencia limitada de utilidad de la preparación con IA; también hay estudios que favorecen una guía estructurada frente a chats extensos. La categoría tiene competidores, incluido Negosim con tarifas freelance. La recomendación es validar un ensayo breve y opcional dentro de un pedido, con fuentes y salida a un borrador, sin efectos sobre acuerdos ni pagos.
+
+Evidencia, limitaciones, recorrido propuesto y prueba con usuarios en [investigacion-modo-ensayo.md](investigacion-modo-ensayo.md). No se ha demostrado demanda de Trato ni se activaron modelos o pantallas nuevas por esta anotación.

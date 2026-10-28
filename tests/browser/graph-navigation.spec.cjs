@@ -20,7 +20,7 @@ async function mount(page,{language='es',graph=data}={}){
  },graph);
  await expect(page.locator('[data-live-node]')).toHaveCount(7);return errors;
 }
-test('map arranges the project centrally and labels selectable directed relationships',async({page})=>{
+test('map arranges hierarchical branches and labels selectable directed relationships',async({page})=>{
  const errors=await mount(page);
  await expect(page.locator('[data-live-node="projects:p"]')).toHaveAttribute('data-live-depth','0');
  await expect(page.locator('[data-live-node="documents:request"]')).toHaveAttribute('data-live-depth','1');
@@ -163,4 +163,24 @@ test('automatic layout packs related branches without overlapping their cards',a
  });
  expect(packed.collisions).toEqual([]);expect(packed.stable).toBe(true);
  expect(packed.width*packed.height).toBeLessThan(5_000_000);
+});
+
+for(const language of ['es','en'])test(`readable default zoom and selected labels avoid cards and each other (${language})`,async({page})=>{
+ await mount(page,{language});
+ await expect(page.locator('[data-live-scale]')).toHaveText('100%');
+ const result=await page.evaluate(()=>{
+  const box=el=>{const r=el.getBoundingClientRect();return {x:r.x,y:r.y,w:r.width,h:r.height};};
+  const cards=[...document.querySelectorAll('[data-live-node]')].map(box);
+  const labels=[...document.querySelectorAll('.gd-edge.is-active text')].filter(el=>getComputedStyle(el).visibility==='visible').map(box);
+  const hits=(a,b)=>a.x<b.x+b.w&&a.x+a.w>b.x&&a.y<b.y+b.h&&a.y+a.h>b.y;
+  return {minimumWidth:Math.min(...cards.map(c=>c.w)),labels:labels.length,
+   overlaps:labels.some((label,i)=>cards.some(card=>hits(label,card))||labels.slice(i+1).some(other=>hits(label,other)))};
+ });
+ expect(result.minimumWidth).toBeGreaterThanOrEqual(200);expect(result.labels).toBe(3);expect(result.overlaps).toBe(false);
+ await page.getByRole('button',{name:language==='es'?'Detalles':'Details',exact:true}).click();
+ await page.locator('.gd-inspector [data-live-select="change_proposals:proposal"]').click();
+ await page.getByRole('button',{name:language==='es'?'Ampliar mapa':'Expand map',exact:true}).click();
+ await expect(page.locator('[data-live-scale]')).toHaveText('100%');
+ const card=await page.locator('[data-live-node="change_proposals:proposal"]').boundingBox(),panel=await page.locator('.gd-inspector').boundingBox();
+ expect(card.x+card.width).toBeLessThan(panel.x);
 });

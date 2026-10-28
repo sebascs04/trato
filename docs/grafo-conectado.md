@@ -62,3 +62,11 @@ Los verbos sobre aristas aparecen solo en conexiones activas del nodo selecciona
 HAS_REVISION y CURRENT_REVISION entre la misma propuesta y adenda se presentan como una sola flecha «Tiene adenda». La tarjeta de destino indica «Versión actual» / «Current version»; current_revision_edge conserva la referencia a la relación original. Neo4j no se modifica. Las versiones anteriores siguen visibles según las reglas de negocio existentes.
 
 La disposición se calcula automáticamente: ramas desde el proyecto, atracción entre registros relacionados, separación de tarjetas rectangulares y conservación del orden hacia afuera. No requiere posiciones manuales. Ampliar/reducir ajusta el encuadre al espacio disponible; Ajustar considera el panel de detalles. Quince pruebas Chromium de mapa conectado y navegación aprobadas, incluida una distribución determinista de 25 elementos sin solapamientos. Sintaxis y paridad ES/EN aprobadas (949 claves, incluyendo Ensayos de P1).
+
+## Legibilidad del mapa — 27/10/2026
+
+La distribución compacta anterior podía juntar ramas y superponer verbos; ajustar todo el grafo reducía demasiado las tarjetas. La vista actual usa un árbol horizontal por niveles: cada rama reserva su espacio vertical y mantiene un orden estable. Las posiciones expresan la jerarquía de presentación; las flechas siguen conservando la dirección real de cada relación.
+
+La apertura usa zoom 100% y el proyecto queda a la izquierda; arrastrar permite recorrer las ramas. Ampliar conserva un tamaño legible y centra el elemento seleccionado en el espacio libre del inspector. Ajustar sigue ofreciendo una vista general explícita. Las conexiones no seleccionadas se atenúan; las etiquetas activas se colocan en huecos sin colisionar con tarjetas ni otras etiquetas. Cuando no hay un hueco, el texto se conserva en el inspector y en la etiqueta accesible de la conexión, sin inventar ni eliminar relaciones de datos.
+
+Validación: 15 pruebas de mapa conectado/navegación, y después 11 de navegación con regresiones ES/EN para tamaño mínimo de tarjeta, separación de etiquetas y selección visible fuera del inspector. npm run check y 949 traducciones emparejadas aprobados. Preparado en fix/graph-readability; sin cambios en Ensayos de P1 ni en servicios o puertos.

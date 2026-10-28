@@ -10,7 +10,7 @@ export OLLAMA_MODEL="nombre-del-modelo-local-ya-instalado"
 python3 -m trato_worker < entrada.json
 ```
 
-Entrada: `{"sources":[{"id":"agreement:uuid:p1","kind":"agreement","text":"Texto del acuerdo"},{"id":"request:uuid:p1","kind":"request","text":"Pedido del cliente"}]}`. Los IDs deben mapearse a documento/versión/localizador autorizado por la API; el worker no decide propietario ni tenant. El contexto debe contener las cláusulas aplicables, no solo coincidencias vectoriales.
+Entrada: `{"output_language":"es","sources":[{"id":"agreement:uuid:p1","kind":"agreement","text":"Texto del acuerdo"},{"id":"request:uuid:p1","kind":"request","text":"Pedido del cliente"}]}`. Los IDs deben mapearse a documento/versión/localizador autorizado por la API; el worker no decide propietario ni tenant. El contexto debe contener las cláusulas aplicables, no solo coincidencias vectoriales.
 
 Valida pertenencia literal de cada cita a la fuente y exige evidencia de acuerdo y pedido para `matches`. Esto no evalúa automáticamente la calidad semántica de la respuesta. No confirma aceptación/firma/pago ni calcula precios inventados. El resultado siempre exige revisión humana.
 
@@ -65,3 +65,10 @@ Ver `../../docs/worker-flujo-cambios.md` para el contrato `start/resume/get`, lo
 ## Extracción conectada y Gemini simulado
 
 `python -m trato_worker.run --mode connected` consume la cola privada de PDFs reales y llama al file processor sin IA. `PYTHONPATH=. .venv/bin/python examples/gemini-contract.py` comprueba el contrato Vertex con el SDK real y transporte HTTP simulado, sin red. Ver `../../docs/ingesta-conectada.md` para configuración, límites y separación de modos.
+
+
+### Idioma del análisis
+
+`analyze(sources, model, output_language="es")` requiere idioma explícito `es` o `en`. La entrada JSON por stdin también exige `output_language`; un idioma ausente o no soportado falla sin ejecutar inferencia. El worker carga una sola plantilla en inglés (`compare-sources.json`), envía el parámetro junto a las fuentes y pide generar `summary` directamente en ese idioma. Las claves, enums e IDs no cambian; las citas se comprueban contra el texto original sin traducirlo. La respuesta conserva `output_language` para trazabilidad.
+
+`analyze-change.json` también tiene instrucciones canónicas en inglés y contrato de idioma, pero sigue siendo una plantilla pendiente de integración. No existe todavía un endpoint de análisis de modelo conectado desde la UI: este cambio no conecta el flujo simulado a un proveedor. Los fixtures de simulación no se traducen por el modelo.

@@ -63,7 +63,9 @@ export async function apiRequest(session, base, path, options = {}, asBlob = fal
       UNSUPPORTED_FORMAT:uiText("Selecciona un PDF o DOCX compatible."), REQUEST_TOO_LARGE:uiText("El archivo supera 10 MB."),
       ORIGINAL_HASH_MISMATCH:uiText("El original guardado no coincide con el documento registrado."),
       FILE_PROCESSOR_UNAVAILABLE:uiText("El archivo está registrado, pero el procesador no está disponible. Puedes reintentar desde Documentos.")};
-    throw new Error(messages[payload.error?.code] || uiText("No se pudo completar la operación. Actualiza la lista antes de reintentar."));
+    const error=new Error(messages[payload.error?.code] || uiText("No se pudo completar la operación. Actualiza la lista antes de reintentar."));
+    error.code=payload.error?.code;
+    throw error;
   }
   return payload.data;
 }

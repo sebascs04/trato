@@ -1,6 +1,6 @@
 # Estándar de prompts de Trato
 
-Solicitado por Sebastian el 26 de octubre de 2026. Referencia leída: `/home/sebastian/wsl-projects/QAMAQ/Utiles/prompt-construction-guide.md`. Esta adaptación no modifica QAMAQ ni activa un modelo.
+Solicitado por Sebastian el 26 de octubre de 2026. Referencia leída: `<project-root>/Utiles/prompt-construction-guide.md`. Esta adaptación no modifica otros proyectos ni activa un modelo.
 
 ## Estructura
 
@@ -25,3 +25,20 @@ No existe límite fijo de 5.000 caracteres ni obligación de reducir a 3.500. La
 ## Aplicación inicial
 
 El primer agente evalúa si el texto extraído es una fuente del acuerdo inicial o un pedido relacionado con el proyecto. Devuelve decisión, categoría detectada, motivo, evidencia localizada y aclaraciones necesarias. No genera la adenda, no acepta acuerdos ni realiza pagos. Actualmente esta decisión está simulada mediante casos explícitos: este documento fija el estándar para el prompt real pendiente, no convierte esos casos en inferencia.
+
+## Idioma de instrucciones y respuestas
+
+Acuerdo de Sebastian, 27/10/2026:
+
+- Mantener una sola versión de las instrucciones de cada agente. El idioma acordado para las instrucciones canónicas es inglés; la interfaz sigue con catálogos ES/EN.
+- El backend proporciona `output_language`, validado como `es` o `en`, a partir del idioma configurado por el usuario. El idioma del documento no decide el idioma de la explicación generada.
+- Generar explicaciones, mensajes y feedback directamente en `output_language`, sin una llamada intermedia de traducción.
+- Conservar documentos y citas textuales en su idioma original. Mantener claves de JSON, enums e identificadores del contrato sin traducir.
+- Separar las instrucciones internas de los textos de interfaz. No duplicar prompts en los catálogos ES/EN de la interfaz.
+- La migración debe hacerse explícitamente por agente, con pruebas de ambos idiomas; esta regla no significa que los prompts existentes ya estén migrados ni que la simulación ejecute un modelo.
+- Conservar ROLE, CONTEXT, PRE-TASK CHECKLIST, TASK y FORMAT según este documento. No aplicar límite fijo de 5.000 caracteres ni truncar instrucciones para cumplirlo.
+
+
+### Migración aplicada
+
+`practice-workspace.mjs` prepara instrucciones únicas en inglés con `output_language`, sin dependencia del idioma de la interfaz para construir sus reglas. El ensayo sigue utilizando un guion explícito, sin inferencia. `repos/trato-worker/prompts/compare-sources.json` y `analyze-change.json` usan instrucciones únicas en inglés; `analysis.analyze()` y su entrada stdin requieren `output_language` explícito. La plantilla de cambios aún no está integrada al flujo real y la UI todavía no llama a ese análisis de modelo. Las citas originales se mantienen y se validan como fragmentos exactos, incluso cuando el texto generado se solicita en otro idioma.

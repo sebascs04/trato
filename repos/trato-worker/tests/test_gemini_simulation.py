@@ -17,7 +17,7 @@ class GeminiSimulationTests(unittest.TestCase):
     def test_actual_sdk_serializes_vertex_contract_without_network(self):
         model=self.model()
         with patch.object(socket.socket,'connect',side_effect=AssertionError('No network')):
-            result=analyze(SOURCES,model)
+            result=analyze(SOURCES,model, output_language='es')
         self.assertEqual(result['mode'],'simulation')
         request=model.requests[0]
         self.assertEqual(request['method'],'POST')
@@ -38,4 +38,4 @@ class GeminiSimulationTests(unittest.TestCase):
 
     def test_forged_citation_is_rejected_after_provider_json(self):
         invalid=copy.deepcopy(RESULT);invalid['sources'][0]['quote']='Inventado'
-        with self.assertRaises(ValueError):analyze(SOURCES,self.model(response_fixture(invalid)))
+        with self.assertRaises(ValueError):analyze(SOURCES,self.model(response_fixture(invalid)), output_language='es')

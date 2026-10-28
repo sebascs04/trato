@@ -54,7 +54,7 @@ El flujo no arbitra disputas, determina derechos legales ni modifica la solicitu
 ## Validación
 
 - 10 pruebas unitarias nuevas del flujo: importes/comisiones, devolución parcial anterior, datos faltantes, plazo excedido, revisiones, pausas obsoletas, aislamiento, persistencia/reentrega, importe cero y resultado fallido.
-- Suite del worker: 62 pruebas descubiertas, 56 aprobadas y 6 de Redis omitidas por requerir su entorno específico. No se modificó el transporte Redis ni se usó el de QAMAQ.
+- Suite del worker: 62 pruebas descubiertas, 56 aprobadas y 6 de Redis omitidas por requerir su entorno específico. No se modificó el transporte Redis ni se usó el de otros proyectos.
 - Pruebas Chromium con la pasarela y el worker locales reales: recorrido completo, resultado pendiente/fallido, reanudación, versiones, servicio indisponible, aislamiento de sesión y separación entre estado real/simulado. Las API de negocio se doblan explícitamente en las pruebas del navegador; no hay cargos, correos o reembolsos reales.
 
 ## Conexiones del recorrido — 27/10/2026

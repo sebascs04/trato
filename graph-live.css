@@ -47,7 +47,7 @@
 .graph-live.is-expanded .gd-top{flex-shrink:0;padding:16px 22px}
 .graph-live.is-expanded .gd-toolbar{flex-shrink:0;padding:10px 22px}
 
-.graph-live .gd-edge:not(.is-active){opacity:.7}
+.graph-live .gd-edge:not(.is-active){opacity:.16}
 
 .gd-dialog>.graph-live{display:flex;flex-direction:column;height:100%;min-height:0}
 .gd-dialog>.graph-live>.gd-top,.gd-dialog>.graph-live>.gd-toolbar{flex-shrink:0}
@@ -60,3 +60,14 @@
 .graph-live .gd-connection-legend{display:flex;flex-direction:column;gap:7px;margin:12px 0 16px;padding:11px 12px;border-radius:8px;background:var(--gd-bg);color:var(--gd-muted);font-size:11px;line-height:1.6}
 .graph-live .gd-connection-legend>span{display:flex;align-items:center;gap:8px}
 .graph-live .gd-connection-legend .ui-icon{width:14px;height:14px;color:var(--gd-accent)}
+
+/* Readable cards at the default zoom, with labels placed between branches. */
+.graph-live .gd-node strong{font-size:14px;line-height:1.4}
+.graph-live .gd-node .gd-node-kind{font-size:10px}
+.graph-live .gd-node .gd-node-description{font-size:11px}
+.graph-live .gd-edge text{font-size:12px;stroke-width:8px;paint-order:stroke;stroke:#f8f9fc;stroke-linejoin:round}
+.graph-live .gd-edge text.is-crowded{visibility:hidden;pointer-events:none}
+.graph-live .gd-edge .gd-port{fill:var(--gd-paper);stroke:#9b8bd3;stroke-width:1.5px;pointer-events:none}
+.graph-live .gd-edge.is-active .gd-port{stroke:#7961c5}
+.graph-live .gd-edge-label-bg{fill:#f8f9fc;stroke:#e9e5f1;stroke-width:1;pointer-events:none;visibility:hidden}
+.graph-live .gd-edge.is-active.has-label .gd-edge-label-bg{visibility:visible}

@@ -21,7 +21,7 @@ Implementación del 26 de octubre de 2026. Esta entrega conecta extracción PDF 
 - Threads visibles sólo al propietario y proyecto activo, con columnas limitadas. Outbox/inbox sin permisos de usuario ni políticas de acceso de usuario por diseño; sólo funciones de servidor. El linter informa RLS sin políticas en esas dos tablas, coherente con su uso cerrado. No abrirlas para suprimir ese aviso.
 - Streams conectados `trato:connected:thread:commands`, `trato:connected:thread:events`. Los inválidos se apartan sin exponer su contenido en `trato:connected:thread:rejected-events`.
 - Streams de demostración conservan el prefijo `trato:simulation`. Ninguna indisponibilidad conecta ambos modos.
-- Redis propio local en 6380, loopback, contraseña privada, AOF y `noeviction`; archivo `.local/redis/redis.conf` y datos ignorados. AOF cada segundo no equivale a garantía de pérdida cero ni sustituye copias de seguridad. Redis no comparte procesos, archivos ni recursos con QAMAQ.
+- Redis propio local en 6380, loopback, contraseña privada, AOF y `noeviction`; archivo `.local/redis/redis.conf` y datos ignorados. AOF cada segundo no equivale a garantía de pérdida cero ni sustituye copias de seguridad. Redis no comparte procesos, archivos ni recursos con otros proyectos.
 - API 8100, file processor 8101, web 5173. El worker y el publicador/consumidor backend no abren otro puerto HTTP.
 
 Configuración inicial privada, sin imprimir credenciales ni activar IA:
@@ -46,7 +46,7 @@ PYTHONPATH=. .venv/bin/python examples/gemini-contract.py
 
 La salida incluye el request de prueba y el resultado JSON, etiquetados `simulation`; no contiene documentos reales ni secretos. La prueba bloquea sockets para acreditar que no se llama a Google. Un fallo, bloqueo, salida truncada, JSON inválido o cita inventada falla visiblemente, sin otra respuesta de respaldo.
 
-`analysis.py` ya usa la plantilla RCPTF `prompts/compare-sources.json` para su esquema simple actual, manteniendo validación de citas y revisión humana. La plantilla enriquecida `analyze-change.json` v2 sigue preparada para la futura conexión del análisis por elementos/feedback; no se presenta como un grafo real ya conectado a IA. La simulación del ciclo de cambios sigue explícita e independiente.
+`analysis.py` ya usa la plantilla RCPTF `prompts/compare-sources.json` para su esquema simple actual, manteniendo validación de citas y revisión humana. La plantilla enriquecida `analyze-change.json` v3 sigue preparada para la futura conexión del análisis por elementos/feedback; no se presenta como un grafo real ya conectado a IA. La simulación del ciclo de cambios sigue explícita e independiente.
 
 Referencias oficiales revisadas: [generateContent de Vertex AI](https://cloud.google.com/vertex-ai/generative-ai/docs/reference/rest/v1/projects.locations.publishers.models/generateContent), [respuesta y candidatos](https://cloud.google.com/vertex-ai/generative-ai/docs/reference/rest/v1/GenerateContentResponse), [Storage y acceso de servidor](https://supabase.com/docs/guides/storage/security/access-control), [recuperación de mensajes Redis](https://redis.io/docs/latest/commands/xautoclaim/).
 

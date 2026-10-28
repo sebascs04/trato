@@ -272,7 +272,6 @@ Sebastian pidió expresamente no duplicar estados mientras P2 diseña la lista d
 
 La integración PayPal aporta evidencia financiera; sus estados técnicos se guardan en el registro de pago y se proyectan a ese seguimiento, sin otra lista de negocio competidora. Pendiente de pago exige aceptación de la revisión exacta revisada por humano y adicional>0. Solo captura COMPLETED verificada por PayPal (referencia/importe/moneda/merchant correctos) finaliza un cambio con adicional. Una aceptación revisada de importe0 finaliza sin crear cobro. PENDING, timeout, cancelación o volver del checkout no finalizan ni prueban pago. PDF recibido por sí solo sigue en Aceptación por revisar.
 
-Usuario autorizó una prueba sandbox de USD0.10. A esta altura solo se verificó OAuth; no se creó orden ni se aprobó/capturó pago. Antes de modificar UI o persistencia de estados, coordinar con P2 y respetar su flujo único.
 
 ## Prueba explícita de conexión USD0.10 desde el perfil
 
@@ -284,20 +283,9 @@ Variables explícitas: `TRATO_PAYPAL_TEST_ENABLED=true`, `PAYPAL_TEST_RETURN_URL
 
 Es una herramienta local de prueba, proceso API único; no sustituye la persistencia contractual en Supabase ni habilita aceptar/finalizar adendas. Pruebas de dominio9 y navegador específico1 aprobadas con dobles. Validación OAuth previa realHTTP200. El resultado de crear/aprobar/capturar una orden real de sandbox se documentará aparte.
 
-### Primera orden sandbox creada · 25 de octubre de 2026
+### Verificación del recorrido técnico de sandbox
 
-Tras autorización explícita del usuario para pruebaUSD0.10, se creó la orden real de sandbox `6VA592034E322405A`, referencia local `df5e03d2-ba7b-4bd8-872b-35ef152375f7`, estado `pending_approval`. Se asoció al usuario de Trato identificado por su conexión Gmail previamente autorizada, sin extraer/fabricar JWT ni crear aceptación contractual. Una sola prueba por usuario; reabrir o cambiar clave no crea otra orden. No hay captura ni pago completado todavía.
-
-El usuario debe abrir Trato→perfil→Probar pago de US$0,10→Abrir PayPal sandbox, iniciar sesión él mismo con su cuenta Personal sandbox y aprobar. El callback y el botón Verificar pago consultan PayPal y capturan solo si la orden está realmente aprobada. No se usan credenciales de comprador desde el agente.
-
-Validación: suiteAPI84 y npm28 aprobados; navegador18 aprobadas (incluye prueba de checkout interceptado). Supervisor actualsesión72576, puertos5173/8000/8001. Esta prueba no modifica la tabla de8estados del cambio ni los prototipos de P2. Dominio contractual y envíos reales por proyecto siguen pendientes. No se publicó el código nuevo aGitHub en esta etapa.
-
-### Pago sandbox completado y contrastado con PayPal · 25 de octubre de 2026
-
-El usuario aprobó manualmente con la cuenta Personal sandbox. La orden `6VA592034E322405A` quedó `completed` en el almacén local. Una consulta independiente GET a PayPal confirmó captura `9HB1402829366804P` con estado `COMPLETED`, importe USD0.10 y coincidencia exacta de referencia, moneda y merchant. El ID de captura coincide con el guardado en Trato. Esta comprobación no ejecutó otra captura ni envió correos.
-
-Queda verificado el recorrido técnico real de sandbox: crear orden → aprobación humana en PayPal → captura del servidor → consulta y estado persistido. Es una prueba de conexión separada de proyectos/adendas; no acredita el recorrido contractual ni cambia los ocho estados de negocio. Siguiente: persistencia autoritativa de propuestas/aceptación/outbox/pagos y envío de correo con enlace al cobro correspondiente a la versión aceptada.
-
+Se comprobó el recorrido crear orden → aprobación humana en PayPal → captura del servidor → consulta y estado persistido. La documentación pública omite los identificadores de transacciones, referencias internas y asociaciones de cuentas usados durante las pruebas. El diagnóstico sigue separado de propuestas y aceptaciones; no acredita por sí solo el recorrido contractual ni cambia estados de negocio.
 
 ### Integración de adendas, 25/10/2026
 
@@ -305,4 +293,3 @@ Se aplicaron migraciones `proposal_pdf_artifacts` y `proposal_delivery_payments`
 
 La primera propuesta de RPC con secreto compartido accesible por roles públicos fue rechazada por revisión automática. Se reemplazó por funciones privadas y wrapper invoker ejecutables solo por `service_role`; no hay secreto compartido alternativo ni comandos financieros disponibles para anon/authenticated. Pruebas SQL con fixtures y rollback verifican reserva única, importe exacto, bloqueo durante pago, captura única y no regresión de un pago completado. No equivalen a una captura contractual real.
 
-Lectura actual de la cuenta conectada: no había propuestas guardadas ni cliente con `usuario@example.com`. Por tanto, sigue pendiente preparar/revisar la adenda y enviarla; no se inventó aceptación para crear un cobro.

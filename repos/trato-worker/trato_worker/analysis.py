@@ -47,8 +47,10 @@ class OllamaModel:
         return json.loads(result['message']['content'])
 
 
-def analyze(sources, model: Model):
+def analyze(sources, model: Model, *, output_language: str):
     """Sources must be retrieved and authorized by API, including the applicable agreement."""
+    if output_language not in ('es', 'en'):
+        raise ValueError('output_language must be es or en.')
     if not isinstance(sources, list) or not sources or len(sources) > 100:
         raise ValueError('Se requieren fuentes autorizadas y acotadas.')
     by_id = {}
@@ -67,7 +69,7 @@ def analyze(sources, model: Model):
     messages = [
         {'role': 'system', 'content': template['role_description']},
         {'role': 'developer', 'content': template['instructions']},
-        {'role': 'user', 'content': json.dumps({'sources': sources}, ensure_ascii=False)}
+        {'role': 'user', 'content': json.dumps({'sources': sources, 'output_language': output_language}, ensure_ascii=False)}
     ]
     result = model.generate(messages, SCHEMA)
     if not isinstance(result, dict) or set(result) != {'relation', 'classification', 'summary', 'sources'}:
@@ -90,5 +92,5 @@ def analyze(sources, model: Model):
         kinds.add(source['kind'])
     if result['relation'] == 'matches' and kinds != {'agreement', 'request'}:
         raise ValueError('El análisis requiere evidencia del acuerdo y de la solicitud.')
-    return {'schema_version': 1, 'mode': 'simulation' if getattr(model, 'mode', None) == 'simulation' else 'model', 'human_review_required': True,
+    return {'schema_version': 1, 'output_language': output_language, 'mode': 'simulation' if getattr(model, 'mode', None) == 'simulation' else 'model', 'human_review_required': True,
             'analysis': result, 'sources': sources}

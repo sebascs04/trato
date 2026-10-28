@@ -5,5 +5,6 @@
   "file_processor": 8101,
   "redis_reserved": 6380,
   "weaviate_http_reserved": 8180,
-  "weaviate_grpc_reserved": 51052
+  "weaviate_grpc_reserved": 51052,
+  "ollama": 11435
 }

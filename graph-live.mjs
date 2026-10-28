@@ -63,82 +63,34 @@ export function layoutProjectGraph(nodes,edges){
  const children=new Map(nodes.map(n=>[n.entity_key,[]]));
  for(const [id,parent] of parents)children.get(parent)?.push(id);
  for(const values of children.values())values.sort((a,b)=>(byId.get(a).created_at||'').localeCompare(byId.get(b).created_at||'')||a.localeCompare(b));
- const weight=new Map(),depth=new Map([[root,0]]),angle=new Map([[root,0]]);
- function measure(id){const value=Math.max(1,(children.get(id)||[]).reduce((sum,c)=>sum+measure(c),0));weight.set(id,value);return value;}
+ // Tidy horizontal tree: each branch owns its vertical space. Stable source
+ // order and fixed card dimensions keep siblings aligned without force drift.
+ const positions=new Map(),depth=new Map([[root,0]]),heights=new Map();
+ function measure(id){const kids=children.get(id)||[];const slots=Math.max(1,kids.reduce((sum,c)=>sum+measure(c),0));heights.set(id,slots);return slots;}
  measure(root);
- function sectors(id,start,end){
-  let offset=start;
-  for(const child of children.get(id)||[]){const size=(end-start)*(id===root?1/(children.get(id).length||1):weight.get(child)/weight.get(id));depth.set(child,depth.get(id)+1);angle.set(child,offset+size/2);sectors(child,offset,offset+size);offset+=size;}
+ const column=340,row=176,padding=100;
+ function place(id,level,top){
+  depth.set(id,level);const span=heights.get(id)*row;
+  positions.set(id,{x:150+level*column,y:padding+top+span/2,depth:level});
+  let offset=top;
+  for(const child of children.get(id)||[]){place(child,level+1,offset);offset+=heights.get(child)*row;}
  }
- sectors(root,-Math.PI,Math.PI);
- // Seed each branch around the project, then compact its related records.
- const positions=new Map();
- const counts=new Map();for(const d of depth.values())counts.set(d,(counts.get(d)||0)+1);
- for(const n of nodes){const d=depth.get(n.entity_key)||0,a=angle.get(n.entity_key)||0;
-  const radius=d?Math.max(d*190,counts.get(d)*36):0;
-  positions.set(n.entity_key,{x:Math.cos(a)*radius,y:Math.sin(a)*radius,depth:d});
- }
- const indexed=nodes.map(n=>({id:n.entity_key,...positions.get(n.entity_key)}));
- const indexById=new Map(indexed.map((n,i)=>[n.id,i]));
- const springPairs=new Map();
- for(const e of edges){if(!indexById.has(e.source)||!indexById.has(e.target)||e.source===e.target)continue;
-  const pair=[e.source,e.target].sort();springPairs.set(pair.join('|'),pair);
- }
- // Local rectangle collisions use a spatial grid, not a quadratic global scan.
- function separate(){
-  const cells=new Map(),cell=260;
-  for(let i=0;i<indexed.length;i++){
-   const n=indexed[i],cx=Math.floor(n.x/cell),cy=Math.floor(n.y/cell);
-   for(let dx=-1;dx<=1;dx++)for(let dy=-1;dy<=1;dy++)for(const j of cells.get((cx+dx)+','+(cy+dy))||[]){
-    const other=indexed[j],sx=n.x-other.x,sy=n.y-other.y,ox=248-Math.abs(sx),oy=144-Math.abs(sy);
-    if(ox<=0||oy<=0)continue;
-    const axis=ox<oy?'x':'y',gap=(axis==='x'?ox:oy)+1;
-    const sign=(axis==='x'?sx:sy)>=0?1:-1;
-    if(n.id===root)other[axis]-=sign*gap;
-    else if(other.id===root)n[axis]+=sign*gap;
-    else{n[axis]+=sign*gap/2;other[axis]-=sign*gap/2;}
-   }
-   const key=Math.floor(n.x/cell)+','+Math.floor(n.y/cell);if(!cells.has(key))cells.set(key,[]);cells.get(key).push(i);
-  }
- }
- const iterations=nodes.length<100?180:80;
- for(let step=0;step<iterations;step++){
-  const forces=indexed.map(()=>({x:0,y:0}));
-  for(const [a,b] of springPairs.values()){
-   const i=indexById.get(a),j=indexById.get(b),p=indexed[i],q=indexed[j];
-   const dx=q.x-p.x,dy=q.y-p.y,d=Math.hypot(dx,dy)||1,ux=dx/d,uy=dy/d;
-   const rest=2*(110*Math.abs(ux)+56*Math.abs(uy))+64,strength=(d-rest)*.045;
-   forces[i].x+=ux*strength;forces[i].y+=uy*strength;forces[j].x-=ux*strength;forces[j].y-=uy*strength;
-  }
-  for(let i=0;i<indexed.length;i++){
-   const p=indexed[i];if(p.id===root)continue;
-   const r=Math.hypot(p.x,p.y)||1,target=p.depth*190;
-   forces[i].x-=p.x/r*(r-target)*.012;forces[i].y-=p.y/r*(r-target)*.012;
-   const damping=.8-step/iterations*.4;
-   p.x+=Math.max(-16,Math.min(16,forces[i].x))*damping;p.y+=Math.max(-16,Math.min(16,forces[i].y))*damping;
-  }
-  // Preserve the inside-to-outside hierarchy while branches pack together.
-  for(const p of [...indexed].sort((a,b)=>a.depth-b.depth)){
-   if(p.id===root)continue;
-   const parent=indexed[indexById.get(parents.get(p.id))],r=Math.hypot(p.x,p.y)||1;
-   const minimum=Math.hypot(parent.x,parent.y)+125;
-   if(r<minimum){p.x*=minimum/r;p.y*=minimum/r;}
-  }
-  separate();
- }
- for(let i=0;i<18;i++)separate();
- const halfWidth=Math.max(300,...indexed.map(n=>Math.abs(n.x)))+150;
- const halfHeight=Math.max(220,...indexed.map(n=>Math.abs(n.y)))+100;
- for(const n of indexed)positions.set(n.id,{x:n.x+halfWidth,y:n.y+halfHeight,depth:n.depth});
- return {positions,width:halfWidth*2,height:halfHeight*2,centerX:halfWidth,centerY:halfHeight,firstRadius:190,radii:[]};
+ place(root,0,0);
+ const width=Math.max(600,...[...positions.values()].map(p=>p.x+150));
+ const height=Math.max(440,heights.get(root)*row+padding*2);
+ const origin=positions.get(root);
+ return {positions,width,height,centerX:origin?.x||150,centerY:origin?.y||220,firstRadius:340,radii:[]};
 }
 
 function relationGeometry(a,b,offset=0){
- const dx=b.x-a.x,dy=b.y-a.y,length=Math.hypot(dx,dy)||1;
- const clip=Math.min(118/Math.max(Math.abs(dx),.001),62/Math.max(Math.abs(dy),.001),.4);
- const start={x:a.x+dx*clip,y:a.y+dy*clip},end={x:b.x-dx*clip,y:b.y-dy*clip};
- const cx=(start.x+end.x)/2-dy/length*offset,cy=(start.y+end.y)/2+dx/length*offset;
- return {path:`M${start.x} ${start.y} Q${cx} ${cy} ${end.x} ${end.y}`,x:(start.x+2*cx+end.x)/4,y:(start.y+2*cy+end.y)/4};
+ const forward=b.x>=a.x,sign=forward?1:-1;
+ const sameColumn=Math.abs(b.x-a.x)<1;
+ const start={x:a.x+sign*112,y:a.y+offset*.35},end={x:b.x+(sameColumn?112:-sign*112),y:b.y+offset*.35};
+ const bend=Math.max(55,Math.abs(end.x-start.x)*.5);
+ const c1={x:start.x+sign*bend,y:start.y},c2={x: sameColumn?end.x+bend:end.x-sign*bend,y:end.y};
+ const point=t=>{const u=1-t;return {x:u*u*u*start.x+3*u*u*t*c1.x+3*u*t*t*c2.x+t*t*t*end.x,y:u*u*u*start.y+3*u*u*t*c1.y+3*u*t*t*c2.y+t*t*t*end.y};};
+ const mid=point(.5);
+ return {path:`M${start.x} ${start.y} C${c1.x} ${c1.y} ${c2.x} ${c2.y} ${end.x} ${end.y}`,x:mid.x,y:mid.y,point};
 }
 
 let stylesheet;
@@ -223,19 +175,49 @@ export async function openProjectGraph({projectId,request,returnFocus,isCurrent=
  if(edge){
   const source=byId.get(edge.source),target=byId.get(edge.target);
   aside.innerHTML=close+`<span class="gd-eyebrow">${uiText("RELACIÓN")}</span><h2>${esc(links[edge.kind]||edge.kind)}</h2><div class="gd-relation-summary"><button class="gd-connection" data-live-select="${esc(source.entity_key)}">${icon(kinds[source.kind]?.[1]||'file-text')}<span>${esc(title(source))}<small>${uiText("Origen")}</small></span></button><p>${esc(links[edge.kind]||edge.kind)} ${icon('arrow-right')}</p><button class="gd-connection" data-live-select="${esc(target.entity_key)}">${icon(kinds[target.kind]?.[1]||'file-text')}<span>${esc(title(target))}<small>${uiText("Destino")}</small></span></button></div>`;
+  placeRelationLabels();
   return;
  }
  const description=node.scope_summary||(node.business_kind==='email_request'?uiText("Conversación que respalda el pedido del cliente."):node.kind==='Acceptance'?uiText("Aceptación registrada mediante revisión manual del documento devuelto."):node.kind==='Payment'?(node.status==='completed'?uiText("Pago confirmado por el backend."):uiText("Este pago aún no está confirmado.")):uiText("Registro del proyecto y sus conexiones documentadas."));
  aside.innerHTML=close+`<span class="gd-eyebrow">${esc(kinds[node.kind]?.[0])}</span><h2>${esc(title(node))}</h2><p class="gd-detail-copy">${esc(description)}</p><div class="gd-connections"><h3>${uiText("Conectado con")}</h3><div class="gd-connection-legend" aria-label="${uiText("graph.directionLegend")}"><span>${icon('arrow-left')}${uiText("graph.incoming")}</span><span>${icon('arrow-right')}${uiText("graph.outgoing")}</span></div>${related.map(e=>{const other=byId.get(e.source===selected?e.target:e.source);return `<button class="gd-connection" data-live-select="${esc(other.entity_key)}">${icon(kinds[other.kind]?.[1]||'file-text')}<span>${esc(title(other))}<small>${e.source===selected?'→':'←'} ${esc(links[e.kind]||e.kind)}</small></span>${icon('chevron-right')}</button>`;}).join('')||("<p class=\"gd-detail-copy\">"+uiText("Sin conexiones registradas.")+"</p>")}</div>${node.kind==='Document'?`<button class="gd-document-action" data-live-document="${esc(node.source_id)}">${icon('file-text')}${uiText("Ver documento fuente")}</button>`:''}`;
+  placeRelationLabels();
  }
  function applyView(){
-  if(!scene)return;scene.style.transform=`translate(${view.x}px,${view.y}px) scale(${view.scale})`;scene.style.setProperty('--gd-label-scale',String(Math.min(2,1/view.scale)));
+  if(!scene)return;scene.style.transform=`translate(${view.x}px,${view.y}px) scale(${view.scale})`;scene.style.setProperty('--gd-label-scale','1');
+  placeRelationLabels();
   const output=root.querySelector('[data-live-scale]');if(output)output.textContent=Math.round(view.scale*100)+'%';
  }
+ function availableMapWidth(){return Math.max(240,viewport.clientWidth-(detailsOpen?Math.min(330,viewport.clientWidth*.4):0));}
  function centerProject(){
   if(!viewport||!layout)return;
-  view.scale=Math.min(.85,Math.max(.65,Math.min(viewport.clientWidth,viewport.clientHeight)/(layout.firstRadius*2+200)));
-  view.x=viewport.clientWidth/2-layout.centerX*view.scale;view.y=viewport.clientHeight/2-layout.centerY*view.scale;applyView();
+  view.scale=1;
+  view.x=160-layout.centerX;view.y=viewport.clientHeight/2-layout.centerY;applyView();
+ }
+ // Position labels in the gaps, avoiding cards and other active labels.
+ function placeRelationLabels(){
+  if(!scene||!layout)return;
+  const boxes=[...layout.positions.values()].map(p=>({x:p.x-122,y:p.y-66,w:244,h:132}));
+  const overlaps=(a,b)=>a.x<b.x+b.w&&a.x+a.w>b.x&&a.y<b.y+b.h&&a.y+a.h>b.y;
+  const placed=[];
+  for(const group of root.querySelectorAll('.gd-edge')){
+   const label=group.querySelector('text');if(!label)continue;
+   label.classList.remove('is-crowded');if(!group.classList.contains('is-active'))continue;
+   const edge=edges.find(e=>e.edge_key===group.dataset.liveEdge);
+   const geometry=relationGeometry(layout.positions.get(edge.source),layout.positions.get(edge.target));
+   const bounds=label.getBBox(),w=bounds.width+16,h=24;
+   let chosen;
+   for(const t of [.5,.72,.28,.85,.15]){
+    const point=geometry.point(t);
+    for(const dy of [-16,18,-42,44,-68,70]){
+     const box={x:point.x-w/2,y:point.y+dy-h,w,h};
+     if(!boxes.some(b=>overlaps(box,b))&&!placed.some(b=>overlaps(box,b))){chosen=box;break;}
+    }
+    if(chosen)break;
+   }
+   // In a dense overview the inspector still lists every factual connection.
+   if(!chosen){label.classList.add('is-crowded');continue;}
+   placed.push(chosen);label.setAttribute('x',chosen.x+w/2);label.setAttribute('y',chosen.y+h-6);
+  }
  }
  function fit(){
   const availableWidth=Math.max(200,viewport.clientWidth-(detailsOpen?Math.min(320,viewport.clientWidth*.4):0));
@@ -260,13 +242,13 @@ export async function openProjectGraph({projectId,request,returnFocus,isCurrent=
   view.x=drag.startX+dx;view.y=drag.startY+dy;applyView();
  }
  function pointerUp(event){if(drag?.moved)ignoreClickUntil=Date.now()+100;drag=null;viewport.classList.remove('is-dragging');if(viewport.hasPointerCapture(event.pointerId))viewport.releasePointerCapture(event.pointerId);}
- function focusNode(id){const p=layout?.positions.get(id);if(!p)return;view.x=viewport.clientWidth/2-p.x*view.scale;view.y=viewport.clientHeight/2-p.y*view.scale;applyView();}
+ function focusNode(id){const p=layout?.positions.get(id);if(!p)return;view.scale=Math.max(.85,view.scale);view.x=availableMapWidth()/2-p.x*view.scale;view.y=viewport.clientHeight/2-p.y*view.scale;applyView();}
  let bodyOverflow;
  function setExpanded(value){
   if(value===expanded)return;expanded=value;root.classList.toggle('is-expanded',value);
   if(value){bodyOverflow=document.body.style.overflow;document.body.style.overflow='hidden';}else if(bodyOverflow!==undefined){document.body.style.overflow=bodyOverflow;bodyOverflow=undefined;}
   const button=root.querySelector('[data-live-expand]');if(button){button.textContent=value?uiText("Reducir mapa"):uiText("Ampliar mapa");button.setAttribute('aria-pressed',String(value));}
-  if(viewport&&layout)fit();
+  if(viewport&&layout){if(detailsOpen)focusNode(selected);else centerProject();}
  }
  if(!embedded)dialog.addEventListener('cancel',event=>{if(expanded){event.preventDefault();setExpanded(false);}});
  root.addEventListener('keydown',event=>{

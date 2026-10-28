@@ -1,5 +1,13 @@
 # Instrucciones del proyecto Trato
 
+## Ramas y publicación
+
+Preferencia de Sebastian, 27/10/2026:
+
+- La rama principal es `main`. Todo cambio debe prepararse en una rama de trabajo separada, publicarse en esa rama y después integrarse mediante un pull request y merge a `main`.
+- No crear commits directamente sobre `main` ni actualizarla directamente para publicar cambios. Esta regla también aplica a publicaciones mediante el conector de GitHub cuando la raíz local no tenga un checkout Git operativo.
+- Coordinar las publicaciones entre chats para evitar pisar cambios. Verificar los cambios y las pruebas antes del merge; no interpretar esta regla como una orden de publicar o fusionar trabajo pendiente.
+
 ## Estándar de prompts
 
 - Los prompts de agentes deben seguir `docs/estandar-prompts.md`, adaptado de la guía compartida por Sebastian en QAMAQ.

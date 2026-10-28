@@ -11,11 +11,12 @@ const projects = demoData.projects.map(project => {
   const overdue = invoice && invoice.status === 'pending' && new Date(invoice.dueAt) < new Date(demoData.meta.asOf);
   return { ...project, client: `${client.name} · ${project.service}`, initials: client.initials, type: request.type, amount: request.amount, status: request.type === 'cambios' ? uiText("Por acordar") : request.type === 'reembolsos' ? uiText("En revisión") : overdue ? `${Math.round((Date.parse(demoData.meta.asOf.slice(0,10)) - Date.parse(invoice.dueAt.slice(0,10))) / 86400000)} ${uiText("días de atraso")}` : uiText("Dentro del plazo") };
 });
-const labels = { ensayos:uiText('practice.title'), inicio: uiText("Vista general"), cambios: uiText("Cambios y extras"), cobros: uiText("Cobros pendientes"), reembolsos: uiText("Reembolsos"), clientes: uiText("Clientes"), conversaciones: uiText("Asistente"), kb: uiText("Documentos y términos") };
+const labels = { reputacion:uiText('reputation.title'), ensayos:uiText('practice.title'), inicio: uiText("Vista general"), cambios: uiText("Cambios y extras"), cobros: uiText("Cobros pendientes"), reembolsos: uiText("Reembolsos"), clientes: uiText("Clientes"), conversaciones: uiText("Asistente"), kb: uiText("Documentos y términos") };
 // Vista de diseño del primer bloque; los demás recorridos se conservan para después.
-const previewViews = new Set(['inicio', 'clientes', 'conversaciones', 'kb', 'cambios', 'ensayos']);
+const previewViews = new Set(['inicio', 'clientes', 'conversaciones', 'kb', 'cambios', 'ensayos', 'reputacion']);
 const typeLabels = { cambios: uiText("Cambio de alcance"), cobros: uiText("Seguimiento de pago"), reembolsos: uiText("Solicitud de reembolso") };
 const descriptions = {
+  reputacion:uiText('reputation.subtitle'),
   ensayos:uiText('practice.subtitle'),
   clientes: uiText("Cada relación tiene su propio contexto. Mantén sus proyectos, acuerdos y conversaciones en un mismo lugar."),
   conversaciones: uiText("Pregunta sobre el acuerdo o revisa lo que te escribió tu cliente. Tú decides el siguiente paso."),
@@ -70,7 +71,7 @@ function renderView() {
     if (selected) link.setAttribute('aria-current', 'page'); else link.removeAttribute('aria-current');
   });
   document.querySelector('#crumb').textContent = labels[currentView];
-  const workspaceView = ['clientes', 'conversaciones', 'kb', 'ensayos'].includes(currentView);
+  const workspaceView = ['clientes', 'conversaciones', 'kb', 'ensayos', 'reputacion'].includes(currentView) || (currentView==='inicio'&&window.TratoCloud?.handlesView);
   document.querySelector('#client-workspace').hidden = !workspaceView;
   document.querySelector('#assistant-entry').hidden = currentView !== 'inicio';
   document.querySelector('.stats').hidden = workspaceView;

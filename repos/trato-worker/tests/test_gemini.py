@@ -69,14 +69,14 @@ class GeminiTests(unittest.TestCase):
 
     def test_analysis_still_validates_citations_and_requires_review(self):
         model = GeminiLangChainModel(self.config(), client_factory=StubClient)
-        output = analyze(SOURCES, model)
+        output = analyze(SOURCES, model, output_language='es')
         self.assertTrue(output['human_review_required'])
         self.assertEqual(model._client.structured['method'], 'json_schema')
         self.assertEqual(model._client.structured['schema'], SCHEMA)
         self.assertEqual(model.last_usage['total_tokens'], 50)
         model._client.response['parsed'] = {**RESULT, 'sources': [{'source_id': 'outside:tenant', 'quote': 'invented'}]}
         with self.assertRaises(ValueError):
-            analyze(SOURCES, model)
+            analyze(SOURCES, model, output_language='es')
 
     def test_provider_error_is_not_retried_or_exposed_or_replaced(self):
         model = GeminiLangChainModel(self.config(), client_factory=lambda **kw: StubClient(fail=True, **kw))

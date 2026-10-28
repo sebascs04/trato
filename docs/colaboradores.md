@@ -35,6 +35,7 @@ Rellena sólo los servicios que vayas a probar. No publiques esos archivos ni ma
 - **Gmail:** cliente OAuth de aplicación web, Gmail API y usuario de prueba autorizado. Callback `http://localhost:5173/gmail-callback.html`. Las variables son `GOOGLE_GMAIL_CLIENT_ID`, `GOOGLE_GMAIL_CLIENT_SECRET` y `GMAIL_TOKEN_ENCRYPTION_KEY`. El envío requiere conexión de la cuenta y confirmación del usuario.
 - **PayPal:** credenciales de aplicación Merchant Sandbox propias. Las variables son `PAYPAL_CLIENT_ID`, `PAYPAL_CLIENT_SECRET` y `PAYPAL_MERCHANT_ID`. El flujo de cobro usa enlaces de la aplicación y una captura verificada por backend. No utilices credenciales live para estas pruebas.
 - **Gemini:** está preparado como adaptador, no se activa por clonar el repositorio. Selecciona proveedor/backend/modelo sólo después de acordar acceso y costos. No uses el OAuth de Gmail como credencial de IA.
+- **Ollama/Qwen local:** para Flores y su asistente, seguir [la instalación aislada y comprobaciones](ollama-para-flores.md). Los pesos no están incluidos en GitHub. El modelo fue probado en GPU, pero todavía no está conectado a Ensayos; no activar ese recorrido sin revisar fuentes y calidad.
 
 El configurador de ingesta genera secretos locales para el Redis y el acceso del worker, manteniendo lo ya configurado:
 

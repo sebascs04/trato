@@ -18,4 +18,4 @@ Los resultados de proveedores ya iniciados pueden terminar de registrarse para c
 
 ## Servicios locales
 
-Interfaz `http://localhost:5173`, API Trato `http://127.0.0.1:8100`, procesador `http://127.0.0.1:8101`. El supervisor configura explícitamente el proxy y la URL del procesador. Los puertos 8000/8001 pertenecen a QAMAQ y permanecen sin cambios. No hay búsqueda automática de puertos ni alternancia ante fallos. Inicio: `python3 scripts/dev-polyrepo.py`.
+Interfaz `http://localhost:5173`, API Trato `http://127.0.0.1:8100`, procesador `http://127.0.0.1:8101`. El supervisor configura explícitamente el proxy y la URL del procesador. No hay búsqueda automática de puertos ni alternancia ante fallos. Inicio: `python3 scripts/dev-polyrepo.py`.

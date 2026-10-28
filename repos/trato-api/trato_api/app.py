@@ -15,7 +15,9 @@ from paypal.client import PayPalError
 from .errors import ApiError
 from .business_routes import build_business_router
 from .thread_routes import build_thread_router
+from .rehearsal_routes import build_rehearsal_router
 from .graph_routes import build_graph_router
+from .reputation_routes import build_reputation_router
 from .proposals.routes import build_proposal_router
 from .proposals.workflow import ProposalWorkflow
 from .gmail.service import GmailSettings, GmailConnectionService
@@ -106,7 +108,7 @@ def require_user(request: Request):
     return request.app.state.services.authenticate(request.headers.get('authorization', ''))
 
 
-def create_app(settings=None, services=None, repository_factory=None, *, gmail_service=None, sandbox_test_service=None, proposal_repository_factory=None, graph_reader=None):
+def create_app(settings=None, services=None, repository_factory=None, *, gmail_service=None, sandbox_test_service=None, proposal_repository_factory=None, graph_reader=None, rehearsal_service=None):
     settings = settings or Settings.from_env()
     services = services or Services(settings)
     app = FastAPI(title='Trato API', version='0.1.0')
@@ -127,7 +129,9 @@ def create_app(settings=None, services=None, repository_factory=None, *, gmail_s
     app.include_router(build_sandbox_payment_router(sandbox_test_service, require_user))
     app.include_router(build_business_router(settings, services, require_user, repository_factory))
     app.include_router(build_thread_router(settings))
+    app.include_router(build_rehearsal_router(require_user,rehearsal_service))
     app.include_router(build_graph_router(settings,require_user,repository_factory,graph_reader))
+    app.include_router(build_reputation_router(settings,require_user,repository_factory))
     app.include_router(build_proposal_router(settings, require_user, proposal_repository_factory, ProposalWorkflow(settings,gmail_service)))
 
     @app.exception_handler(ApiError)

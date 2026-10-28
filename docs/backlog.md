@@ -8,6 +8,8 @@ Completar un recorrido real: acuerdo y fuentes → pedido del cliente → análi
 
 Las devoluciones, la búsqueda híbrida y el grafo amplían ese recorrido. Una maqueta o respuesta simulada no se presenta como integración de IA real.
 
+La revisión final TRATO-09 se realiza contra [bases y lista de evaluación del hackathon](bases-y-evaluacion-hackathon.md), con evidencia por requisito y contraste de los cinco criterios. No marcar cumplimiento sin probar la versión de entrega.
+
 ## Ya implementado: no repetir
 
 - [x] Repositorio público con frontend oficial, API, procesador y worker; guía de instalación.
@@ -38,7 +40,7 @@ Todos los pendientes siguientes están **Por hacer** al publicar. Antes de empez
 | TRATO-01 | Preparar el entorno del compañero | Ninguna | Instala desde un clon limpio siguiendo colaboradores.md; entra con sus accesos autorizados, arranca los servicios sin reutilizar recursos de otro proyecto y registra problemas de instalación. |
 | TRATO-02 | Definir contrato de referencia inicial revisada y resultado de análisis | Ninguna | API y worker acuerdan IDs, versión de base, fuentes, citas, datos ausentes, estados y traspaso a propuesta. Todo queda en DTO/esquema y pruebas; el modelo no decide permisos ni aceptación. |
 | TRATO-03 | Configurar Gemini de forma explícita | Decisión y acceso de Sebastian | Backend, proyecto/región y modelo quedan fijados; se verifica cuota/costo y se autoriza la primera llamada. No autodetecta otro proveedor ni usa Gemini desde el navegador. |
-| TRATO-04 | Conectar evaluación semántica y análisis de cambios | TRATO-02 y 03 | Texto real autorizado produce JSON validado, citas literales verificables y clasificación por elemento, o pide aclaración. No usa fixture, precio inventado ni aprobación automática. Conecta analyze-change v2 al contrato acordado. |
+| TRATO-04 | Conectar evaluación semántica y análisis de cambios | TRATO-02 y 03 | Texto real autorizado produce JSON validado, citas literales verificables y clasificación por elemento, o pide aclaración. No usa fixture, precio inventado ni aprobación automática. Conecta analyze-change v3 al contrato acordado. |
 | TRATO-05 | Integrar el flujo real de análisis con los threads persistentes | TRATO-02 y 04 | Usa la cola y sobre genéricos; start/resume, idempotencia, contexto y revisión vigente se validan. Sobrevive a reinicio y no duplica propuestas. Las instantáneas del worker se mapean al UUID real de revisión de la API. |
 | TRATO-06 | Mostrar análisis real y fuentes en la interfaz | TRATO-04 y 05 | El usuario ve pedido, comparación, citas y aclaraciones del backend; puede revisar antes de crear adenda. No confunde error técnico con pedido ajeno, ni mezcla información de clientes. |
 | TRATO-07 | Evaluar y probar el recorrido completo | TRATO-06 | Casos en español cubren incluido, extra, ambiguo, ajeno, instrucción maliciosa en documento, ajustes del cliente e importe cero. Un caso conectado llega al pago sandbox y otro exige aclaración; se conserva evidencia de las pruebas. |
@@ -71,7 +73,9 @@ Todos los pendientes siguientes están **Por hacer** al publicar. Antes de empez
 
 ## Cómo repartir el trabajo
 
-Propuesta inicial, para confirmar con el equipo:
+El [estado de implementación y próximos pasos](tareas-p1-p2.md) resume las capacidades actuales y los pendientes de Ensayos, modelo y Reputación.
+
+Propuesta inicial por especialidad, conservada como referencia:
 
 - **IA/worker:** TRATO-02 a 05 y recuperación de fuentes.
 - **Backend de negocio/PayPal/Gmail:** contratos del traspaso, TRATO-13 a 15 y callbacks de demo.

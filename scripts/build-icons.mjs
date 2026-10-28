@@ -1,5 +1,5 @@
 import {readFile,writeFile} from 'node:fs/promises';
-const names=['trash-2','x','plus','refresh-cw','arrow-right','arrow-left','arrow-up-right','download','send','file-text','layout-dashboard','users','git-compare-arrows','credit-card','undo-2','chevron-right','chevron-down','mail','history','paperclip','eye','pencil','messages-square','save'];
+const names=['trash-2','x','plus','refresh-cw','arrow-right','arrow-left','arrow-up-right','download','send','file-text','layout-dashboard','users','git-compare-arrows','credit-card','undo-2','chevron-right','chevron-down','mail','history','paperclip','eye','pencil','messages-square','save','user-round','check','star','search','shield-check','flag','globe','map-pin','pause','play'];
 const shapes={};
 for(const name of names){
  const svg=await readFile(new URL(`../node_modules/lucide-static/icons/${name}.svg`,import.meta.url),'utf8');

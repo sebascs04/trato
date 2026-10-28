@@ -4,7 +4,7 @@
 
 Sebastian eligió **Neo4j AuraDB Free** para el grafo de conocimiento de Trato. Se usarán tanto Neo4j como Weaviate: Neo4j para relaciones y recorridos de evidencia; Weaviate para chunks y recuperación híbrida; Supabase permanece como fuente de verdad de registros y estados de negocio. Community Edition no es la opción elegida para este bloque.
 
-Esta decisión no crea una instancia ni confirma conexión, cuota disponible o sincronización. El siguiente trabajo consiste en definir nodos/relaciones y la proyección desde registros autorizados de Supabase, conservando los IDs, la procedencia y el aislamiento por propietario/proyecto. Aura será propio de Trato; no se reutilizan recursos de QAMAQ.
+Esta decisión no crea una instancia ni confirma conexión, cuota disponible o sincronización. El siguiente trabajo consiste en definir nodos/relaciones y la proyección desde registros autorizados de Supabase, conservando los IDs, la procedencia y el aislamiento por propietario/proyecto. Aura será propio de Trato; no se reutilizan recursos de otros proyectos.
 
 Propuesta del 25 de octubre de 2026. Documento de diseño; no habilita servicios, facturación, modelos ni migraciones.
 

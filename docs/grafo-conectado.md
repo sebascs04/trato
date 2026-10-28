@@ -25,7 +25,7 @@ Implementado el 27 de octubre de 2026. AuraDB Free propio; Supabase conserva la 
 
 ## Configuración
 
-Credenciales en `.env.neo4j` privado; ejecutar `python3 scripts/configure-graph.py` para copiarlas a `.env` privados de API y worker. `neo4j==6.4.1` y dependencia pytz fijados en ambos lockfiles. El frontend nunca recibe secretos. No se añade puerto local: conexión TLS a Aura, servicios reservados en local-ports.json. No utilizar Neo4j de QAMAQ.
+Credenciales en `.env.neo4j` privado; ejecutar `python3 scripts/configure-graph.py` para copiarlas a `.env` privados de API y worker. `neo4j==6.4.1` y dependencia pytz fijados en ambos lockfiles. El frontend nunca recibe secretos. No se añade puerto local: conexión TLS a Aura, servicios reservados en local-ports.json. No utilizar Neo4j de otros proyectos.
 
 Migración `20261027165842_project_graph_threads.sql`: tabla private.graph_jobs con RLS sin acceso directo para usuarios, wrappers autorizados y extensión del dispatcher backend. La implementación de ingesta anterior se conserva como handler; relay y transporte siguen compartidos.
 
@@ -62,3 +62,31 @@ Los verbos sobre aristas aparecen solo en conexiones activas del nodo selecciona
 HAS_REVISION y CURRENT_REVISION entre la misma propuesta y adenda se presentan como una sola flecha «Tiene adenda». La tarjeta de destino indica «Versión actual» / «Current version»; current_revision_edge conserva la referencia a la relación original. Neo4j no se modifica. Las versiones anteriores siguen visibles según las reglas de negocio existentes.
 
 La disposición se calcula automáticamente: ramas desde el proyecto, atracción entre registros relacionados, separación de tarjetas rectangulares y conservación del orden hacia afuera. No requiere posiciones manuales. Ampliar/reducir ajusta el encuadre al espacio disponible; Ajustar considera el panel de detalles. Quince pruebas Chromium de mapa conectado y navegación aprobadas, incluida una distribución determinista de 25 elementos sin solapamientos. Sintaxis y paridad ES/EN aprobadas (949 claves, incluyendo Ensayos de P1).
+
+## Legibilidad del mapa — 27/10/2026
+
+La distribución compacta anterior podía juntar ramas y superponer verbos; ajustar todo el grafo reducía demasiado las tarjetas. La vista actual usa un árbol horizontal por niveles: cada rama reserva su espacio vertical y mantiene un orden estable. Las posiciones expresan la jerarquía de presentación; las flechas siguen conservando la dirección real de cada relación.
+
+La apertura usa zoom 100% y el proyecto queda a la izquierda; arrastrar permite recorrer las ramas. Ampliar conserva un tamaño legible y centra el elemento seleccionado en el espacio libre del inspector. Ajustar sigue ofreciendo una vista general explícita. Las conexiones no seleccionadas se atenúan; las etiquetas activas se colocan en huecos sin colisionar con tarjetas ni otras etiquetas. Cuando no hay un hueco, el texto se conserva en el inspector y en la etiqueta accesible de la conexión, sin inventar ni eliminar relaciones de datos.
+
+Validación: 15 pruebas de mapa conectado/navegación, y después 11 de navegación con regresiones ES/EN para tamaño mínimo de tarjeta, separación de etiquetas y selección visible fuera del inspector. npm run check y 949 traducciones emparejadas aprobados. Preparado en fix/graph-readability; sin cambios en Ensayos de P1 ni en servicios o puertos.
+
+## Acuerdo inicial como referencia y flechas ortogonales — 27/10/2026
+
+A pedido de Sebastian, si existe un documento initial_agreement, ese documento se coloca en el centro del encuadre inicial y el proyecto queda a su izquierda. Si hay varios, el orden estable por created_at/entity_key determina la referencia visual; todos siguen disponibles. Esta alineación no crea relaciones acuerdo→pedido: se dibujan únicamente las aristas reales. Los demás elementos mantienen ramas y niveles separados. Ir al proyecto centra realmente el nodo de proyecto.
+
+Las flechas usan tramos horizontales/verticales, con puertos laterales y carriles entre columnas. Los recorridos que atravesarían otras tarjetas se desvían por el borde de la distribución. Se mantiene la dirección de cada arista y la colocación de etiquetas sin colisiones. Se corrigió además el bloqueo accidental de los controles al pulsarlos justo después de arrastrar el lienzo.
+
+Verificado con 21 pruebas navegador (incluido centrado ES/EN, segmentos ortogonales y conservación de relaciones) y npm run check (949 traducciones). Último ajuste de separación vertical revisado con pruebas específicas. Estos cambios quedan locales; no se publicó otra revisión del PR existente ni se creó o fusionó ningún PR, conforme a la autorización explícita requerida por Sebastian.
+
+## Puertos exclusivos por conexión — 27/10/2026
+
+Cada extremo de una flecha tiene un puerto propio. La asignación agrupa entradas y salidas por nodo/lado y las ordena de forma estable; incluye conexiones recíprocas y repetidas entre el mismo par. Los tramos cercanos usan carriles separados. Las tarjetas crecen cuando requieren más espacio para sus puertos; las puntas mantienen un tamaño fijo dentro del SVG para no solaparse por el grosor del trazo. Etiquetas y flechas reutilizan exactamente la misma geometría.
+
+Regla registrada en AGENTS.md y comunicada a P1. 22 pruebas Chromium aprobadas, incluida una tarjeta con25 extremos distintos, conexiones recíprocas, orden de entrada independiente y extremos dentro de la tarjeta. npm run check aprobado. Cambios exclusivamente locales, sin push/PR/merge.
+
+## Espacio reservado para los verbos — 27/10/2026
+
+Las etiquetas se colocan comprobando todos los segmentos de todas las conexiones, incluso las no seleccionadas. Se mantiene un margen adicional de8unidades respecto a trazos/puntas y se reserva una caja de fondo con espacio alrededor del texto. La geometría consultada es la misma que se dibuja. Ninguna flecha puede atravesar el espacio de una etiqueta. Regla general registrada en AGENTS.md.
+
+Validación:14 pruebas de navegación aprobadas, más2 regresiones ES/EN que recorren los trazos SVG reales para detectar intersecciones con las cajas de los verbos; npm run check aprobado (945 traducciones tras ajustes de P1). Revisión visual con respuesta real del grafo y transporte de prueba explícito. Cambios locales, sin publicación ni operaciones sobre PR.

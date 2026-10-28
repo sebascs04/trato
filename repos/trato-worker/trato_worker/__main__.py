@@ -9,7 +9,8 @@ try:
         raise ValueError('Entrada demasiado grande.')
     model = configured_model()
     try:
-        result = analyze(json.loads(raw)['sources'], model)
+        payload = json.loads(raw)
+        result = analyze(payload['sources'], model, output_language=payload['output_language'])
         if hasattr(model, 'last_usage'):
             result['usage'] = model.last_usage
     finally:

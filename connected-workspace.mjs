@@ -34,7 +34,7 @@ export class ConnectedWorkspace {
     } catch {return null;}
   }
   saveNavigation() {
-    if(this.location.hash==='#ensayos')return;
+    if(['#ensayos','#reputacion'].includes(this.location.hash))return;
     if(!this.active||!this.session?.session||this.state!=='ready'||this.restoringNavigation||this.loading||!this.navigationKey())return;
     const clientId=this.clients.some(c=>c.id===this.clientId)?this.clientId:'';
     const projectId=clientId&&this.projects.some(p=>p.id===this.projectId&&p.client_id===clientId)?this.projectId:'';
@@ -87,7 +87,7 @@ export class ConnectedWorkspace {
     avatar.replaceWith(this.profile); this.profile.addEventListener('click',()=>this.openAccount());
     this.modal=this.document.createElement('dialog'); this.modal.className='cloud-dialog';
     this.modal.setAttribute('aria-labelledby','cloud-dialog-title'); this.document.body.append(this.modal);
-    this.modal.addEventListener('click',event=>{if(event.target.closest('[data-cloud-close]')) this.modal.close();});
+    this.modal.addEventListener('click',event=>{if(event.target.closest('[data-cloud-close]')) this.modal.close();const switcher=event.target.closest('[data-cloud-auth-mode]');if(switcher){const email=this.modal.querySelector('[name="email"]')?.value||'';this.openAccount(switcher.dataset.cloudAuthMode);this.modal.querySelector('[name="email"]').value=email;}});
     this.modal.addEventListener('submit',event=>{event.preventDefault(); this.submit(event);});
     this.modal.addEventListener('close',()=>{if(!this.modal.open){this.releasePreview();this.modal.replaceChildren();}});
     this.document.addEventListener('click',event=>this.click(event));
@@ -124,7 +124,7 @@ export class ConnectedWorkspace {
       if(epoch!==this.epoch) return;
       if(typeof session.user_id!=='string'||!/^[a-zA-Z0-9-]{1,80}$/.test(session.user_id))throw new Error(uiText("No pudimos verificar tu sesión."));
       this.navigationOwner=session.user_id;
-      const nav=restoreNavigation&&this.location.hash!=='#ensayos'?this.readNavigation():null;
+      const nav=restoreNavigation&&!['#ensayos','#reputacion'].includes(this.location.hash)?this.readNavigation():null;
       if(nav){this.clientId=nav.clientId;this.projectId=nav.projectId;this.tab=['gestion','comparar'].includes(nav.tab)?'solicitudes':nav.tab;this.requestId='';this.historyView=nav.historyView;}
       this.directoryLoading=false;
       this.clients=clients;this.projects=[];this.projectsLoaded=false;this.projectClientsLoaded=new Set();this.projectsPending=new Map();this.active=true; this.state='ready';
@@ -240,13 +240,14 @@ export class ConnectedWorkspace {
     this.modal.innerHTML=`<div class="upload-modal-header"><div><span class="eyebrow">${uiText("TU ESPACIO EN TRATO")}</span><h2 id="cloud-dialog-title">${escape(title)}</h2></div><button type="button" class="close" data-cloud-close aria-label="${uiText("Cerrar")}" title="${uiText("Cerrar")}">${uiIcon('x')}</button></div>${html}<p class="cloud-error" data-cloud-error role="alert"></p>`;
     this.modal.showModal();
   }
-  openAccount() {
+  openAccount(mode='login') {
     if(this.active) {
       const email=this.session.session.user.email || uiText("Sesión iniciada");
       this.show(uiText("Tu perfil"),`<section class="cloud-identity" aria-label="${uiText("Cuenta de Trato")}"><span class="cloud-account-avatar" aria-hidden="true">${escape(email.slice(0,2).toUpperCase())}</span><div><span class="cloud-account-label">${uiText("Cuenta de Trato")}</span><strong>${escape(email)}</strong></div></section><section class="cloud-account-connections" aria-label="${uiText("Conexiones")}"><header><h3>${uiText("Conexiones")}</h3><p>${uiText("Tu correo y tus cobros, en un solo lugar.")}</p></header><div class="cloud-integrations"></div></section><form data-cloud-form="logout" class="cloud-account-footer"><button class="text-button" type="submit">${uiText("Cerrar sesión")}</button></form>`);
       this.modal.classList.add('cloud-profile-dialog');
     } else {
-      this.show(uiText("Accede a tu estudio"),`<form data-cloud-form="auth"><label class="field" for="cloud-email">${uiText("Correo")}</label><input class="context-box" id="cloud-email" name="email" type="email" autocomplete="username" required><label class="field" for="cloud-password">${uiText("Contraseña")}</label><input class="context-box" id="cloud-password" name="password" type="password" minlength="8" autocomplete="current-password" required><div class="dialog-actions"><button type="submit" class="button" value="login">${uiText("Iniciar sesión")}</button><button type="submit" class="button secondary" value="signup">${uiText("Crear cuenta")}</button></div></form>`);
+      const signup=mode==='signup';
+      this.show(uiText(signup?'landing.signupTitle':'Accede a tu estudio'),`<p class="cloud-auth-intro">${uiText(signup?'auth.signupIntro':'auth.loginIntro')}</p><form data-cloud-form="auth"><label class="field" for="cloud-email">${uiText("Correo")}</label><input class="context-box" id="cloud-email" name="email" type="email" autocomplete="username" required><label class="field" for="cloud-password">${uiText("Contraseña")}</label><input class="context-box" id="cloud-password" name="password" type="password" minlength="8" autocomplete="${signup?'new-password':'current-password'}" required><div class="dialog-actions"><button type="submit" class="button" value="${signup?'signup':'login'}">${uiText(signup?'Crear cuenta':'Iniciar sesión')}</button></div></form><p class="cloud-auth-switch">${uiText(signup?'auth.hasAccount':'auth.noAccount')} <button type="button" data-cloud-auth-mode="${signup?'login':'signup'}">${uiText(signup?'Iniciar sesión':'Crear cuenta')}</button></p>`);
       this.modal.classList.add('cloud-auth-dialog');
     }
   }
@@ -260,7 +261,7 @@ export class ConnectedWorkspace {
         if(mode==='signup') ready=await this.session.signup(values.get('email').trim(),values.get('password'));
         else await this.session.login(values.get('email').trim(),values.get('password'));
         form.querySelector('[name="password"]').value='';
-        if(!ready) {this.modal.querySelector('[data-cloud-error]').textContent=uiText("Revisa tu correo y confirma la cuenta. Después vuelve a iniciar sesión desde tu perfil."); return;}
+        if(!ready) {this.modal.querySelector('[data-cloud-error]').textContent=uiText('landing.confirmEmail'); return;}
         await this.load(); this.modal.close(); this.location.hash='clientes';
       } else if(kind==='logout') {
         this.epoch++; this.clearNavigation(); await this.session.logout(); this.reset(); this.modal.close(); this.notify();
@@ -451,11 +452,18 @@ export class ConnectedWorkspace {
       return `<article class="cloud-client-row"><div><strong>${escape(client.name)}</strong><p class="cloud-client-meta">${client.contact_email?escape(client.contact_email)+' · ':''}${this.projectClientsLoaded.has(client.id)?(count?`${count} ${count===1?uiText("proyecto"):uiText("proyectos")}`:uiText("Sin proyectos todavía")):uiText("Ver proyectos")}</p></div><div class="cloud-client-actions"><button class="cloud-icon-button cloud-delete-client" data-cloud-action="client-delete" data-cloud-id="${client.id}" aria-label="${uiText("Eliminar cliente")} ${escape(client.name)}" title="${uiText("Eliminar cliente")} ${escape(client.name)}">${uiIcon('trash-2')}</button><button class="button secondary" data-cloud-action="client-open" data-cloud-id="${client.id}" aria-label="${uiText("Abrir cliente")} ${escape(client.name)}">${uiText("Abrir cliente ↗")}</button></div></article>`;
     }).join('') || ("<p class=\"cloud-section-note\">"+uiText("Todavía no tienes clientes. Usa Nuevo cliente junto al título para guardar el primero.")+"</p>")}</div></section>`;
   }
+  renderHome(workspace) {
+    const project=this.project(),client=this.clients.find(item=>item.id===project?.client_id);
+    const resume=project?`<section class="workspace-panel cloud-home-resume"><span class="eyebrow">${uiText('home.resume')}</span><h2>${escape(project.name)}</h2>${client?`<p>${escape(client.name)}</p>`:''}<a href="#clientes" class="button">${uiText('home.openProject')}${uiIcon('arrow-right')}</a></section>`:'';
+    workspace.innerHTML=`<div class="cloud-home ${project?'':'without-resume'}">${resume}<section class="workspace-panel cloud-home-clients"><header><h3>${uiText('home.clients')}</h3><span class="badge review">${new Intl.NumberFormat(uiLocale()).format(this.clients.length)}</span></header>${this.clients.length?`<div>${this.clients.slice(0,4).map(item=>`<article class="cloud-client-row"><div><strong>${escape(item.name)}</strong>${item.contact_email?`<p class="cloud-client-meta">${escape(item.contact_email)}</p>`:''}</div><button class="button secondary" data-cloud-action="client-open" data-cloud-id="${escape(item.id)}" aria-label="${uiText('Abrir cliente')} ${escape(item.name)}">${uiText('Abrir cliente ↗')}</button></article>`).join('')}</div><button class="text-button" data-cloud-action="clients">${uiText('home.allClients')}</button>`:`<p>${uiText('home.noClients')}</p><button class="button" data-cloud-action="client">${uiText('＋ Nuevo cliente')}</button>`}</section><section class="workspace-panel cloud-home-practice"><span aria-hidden="true">${uiIcon('messages-square')}</span><div><h3>${uiText('home.practiceTitle')}</h3><p>${uiText('home.practiceDescription')}</p></div><a href="#ensayos" class="button secondary">${uiText('home.practiceAction')}${uiIcon('arrow-right')}</a></section></div>`;
+  }
   renderWorkspace(workspace) {
     if(this.state==='loading' || this.directoryLoading || this.restoringNavigation){workspace.innerHTML=`<section class="workspace-panel cloud-initial-loading"><h2 class="sr-only">${uiText("Recuperando tu espacio…")}</h2>${this.renderSkeleton('list',this.active?uiText("Actualizando clientes y proyectos…"):uiText("Cargando clientes y proyectos…"))}</section>`;return;}
     if(!this.active) {
       workspace.innerHTML=`<section class="workspace-panel" aria-label="${uiText("Acceso a tu espacio")}"><h2>${this.state==='loading'?uiText("Recuperando tu espacio…"):this.state==='error'?uiText("Volvamos a conectar"):uiText("Tu espacio empieza aquí")}</h2><p role="status">${escape(this.message || (this.state==='loading'?uiText("Estamos recuperando tus clientes y proyectos."):uiText("Inicia sesión para ver tus clientes y continuar con tus proyectos.")))}</p>${this.state==='loading'?'':`<button class="button" data-cloud-action="${this.state==='error'?'reconnect':'access'}">${this.state==='error'?uiText("Volver a intentar"):uiText("Iniciar sesión o crear cuenta")}</button>`}</section>`; return;
     }
+    if(this.location.hash==='#inicio'||!this.location.hash){this.stopIngestionPolling();if(this.projectMapPanel)this.releaseProjectMap();this.renderHome(workspace);return;}
+    if(this.location.hash==='#reputacion'){this.stopIngestionPolling();if(this.projectMapPanel)this.releaseProjectMap();this.renderReputationWorkspace(workspace);return;}
     if(this.location.hash==='#ensayos'){this.stopIngestionPolling();if(this.projectMapPanel)this.releaseProjectMap();this.renderPracticeWorkspace(workspace);return;}
     const client=this.clients.find(c=>c.id===this.clientId), project=this.project();
     if(!client) {workspace.innerHTML=this.renderClients()+`<p class="cloud-notice" role="status" ${this.message?'':'hidden'}>${escape(this.message)}</p>`; return;}
@@ -576,18 +584,21 @@ export class ConnectedWorkspace {
       this.clientButton.type='button'; this.clientButton.dataset.cloudAction='client'; this.clientButton.textContent=uiText("＋ Nuevo cliente");
       row.append(this.clientButton);
     }
-    const workspaceView=['#clientes','#conversaciones','#kb','#ensayos'].includes(this.location.hash);
+    const workspaceView=['#clientes','#conversaciones','#kb','#ensayos','#reputacion'].includes(this.location.hash);
     this.document.body.classList.toggle('cloud-design',connected);
-    this.document.body.classList.toggle('cloud-project-view',connected&&active&&workspaceView&&this.location.hash!=='#ensayos'&&!!this.project());
-    this.document.body.classList.toggle('cloud-client-view',connected&&active&&workspaceView&&this.location.hash!=='#ensayos'&&!!this.clientId);
-    this.clientButton.hidden=!active || !workspaceView || !!this.clientId || this.location.hash==='#ensayos';
-    if(active&&this.location.hash==='#ensayos'){this.$('#page-title').textContent=uiText('practice.title');this.$('#page-description').textContent=uiText('practice.subtitle');}
+    this.document.body.classList.toggle('cloud-project-view',connected&&active&&workspaceView&&!['#ensayos','#reputacion'].includes(this.location.hash)&&!!this.project());
+    this.document.body.classList.toggle('cloud-client-view',connected&&active&&workspaceView&&!['#ensayos','#reputacion'].includes(this.location.hash)&&!!this.clientId);
+    this.clientButton.hidden=!active || !workspaceView || !!this.clientId || ['#ensayos','#reputacion'].includes(this.location.hash);
+    if(active&&(this.location.hash==='#inicio'||!this.location.hash)){this.$('#page-title').textContent=uiText('home.title');this.$('#page-description').textContent=uiText('home.subtitle');}
+    else if(active&&this.location.hash==='#reputacion'){this.$('#page-title').textContent=uiText('reputation.title');this.$('#page-description').textContent=uiText('reputation.subtitle');}
+    else if(active&&this.location.hash==='#ensayos'){this.$('#page-title').textContent=uiText('practice.title');this.$('#page-description').textContent=uiText('practice.subtitle');}
     else if(active && workspaceView) {this.$('#page-title').textContent=this.project()?.name || (this.clientId?this.clients.find(c=>c.id===this.clientId)?.name:uiText("Clientes"));this.$('#page-description').textContent=this.project()?uiText("Tu información inicial y los nuevos pedidos, en el mismo espacio."):this.clientId?uiText("Los proyectos y acuerdos de este cliente."):uiText("Cada cliente tiene sus proyectos. Elige uno para entrar a su espacio de trabajo.");}
     this.profile.textContent=active?(this.session.session.user.email || this.profileInitials).slice(0,2).toUpperCase():this.profileInitials;
     this.profile.setAttribute('aria-label',active?uiText("Mi perfil · sesión iniciada"):uiText("Mi perfil · iniciar sesión")); this.profile.title=active?uiText("Tu perfil"):uiText("Iniciar sesión");
     this.$('.top-actions .demo-pill').innerHTML=active?("<i></i>"+uiText("Espacio conectado")):connected?`<i></i>${this.state==='loading'?uiText("Conectando…"):uiText("Tu espacio")}`:this.badgeHTML;
     for(const selector of ['#general-assistant-toggle','#tour','#reset','.change-page-intro']) this.$(selector).hidden=connected;
     if(connected) {
+      if(active&&(this.location.hash==='#inicio'||!this.location.hash)){this.$('.activity').hidden=true;this.$('#client-workspace').hidden=false;}
       for(const selector of ['.stats','#hero','#flow-section','#assistant-entry','#general-assistant']) this.$(selector).hidden=true;
       this.document.querySelectorAll('[data-view] .count').forEach(node=>{node.textContent='0';});
       if(!active) {

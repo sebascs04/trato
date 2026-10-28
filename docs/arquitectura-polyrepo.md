@@ -31,7 +31,7 @@ Mantener una cola persistente y trabajos idempotentes entre API, procesador y wo
 
 ## Estado de Supabase
 
-Proyecto `trato-dev`, ref `dspgazufwtabxnbbyvhz`, organización `sebascs04's Org`, plan Free verificado. Migración `persistent_ingestion`, versión `20261024232244`, aplicada y asesor de seguridad sin lints. RLS probado con dos usuarios sintéticos en rollback. El propio usuario creó/confirmó una cuenta de la aplicación; aún no había clientes/proyectos/documentos al comprobarla. No se recuperaron claves administrativas ni se publicaron datos privados.
+Proyecto `trato-dev`, ref `<supabase-project-ref>`, organización `<your-organization>`, plan Free verificado. Migración `persistent_ingestion`, versión `20261024232244`, aplicada y asesor de seguridad sin lints. RLS probado con dos usuarios sintéticos en rollback. El propio usuario creó/confirmó una cuenta de la aplicación; aún no había clientes/proyectos/documentos al comprobarla. No se recuperaron claves administrativas ni se publicaron datos privados.
 
 ## Preparación local
 

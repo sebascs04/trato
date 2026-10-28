@@ -20,7 +20,7 @@ async function mount(page,{language='es',graph=data}={}){
  },graph);
  await expect(page.locator('[data-live-node]')).toHaveCount(7);return errors;
 }
-test('map arranges the project centrally and labels selectable directed relationships',async({page})=>{
+test('map arranges hierarchical branches and labels selectable directed relationships',async({page})=>{
  const errors=await mount(page);
  await expect(page.locator('[data-live-node="projects:p"]')).toHaveAttribute('data-live-depth','0');
  await expect(page.locator('[data-live-node="documents:request"]')).toHaveAttribute('data-live-depth','1');
@@ -163,4 +163,93 @@ test('automatic layout packs related branches without overlapping their cards',a
  });
  expect(packed.collisions).toEqual([]);expect(packed.stable).toBe(true);
  expect(packed.width*packed.height).toBeLessThan(5_000_000);
+});
+
+for(const language of ['es','en'])test(`readable default zoom and selected labels avoid cards and each other (${language})`,async({page})=>{
+ await mount(page,{language});
+ await expect(page.locator('[data-live-scale]')).toHaveText('100%');
+ const result=await page.evaluate(()=>{
+  const box=el=>{const r=el.getBoundingClientRect();return {x:r.x,y:r.y,w:r.width,h:r.height};};
+  const cards=[...document.querySelectorAll('[data-live-node]')].map(box);
+  const labels=[...document.querySelectorAll('.gd-edge.is-active text')].filter(el=>getComputedStyle(el).visibility==='visible').map(box);
+  const hits=(a,b)=>a.x<b.x+b.w&&a.x+a.w>b.x&&a.y<b.y+b.h&&a.y+a.h>b.y;
+  return {minimumWidth:Math.min(...cards.map(c=>c.w)),labels:labels.length,
+   overlaps:labels.some((label,i)=>cards.some(card=>hits(label,card))||labels.slice(i+1).some(other=>hits(label,other)))};
+ });
+ expect(result.minimumWidth).toBeGreaterThanOrEqual(200);expect(result.labels).toBe(3);expect(result.overlaps).toBe(false);
+ await page.getByRole('button',{name:language==='es'?'Detalles':'Details',exact:true}).click();
+ await page.locator('.gd-inspector [data-live-select="change_proposals:proposal"]').click();
+ await page.getByRole('button',{name:language==='es'?'Ampliar mapa':'Expand map',exact:true}).click();
+ await expect(page.locator('[data-live-scale]')).toHaveText('100%');
+ const card=await page.locator('[data-live-node="change_proposals:proposal"]').boundingBox(),panel=await page.locator('.gd-inspector').boundingBox();
+ expect(card.x+card.width).toBeLessThan(panel.x);
+});
+
+for(const language of ['es','en'])test(`initial agreement is centered and actual arrows use orthogonal paths (${language})`,async({page})=>{
+ const errors=await mount(page,{language});
+ const viewport=await page.locator('.gd-map').boundingBox(),agreement=await page.locator('[data-live-node="documents:agreement"]').boundingBox();
+ expect(Math.abs(agreement.x+agreement.width/2-(viewport.x+viewport.width/2))).toBeLessThan(2);
+ expect(Math.abs(agreement.y+agreement.height/2-(viewport.y+viewport.height/2))).toBeLessThan(2);
+ const routes=await page.locator('.gd-edge-line').evaluateAll(paths=>paths.map(path=>path.getAttribute('d')));
+ for(const route of routes){
+  expect(route).not.toMatch(/[CQ]/);
+  const points=[...route.matchAll(/[ML](-?[\d.]+) (-?[\d.]+)/g)].map(match=>[Number(match[1]),Number(match[2])]);
+  for(let i=1;i<points.length;i++)expect(points[i][0]===points[i-1][0]||points[i][1]===points[i-1][1]).toBe(true);
+ }
+ await expect(page.locator('[data-live-edge]')).toHaveCount(data.edges.length);
+ // Presentation alignment must not invent an agreement→request relationship.
+ await expect(page.locator('.gd-edge[aria-label*="Acuerdo inicial"][aria-label*="Catálogo nuevo"]')).toHaveCount(0);
+ await page.getByRole('button',{name:language==='es'?'Ir al proyecto':'Go to project',exact:true}).click();
+ const project=await page.locator('[data-live-node="projects:p"]').boundingBox();
+ expect(Math.abs(project.x+project.width/2-(viewport.x+viewport.width/2))).toBeLessThan(2);
+ expect(errors).toEqual([]);
+});
+
+test('each incident arrow owns a distinct port including opposite directions and many connections',async({page})=>{
+ await mount(page);
+ const result=await page.evaluate(async()=>{
+  const {layoutProjectGraph,routeProjectGraph}=await import('/graph-live.mjs');
+  const nodes=[{entity_key:'root',kind:'Project'},{entity_key:'agreement',kind:'Document',business_kind:'initial_agreement'}],edges=[];
+  for(let i=0;i<12;i++){
+   nodes.push({entity_key:'doc'+i,kind:'Document'});
+   edges.push({edge_key:'in'+i,source:'doc'+i,target:'agreement',kind:'SUPPORTED_BY'});
+   edges.push({edge_key:'out'+i,source:'agreement',target:'doc'+i,kind:'HAS_DOCUMENT'});
+  }
+  edges.push({edge_key:'project',source:'root',target:'agreement',kind:'HAS_DOCUMENT'});
+  const layout=layoutProjectGraph(nodes,edges),routes=routeProjectGraph(edges,layout.positions),ports=new Map(),duplicates=[],outside=[];
+  for(const edge of edges){const route=routes.get(edge.edge_key);
+   for(const [id,point] of [[edge.source,route.start],[edge.target,route.end]]){
+    const p=layout.positions.get(id),key=point.x+':'+point.y;if(!ports.has(id))ports.set(id,new Set());
+    if(ports.get(id).has(key))duplicates.push(id);ports.get(id).add(key);
+    if(Math.abs(point.y-p.y)>=p.height/2)outside.push(id);
+   }
+  }
+  const again=routeProjectGraph([...edges].reverse(),layout.positions);
+  return {duplicates,outside,agreementPorts:ports.get('agreement').size,height:layout.positions.get('agreement').height,
+   stable:edges.every(e=>routes.get(e.edge_key).path===again.get(e.edge_key).path)};
+ });
+ expect(result.duplicates).toEqual([]);expect(result.outside).toEqual([]);expect(result.agreementPorts).toBe(25);
+ expect(result.height).toBeGreaterThan(112);expect(result.stable).toBe(true);
+});
+
+for(const language of ['es','en'])test(`relationship badges keep every arrow away from their text (${language})`,async({page})=>{
+ const graph={...data,edges:[...data.edges,
+  {edge_key:'current-acceptance',source:'projects:p',target:'proposal_acceptances:acceptance',kind:'CURRENT_ACCEPTANCE'},
+  {edge_key:'agreement-source',source:'proposal_revisions:revision',target:'documents:agreement',kind:'SUPPORTED_BY'}]};
+ await mount(page,{language,graph});
+ const result=await page.evaluate(()=>{
+  const badges=[...document.querySelectorAll('.gd-edge.is-active.has-label .gd-edge-label-bg')];
+  const hits=[];
+  for(const badge of badges){
+   const box=badge.getBBox();
+   for(const path of document.querySelectorAll('.gd-edge-line')){
+    const length=path.getTotalLength();
+    for(let distance=0;distance<=length;distance+=2){const p=path.getPointAtLength(distance);
+     if(p.x>box.x-4&&p.x<box.x+box.width+4&&p.y>box.y-4&&p.y<box.y+box.height+4){hits.push(path.parentElement.dataset.liveEdge);break;}
+    }
+   }
+  }
+  return {badges:badges.length,hits};
+ });
+ expect(result.badges).toBe(4);expect(result.hits).toEqual([]);
 });

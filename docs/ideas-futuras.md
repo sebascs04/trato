@@ -112,3 +112,10 @@ Antes de llamar disruptiva o novedosa a una idea, contrastar alternativas actual
 Se retomó la idea 2 a petición de Sebastian. Hay testimonios freelance sobre miedo a cobrar extras y evidencia limitada de utilidad de la preparación con IA; también hay estudios que favorecen una guía estructurada frente a chats extensos. La categoría tiene competidores, incluido Negosim con tarifas freelance. La recomendación es validar un ensayo breve y opcional dentro de un pedido, con fuentes y salida a un borrador, sin efectos sobre acuerdos ni pagos.
 
 Evidencia, limitaciones, recorrido propuesto y prueba con usuarios en [investigacion-modo-ensayo.md](investigacion-modo-ensayo.md). No se ha demostrado demanda de Trato ni se activaron modelos o pantallas nuevas por esta anotación.
+
+
+### Reputación y organización de cobros ·28/10/2026
+
+Sebastian autorizó una sección Reputación debajo de Ensayos: fichas compartidas de clientes con experiencias de distintos freelancers, dentro de la aplicación autenticada. Implementación y límites en [reputacion.md](reputacion.md). Compartir es explícito; no se vuelca el directorio privado ni se declara fraude o impago verificado por una puntuación.
+
+Sebastian prefiere explorar cómo organizar pagos al comenzar un proyecto antes que dar prioridad a recordatorios por impagos: un mensaje de IA no obliga a pagar a quien ignora al profesional. Se propone separar el futuro plan de entregables/pagos por etapas de Reputación y de Ensayos. Esta conversación no autoriza todavía implementar cobros iniciales, una pasarela nueva, reportes externos o envíos automáticos. No presentar pagos fraccionados como protección garantizada ni confundir una opinión compartida con una resolución de PayPal.

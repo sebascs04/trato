@@ -8,7 +8,7 @@ fixture={'relation':'matches','classification':'possible_extra','summary':'El pe
          'sources':[{'source_id':s['id'],'quote':s['text']} for s in sources]}
 model=GeminiSimulationModel(model='gemini-simulation',response=response_fixture(fixture),mode='simulation')
 try:
-    output=analyze(sources,model)
+    output=analyze(sources,model, output_language='es')
     print(json.dumps({'mode':'simulation','provider':'gemini','backend':'vertex','network_calls':0,
                       'request':model.requests[0],'result':output},ensure_ascii=False))
 finally:model.close()

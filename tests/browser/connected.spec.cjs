@@ -39,7 +39,8 @@ async function setup(page,{connected=true,clientData=clients,projectData=project
     sessionStorage.setItem('trato:tests.supabase.invalid:session',JSON.stringify({access_token:'test-only-access',refresh_token:'test-only-refresh',expires_at:9999999999,user:{id:'test-user',email:'user@example.invalid'}}));
   },{config});
   await page.goto('/#clientes');
-  await expect(page.getByRole('button',{name:/Mi perfil/})).toBeVisible();
+  if(connected)await expect(page.getByRole('button',{name:/Mi perfil/})).toBeVisible();
+  else await expect(page.locator('#visitor-landing')).toBeVisible();
   return errors;
 }
 
@@ -55,12 +56,12 @@ async function openWorkspace(page) {
   await expect(page.locator('.document-library')).toContainText('Documento exclusivo A');
 }
 
-test('original profile opens access dialog without replacing the design',async({page})=>{
+test('public landing opens access dialog before entering the private workspace',async({page})=>{
   const errors=await setup(page,{connected:false});
-  await page.getByRole('button',{name:'Mi perfil · iniciar sesión'}).click();
+  await page.locator('#visitor-landing').getByRole('button',{name:'Iniciar sesión',exact:true}).click();
   await expect(page.getByRole('heading',{name:'Accede a tu estudio'})).toBeVisible();
   await expect(page.getByLabel('Correo',{exact:true})).toBeVisible();
-  await expect(page.locator('#trato-sidebar .brand')).toBeVisible();
+  await expect(page.locator('#visitor-landing .land-brand').first()).toBeVisible();
   await expect(page.locator('#cloud-password')).toHaveAttribute('type','password');
   expect(errors).toEqual([]);
 });
@@ -85,17 +86,17 @@ test('a saved client remains visible without projects and opens its first projec
   expect(errors).toEqual([]);
 });
 
-test('login from profile opens the private workspace and closes the access dialog',async({page})=>{
+test('login from landing opens the private workspace and closes the access dialog',async({page})=>{
   const errors=await setup(page,{connected:false});
   await page.route('https://tests.supabase.invalid/auth/v1/token?grant_type=password',async route=>{
     const headers={'Access-Control-Allow-Origin':'*','Access-Control-Allow-Headers':'apikey,content-type','Access-Control-Allow-Methods':'POST,OPTIONS'};
     if(route.request().method()==='OPTIONS') {await route.fulfill({status:204,headers});return;}
     await route.fulfill({headers,json:{access_token:'test-only-access',refresh_token:'test-only-refresh',expires_at:9999999999,user:{id:'test-user',email:'user@example.invalid'}}});
   });
-  await page.getByRole('button',{name:'Mi perfil · iniciar sesión'}).click();
+  await page.locator('#visitor-landing').getByRole('button',{name:'Iniciar sesión',exact:true}).click();
   await page.locator('#cloud-email').fill('user@example.invalid');
   await page.locator('#cloud-password').fill('test-only-password');
-  await page.getByRole('button',{name:'Iniciar sesión',exact:true}).click();
+  await page.locator('.cloud-dialog').getByRole('button',{name:'Iniciar sesión',exact:true}).click();
   await expect(page.locator('.cloud-dialog')).not.toBeVisible();
   await expect(page.locator('.cloud-client-directory')).toContainText('Cliente privado A');
   await expect(page.locator('.top-actions .demo-pill')).toHaveText('Espacio conectado');
@@ -148,7 +149,8 @@ test('logout clears private data and returns to access without sample clients',a
   await expect(page.getByText('user@example.invalid',{exact:true})).toBeVisible();
   await page.getByRole('button',{name:'Cerrar sesión',exact:true}).click();
   await expect(page.locator('.top-actions .demo-pill')).toHaveText('Tu espacio');
-  await expect(page.getByRole('button',{name:'Iniciar sesión o crear cuenta',exact:true})).toBeVisible();
+  await expect(page.locator('#visitor-landing')).toBeVisible();
+  await expect(page.locator('#visitor-landing').getByRole('button',{name:'Iniciar sesión',exact:true})).toBeVisible();
   await expect(page.locator('.client-selector')).toHaveCount(0);
   await expect(page.locator('#client-workspace')).not.toContainText('Cliente privado A');
   expect(await page.evaluate(()=>sessionStorage.getItem('trato:tests.supabase.invalid:session'))).toBeNull();

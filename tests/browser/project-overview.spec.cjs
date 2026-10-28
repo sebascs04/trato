@@ -64,3 +64,13 @@ test('empty overview keeps initial upload available and does not invent refunds 
  await expect(page.locator('.cloud-dialog input[name="kind"]')).toHaveValue('initial_agreement');
  expect(calls.some(p=>p.endsWith('/activity'))).toBe(false);expect(errors).toEqual([]);
 });
+test('home resumes the open project without extra project fetches',async({page})=>{
+ const {calls,errors}=await setup(page);const baseline=calls.length;
+ await page.getByRole('link',{name:'Vista general',exact:true}).click();
+ await expect(page.locator('.cloud-home-resume')).toContainText('Sitio de la cafetería');
+ await expect(page.locator('.cloud-home-resume')).toContainText('Estudio Norte');
+ await page.screenshot({path:'.local/browser-tests/home-es.png',fullPage:true});
+ await page.getByRole('link',{name:'Continuar proyecto',exact:true}).click();
+ await expect(page.getByRole('heading',{name:'Resumen del proyecto',exact:true})).toBeVisible();
+ expect(calls.slice(baseline)).toEqual([]);expect(errors).toEqual([]);
+});

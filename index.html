@@ -9,11 +9,14 @@
   <link rel="stylesheet" href="/styles.css?v=history-4">
   <link rel="stylesheet" href="/connected-workspace.css">
   <link rel="stylesheet" href="/practice-workspace.css">
+  <link rel="stylesheet" href="/reputation-workspace.css">
+  <link rel="stylesheet" href="/visitor-landing.css">
   <script src="/local-store.js" defer></script>
   <script src="/payment-api.js" defer></script>
   <script src="/boot.js" defer></script>
 </head>
 <body class="foundation-preview">
+  <div id="visitor-landing" class="land-page" hidden></div>
   <a class="skip" href="#main">Ir al contenido</a>
   <aside class="sidebar" id="trato-sidebar">
     <a href="#inicio" class="brand" aria-label="Trato inicio"><span class="brand-symbol">t<span>↗</span></span>trato<span class="brand-dot">.</span></a>
@@ -23,6 +26,7 @@
       <a href="#inicio" data-view="inicio" class="active"><span data-ui-icon="layout-dashboard"></span>Vista general</a>
       <a href="#clientes" data-view="clientes"><span data-ui-icon="users"></span>Clientes</a>
       <a href="#ensayos" data-view="ensayos"><span data-ui-icon="messages-square"></span>Ensayos</a>
+      <a href="#reputacion" data-view="reputacion"><span data-ui-icon="star"></span>Reputación</a>
       <a href="#cambios" data-view="cambios"><span data-ui-icon="git-compare-arrows"></span>Cambios y extras<span class="count">2</span></a>
       <a href="#cobros" data-view="cobros"><span data-ui-icon="credit-card"></span>Cobros pendientes<span class="count">2</span></a>
       <a href="#reembolsos" data-view="reembolsos"><span data-ui-icon="undo-2"></span>Reembolsos<span class="count">1</span></a>

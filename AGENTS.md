@@ -1,17 +1,28 @@
 # Instrucciones del proyecto Trato
 
+## Ramas y publicación
+
+Preferencia de Sebastian, 27/10/2026:
+
+- La rama principal es `main`. Todo cambio debe prepararse en una rama de trabajo separada, publicarse en esa rama y después integrarse mediante un pull request y merge a `main`.
+- No crear commits directamente sobre `main` ni actualizarla directamente para publicar cambios. Esta regla también aplica a publicaciones mediante el conector de GitHub cuando la raíz local no tenga un checkout Git operativo.
+- Coordinar las publicaciones entre chats para evitar pisar cambios. Verificar los cambios y las pruebas antes del merge; no interpretar esta regla como una orden de publicar o fusionar trabajo pendiente.
+- Aclaración explícita de Sebastian: no crear ni abrir un pull request hasta que él lo solicite expresamente. Trabajar en una rama, pedir cambios o autorizar un push no autoriza crear un PR.
+- Aceptar o fusionar un PR requiere autorización explícita de Sebastian para ese PR. Autorizar su creación no autoriza su aceptación ni su merge; los chats solo realizan esas acciones en su nombre cuando él lo indique.
+
 ## Estándar de prompts
 
-- Los prompts de agentes deben seguir `docs/estandar-prompts.md`, adaptado de la guía compartida por Sebastian en QAMAQ.
+- Los prompts de agentes deben seguir `docs/estandar-prompts.md`, adaptado de la guía compartida por Sebastian en otros proyectos.
 - No imponer un límite fijo de 5.000 caracteres: la extensión depende de la responsabilidad del agente, sin redundancia.
-- No modificar archivos de QAMAQ para aplicar este estándar en Trato.
+- No modificar archivos de otros proyectos para aplicar este estándar en Trato.
+- Mantener instrucciones de agentes únicas en inglés, separadas de los catálogos de interfaz. Pasar `output_language` validado como `es` o `en` para el texto generado, sin traducir citas, claves de JSON, enums o IDs. No inferir el idioma de salida a partir del documento.
 
-## Aislamiento de QAMAQ
+## Aislamiento de otros proyectos
 
 - Los puertos locales de Trato están fijados en `local-ports.json` y documentados en `docs/puertos-locales.md`. Consultar ambos antes de iniciar o añadir servicios.
 - Antes de arrancar un servicio o publicar un puerto de Docker, revisar listeners y contenedores existentes. Si hay conflicto, detener el arranque e informar; nunca matar procesos ajenos ni elegir otro puerto automáticamente.
-- No detener, reiniciar ni modificar procesos, contenedores, redes, volúmenes, configuración o datos de QAMAQ desde este proyecto.
-- Todo futuro Docker Compose de Trato debe usar proyecto `trato`, redes y volúmenes propios. No reutilizar Redis, Weaviate, bases de datos, índices, buckets ni credenciales de QAMAQ. No ejecutar limpiezas globales de Docker.
+- No detener, reiniciar ni modificar procesos, contenedores, redes, volúmenes, configuración o datos de otros proyectos desde este proyecto.
+- Todo futuro Docker Compose de Trato debe usar proyecto `trato`, redes y volúmenes propios. No reutilizar Redis, Weaviate, bases de datos, índices, buckets ni credenciales de otros proyectos. No ejecutar limpiezas globales de Docker.
 - Las reservas Redis/Weaviate no significan que estén desplegados o conectados. Revisar disponibilidad nuevamente antes de iniciarlos.
 
 ## Sin fallbacks sin autorización
@@ -46,6 +57,12 @@ Esta instrucción se aplica a todas las partes del proyecto y a los chats que co
 - Mantener una sola vista de estados de negocio para cada cambio; los detalles técnicos del proveedor pertenecen al registro de pago.
 - No añadir cancelaciones o abandonos del checkout de PayPal al historial del cambio ni mostrarlos como estados de negocio. Sin pago confirmado, conservar el estado pendiente que corresponda.
 - El regreso desde PayPal, abrir el enlace o enviar un correo no acreditan un pago. Solo el resultado verificado por el backend puede finalizar un cambio con adicional.
+
+## Conexiones de grafos
+
+- Regla de Sebastian: cada flecha tiene un punto de salida y un punto de entrada exclusivos en sus nodos. Ninguna conexión puede compartir puerto con otra, aunque una entre y otra salga o conecten el mismo par de nodos.
+- Separar también los tramos cercanos a las tarjetas para que las flechas no se fusionen visualmente en una única entrada/salida. Aplicar esta regla a todos los grafos, conservando la dirección y las relaciones reales.
+- Los verbos de las relaciones deben tener espacio libre alrededor: ninguna línea ni punta de flecha puede atravesar su etiqueta. Calcular su colocación contra todas las conexiones del mapa, además de tarjetas y otras etiquetas, y reservar un margen visible alrededor del texto.
 
 ## Iconos de interfaz
 

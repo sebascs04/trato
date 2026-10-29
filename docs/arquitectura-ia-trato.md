@@ -2,7 +2,7 @@
 
 ## Decisión de almacenamiento de grafos — 26 de octubre de 2026
 
-Sebastian eligió **Neo4j AuraDB Free** para el grafo de conocimiento de Trato. Se usarán tanto Neo4j como Weaviate: Neo4j para relaciones y recorridos de evidencia; Weaviate para chunks y recuperación híbrida; Supabase permanece como fuente de verdad de registros y estados de negocio. Community Edition no es la opción elegida para este bloque.
+el equipo eligió **Neo4j AuraDB Free** para el grafo de conocimiento de Trato. Se usarán tanto Neo4j como Weaviate: Neo4j para relaciones y recorridos de evidencia; Weaviate para chunks y recuperación híbrida; Supabase permanece como fuente de verdad de registros y estados de negocio. Community Edition no es la opción elegida para este bloque.
 
 Esta decisión no crea una instancia ni confirma conexión, cuota disponible o sincronización. El siguiente trabajo consiste en definir nodos/relaciones y la proyección desde registros autorizados de Supabase, conservando los IDs, la procedencia y el aislamiento por propietario/proyecto. Aura será propio de Trato; no se reutilizan recursos de otros proyectos.
 
@@ -14,13 +14,13 @@ Actualización posterior del mismo día: [la ingesta PDF conectada](ingesta-cone
 
 ## Resultado que debe cerrar este bloque
 
-Con fuentes reales de un proyecto, el usuario revisa el acuerdo inicial. Después guarda un pedido nuevo y obtiene una comparación citada, datos que faltan y una propuesta editable. Al validarla, la API entrega una propuesta revisada al dominio de adendas de P1. El agente no acepta contratos, no envía correos y no ejecuta pagos.
+Con fuentes reales de un proyecto, el usuario revisa el acuerdo inicial. Después guarda un pedido nuevo y obtiene una comparación citada, datos que faltan y una propuesta editable. Al validarla, la API entrega una propuesta revisada al dominio de adendas de el equipo de Ensayos. El agente no acepta contratos, no envía correos y no ejecuta pagos.
 
 La carga de documentos no inicia automáticamente la revisión del acuerdo ni el análisis de pedidos. El usuario conserva el control del recorrido.
 
 ## Contrato genérico thread y ejecución en worker
 
-Aclaración de arquitectura acordada con Sebastian: **worker ejecuta todos los diagramas, tanto deterministas como con agente**. La API HTTP no ejecuta grafos ni espera a extracción/inferencia. Una única llamada genérica y un sobre de evento `thread` sirven a distintos trabajos; no se crea una clase de evento por cada workflow.
+Aclaración de arquitectura acordada con el equipo: **worker ejecuta todos los diagramas, tanto deterministas como con agente**. La API HTTP no ejecuta grafos ni espera a extracción/inferencia. Una única llamada genérica y un sobre de evento `thread` sirven a distintos trabajos; no se crea una clase de evento por cada workflow.
 
 El sobre mantiene un discriminador explícito `workflow` y una acción `action`. Los campos presentes en `payload` se validan según el workflow, pero no se adivina el handler por combinaciones de campos ausentes/presentes. Un pedido y una ingesta pueden contener ambos `document_id`; inferir el tipo a partir de eso sería ambiguo.
 
@@ -77,6 +77,10 @@ Los mensajes contienen referencias acotadas, no PDFs, credenciales ni historiale
 
 ## Responsabilidades de los repositorios
 
+Decisión posterior del 28/10: las herramientas de archivos solicitadas por un agente seguirán **worker → backend → file processor → backend → worker**. El worker ejecuta el diagrama y las llamadas al modelo; el backend autoriza y canaliza; el procesador ejecuta la función de archivos. Contrato y diferencias con el código actual en [herramientas-archivos-agentes.md](herramientas-archivos-agentes.md). Es arquitectura objetivo: no afirma una refactorización ya terminada.
+
+Actualización 28/10: para las fuentes del evaluador de Ensayos se investigó [contexto directo frente a recuperación](fuentes-y-recuperacion-ensayos.md). La propuesta combina rúbrica breve siempre presente y recuperación para una biblioteca ampliada. No obliga a buscar en Weaviate cada regla esencial, no cambia este diseño de indexación y no confirma que el índice esté implementado.
+
 | Componente | Responsabilidad |
 | --- | --- |
 | trato-web / interfaz local actual | Subir fuentes, mostrar progreso, revisar/corregir resultados y continuar explícitamente. |
@@ -127,7 +131,7 @@ flowchart TD
 
 El file processor lee el original una vez por versión durante la ingesta. Después, el agente consulta chunks en Weaviate: no se adjunta el documento completo por defecto a cada petición del modelo. Para organizar el acuerdo inicial se hacen consultas específicas de alcance, precio, plazos, exclusiones y condiciones; el contexto se acota y conserva citas. Si la recuperación no aporta suficiente evidencia, se pide aclaración; un fragmento ausente del top-k no demuestra que una cláusula no exista.
 
-Revisar la referencia inicial no equivale a obtener una firma del cliente. La referencia inicial tiene identidad y versión propias; su relación con el dominio de aceptación de P1 se debe acordar antes de implementarla.
+Revisar la referencia inicial no equivale a obtener una firma del cliente. La referencia inicial tiene identidad y versión propias; su relación con el dominio de aceptación de el equipo de Ensayos se debe acordar antes de implementarla.
 
 ## Grafo B: pedido nuevo
 
@@ -144,7 +148,7 @@ flowchart TD
   H --> I[Validar JSON, citas y reglas de negocio]
   I --> J[Pausa: usuario revisa y modifica]
   J --> K[Guardar propuesta validada]
-  K --> P[Dominio P1: adenda, correo, aceptación y pago]
+  K --> P[Dominio el equipo de Ensayos: adenda, correo, aceptación y pago]
 ```
 
 Las categorías son: incluido, posible adicional, contradictorio o ambiguo. Un documento ajeno al proyecto no pasa a recomendaciones. Si falta tarifa, esfuerzo estimado, disponibilidad o materiales, el sistema lo indica y solicita esos datos. No se inventan cifras para completar una tarjeta de precio. Los importes se calculan fuera del LLM con entradas explícitas del profesional.
@@ -153,7 +157,7 @@ Las pausas humanas se modelan con interrupts y checkpoints durables de LangGraph
 
 ## Recuperación híbrida sobre chunks
 
-Configuración inicial propuesta por Sebastian: **70% vectorial y 30% léxica BM25**, mediante `alpha=0.7` en Weaviate. Usar fusión de puntuaciones normalizadas (por ejemplo `relativeScoreFusion`), no promediar directamente distancia vectorial y puntuación BM25 de escalas distintas. Se evaluará esa ponderación con documentos en español, identificadores y cláusulas reales; es un punto de partida, no un óptimo garantizado.
+Configuración inicial propuesta por el equipo: **70% vectorial y 30% léxica BM25**, mediante `alpha=0.7` en Weaviate. Usar fusión de puntuaciones normalizadas (por ejemplo `relativeScoreFusion`), no promediar directamente distancia vectorial y puntuación BM25 de escalas distintas. Se evaluará esa ponderación con documentos en español, identificadores y cláusulas reales; es un punto de partida, no un óptimo garantizado.
 
 Cada búsqueda impone propietario/tenant, cliente, proyecto y versiones aplicables en la consulta al índice, antes de elegir el conjunto relevante. No hacer top-k global y descartar otros clientes después: eso desperdicia resultados y mezcla candidatos ajenos. El LLM recibe los chunks pertinentes y la referencia estructurada revisada; puede recuperar contexto adicional del mismo ámbito cuando una cita lo requiera. Las claves administrativas permanecen en servicios internos.
 
@@ -171,7 +175,7 @@ Weaviate documenta el aislamiento entre tenants; debe habilitarse al crear la co
 
 Google Cloud anuncia USD 300 de bienvenida durante 90 días para clientes elegibles. No equivale a crédito canjeable en cualquier API: la documentación actual excluye Gemini API de AI Studio de ese crédito, y excluye modelos generativos de terceros ofrecidos como API administrada. [Programa de Google Cloud](https://docs.cloud.google.com/free/docs/free-cloud-features), [facturación de Gemini API](https://ai.google.dev/gemini-api/docs/billing).
 
-Ruta candidata: Gemini mediante el backend de Google Cloud/Vertex AI que corresponda al proyecto y a la oferta disponible. Antes de conectarlo hay que comprobar crédito activo, vencimiento, producto/SKU elegible, región, cuotas y modelo accesible en esa cuenta. No se ha consultado la cuenta de Sebastian ni se garantiza cobertura de un modelo concreto. Elegir proveedor/backend explícitamente; no usar autodetección que pueda cambiar al canal de AI Studio. [Integración de Google en LangChain](https://docs.langchain.com/oss/python/integrations/chat/google_generative_ai).
+Ruta candidata: Gemini mediante el backend de Google Cloud/Vertex AI que corresponda al proyecto y a la oferta disponible. Antes de conectarlo hay que comprobar crédito activo, vencimiento, producto/SKU elegible, región, cuotas y modelo accesible en esa cuenta. No se ha consultado la cuenta de el equipo ni se garantiza cobertura de un modelo concreto. Elegir proveedor/backend explícitamente; no usar autodetección que pueda cambiar al canal de AI Studio. [Integración de Google en LangChain](https://docs.langchain.com/oss/python/integrations/chat/google_generative_ai).
 
 Weaviate anuncia actualmente plan Free permanente, sin tarjeta: una colección, hasta 100.000 objetos y tres tenants; la página también indica 1 GB de memoria y 10 GB de disco. Es una opción concreta para la demo, sujeta a disponibilidad de alta y límites vigentes. No dimensionar producción suponiendo una prueba temporal ni almacenamiento infinito. [Precios de Weaviate](https://weaviate.io/pricing).
 
@@ -179,7 +183,7 @@ El proveedor de embeddings se elige por separado del LLM y se fija su versión. 
 
 Si un proveedor falla o se acaba su cuota, se conserva el trabajo y se muestra el error; no se activa Ollama, otro proveedor, otro índice o una simulación automáticamente.
 
-## Contrato propuesto para la integración con P1
+## Contrato propuesto para la integración con el equipo de Ensayos
 
 Todavía no son rutas ni DTO implementados. El acuerdo de contrato debe preceder a nuevas migraciones compartidas.
 
@@ -187,16 +191,16 @@ Todavía no son rutas ni DTO implementados. El acuerdo de contrato debe preceder
 - Ejecución de análisis: `run_id`, proyecto/pedido y versión de referencia, estado técnico, modelo/prompt/schema utilizados y consumo registrado. Su estado técnico no se añade a los estados de negocio de pagos.
 - Resultado: lista de puntos del pedido, clasificación, comparación, citas exactas por punto, preguntas pendientes y recomendaciones editables. Sin evidencias de aceptación o pago.
 - Cada cita: documento/versión/segmento/localizador y texto literal. Se valida tanto pertenencia como literalidad; esto no garantiza por sí solo que la interpretación semántica sea correcta.
-- Traspaso al dominio: solo los datos revisados por el usuario, con trazabilidad al análisis y a la versión de base. P1 conserva revisiones/PDFs/aceptaciones/pagos autoritativos.
+- Traspaso al dominio: solo los datos revisados por el usuario, con trazabilidad al análisis y a la versión de base. el equipo de Ensayos conserva revisiones/PDFs/aceptaciones/pagos autoritativos.
 - Los datos centrales se normalizan en tablas con relaciones. Metadatos adicionales van en extensiones versionadas; no convertir todo el contrato en un JSON libre ni añadir campos sensibles decididos por el modelo.
 
 ## Orden del trabajo
 
-1. Acordar referencia inicial y DTO de análisis con P1; fijar casos de evaluación en español.
+1. Acordar referencia inicial y DTO de análisis con el equipo de Ensayos; fijar casos de evaluación en español.
 2. Comprobar Google Cloud y el alta gratuita de Weaviate; elegir modelos explícitos sin habilitar consumo todavía.
 3. Ingesta e índice trazables con pruebas de aislamiento y recuperación de cláusulas.
 4. Conectar inferencia real y ambos grafos, persistencia y revisión humana.
-5. Integrar resultados en la interfaz local y entregar la propuesta revisada al dominio de P1.
+5. Integrar resultados en la interfaz local y entregar la propuesta revisada al dominio de el equipo de Ensayos.
 
 Criterios de cierre: análisis real con citas verificadas o aclaración explícita, no mezcla entre proyectos, no precios inventados, reanudación tras reinicio sin duplicar efectos y validación humana antes del traspaso. El caso sin pedido termina correctamente al guardar la referencia inicial.
 

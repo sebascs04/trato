@@ -2,17 +2,27 @@
 
 ## Ramas y publicación
 
-Preferencia de Sebastian, 27/10/2026:
+Preferencia de el equipo, 27/10/2026:
 
 - La rama principal es `main`. Todo cambio debe prepararse en una rama de trabajo separada, publicarse en esa rama y después integrarse mediante un pull request y merge a `main`.
 - No crear commits directamente sobre `main` ni actualizarla directamente para publicar cambios. Esta regla también aplica a publicaciones mediante el conector de GitHub cuando la raíz local no tenga un checkout Git operativo.
 - Coordinar las publicaciones entre chats para evitar pisar cambios. Verificar los cambios y las pruebas antes del merge; no interpretar esta regla como una orden de publicar o fusionar trabajo pendiente.
-- Aclaración explícita de Sebastian: no crear ni abrir un pull request hasta que él lo solicite expresamente. Trabajar en una rama, pedir cambios o autorizar un push no autoriza crear un PR.
-- Aceptar o fusionar un PR requiere autorización explícita de Sebastian para ese PR. Autorizar su creación no autoriza su aceptación ni su merge; los chats solo realizan esas acciones en su nombre cuando él lo indique.
+- Aclaración explícita de el equipo: no crear ni abrir un pull request hasta que él lo solicite expresamente. Trabajar en una rama, pedir cambios o autorizar un push no autoriza crear un PR.
+- Aceptar o fusionar un PR requiere autorización explícita de el equipo para ese PR. Autorizar su creación no autoriza su aceptación ni su merge; los chats solo realizan esas acciones en su nombre cuando él lo indique.
+
+
+Preferencia explícita de el equipo, 28/10/2026:
+
+- el equipo de Ensayos y el equipo de Reputación trabajan siempre sobre la misma rama de trabajo acordada para cada lote, creada desde `main` actualizado. No preparar ramas independientes por chat salvo nueva instrucción expresa de el equipo.
+- Mantener el reparto de tareas y las reservas de archivos aunque la rama sea compartida; coordinar antes de editar archivos comunes.
+- Nombrar un único responsable de publicación por lote. Ese responsable reúne los cambios terminados de ambos chats, revisa el snapshot y las pruebas, y realiza un solo push conjunto cuando el equipo lo autorice. El otro chat no publica en paralelo.
+- No subir secretos, archivos privados ni trabajo ajeno pendiente por interpretar «todos los cambios» como una copia indiscriminada del workspace.
+- Antes de cambiar de rama o actualizar un checkout, comprobar su estado y conservar cambios pendientes. Si la raíz no tiene Git operativo, acordar la misma rama remota sin resetear ni modificar los checkouts anidados para aparentar un cambio local.
+- Esta preferencia no autoriza por sí sola un push, crear un PR ni fusionarlo. Se mantienen las autorizaciones explícitas indicadas arriba; un permiso de un lote anterior no se extiende al siguiente.
 
 ## Estándar de prompts
 
-- Los prompts de agentes deben seguir `docs/estandar-prompts.md`, adaptado de la guía compartida por Sebastian en otros proyectos.
+- Los prompts de agentes deben seguir `docs/estandar-prompts.md`, adaptado de la guía compartida por el equipo en otros proyectos.
 - No imponer un límite fijo de 5.000 caracteres: la extensión depende de la responsabilidad del agente, sin redundancia.
 - No modificar archivos de otros proyectos para aplicar este estándar en Trato.
 - Mantener instrucciones de agentes únicas en inglés, separadas de los catálogos de interfaz. Pasar `output_language` validado como `es` o `en` para el texto generado, sin traducir citas, claves de JSON, enums o IDs. No inferir el idioma de salida a partir del documento.
@@ -27,10 +37,10 @@ Preferencia de Sebastian, 27/10/2026:
 
 ## Sin fallbacks sin autorización
 
-Preferencia explícita de Sebastian, 25 de octubre de 2026:
+Preferencia explícita de el equipo, 25 de octubre de 2026:
 
 - No implementar ni activar fallbacks sin autorización explícita del usuario para esa alternativa concreta.
-- Si una integración, proveedor, modelo o paso falla, mostrar el fallo y conservar el estado correcto. Sebastian prefiere un error visible a un plan B que no autorizó.
+- Si una integración, proveedor, modelo o paso falla, mostrar el fallo y conservar el estado correcto. el equipo prefiere un error visible a un plan B que no autorizó.
 - No sustituir respuestas fallidas por fixtures, simulaciones, datos inventados, otro modelo/proveedor, otro transporte o una ejecución local alternativa.
 - No presentar una operación como completada si falló o su resultado es incierto.
 - Los modos de demostración deben ser elegidos explícitamente y permanecer separados del funcionamiento conectado; no pueden actuar como respaldo ante un error.
@@ -46,7 +56,7 @@ Esta instrucción se aplica a todas las partes del proyecto y a los chats que co
 
 ## Historial de adendas y revisiones
 
-- Aclaración de Sebastian, 26/10/2026: un borrador aún no enviado se puede editar conservando su número de versión. Guardar instantáneas internas de sus cambios sin sobrescribir PDFs anteriores ni presentarlas como nuevas versiones para el cliente.
+- Aclaración de el equipo, 26/10/2026: un borrador aún no enviado se puede editar conservando su número de versión. Guardar instantáneas internas de sus cambios sin sobrescribir PDFs anteriores ni presentarlas como nuevas versiones para el cliente.
 - Una nueva versión para el cliente nace de ajustes solicitados por él después de recibir la anterior, con respaldo de su respuesta. Las versiones enviadas permanecen inmutables.
 - Cada revisión conserva su alcance, precio, plazo, condiciones, PDF exacto, referencias a fuentes y eventos de envío, aceptación y pago que le correspondan.
 - Una revisión nueva requiere su propio envío y aceptación; no hereda la autorización de una versión anterior.
@@ -60,7 +70,7 @@ Esta instrucción se aplica a todas las partes del proyecto y a los chats que co
 
 ## Conexiones de grafos
 
-- Regla de Sebastian: cada flecha tiene un punto de salida y un punto de entrada exclusivos en sus nodos. Ninguna conexión puede compartir puerto con otra, aunque una entre y otra salga o conecten el mismo par de nodos.
+- Regla de el equipo: cada flecha tiene un punto de salida y un punto de entrada exclusivos en sus nodos. Ninguna conexión puede compartir puerto con otra, aunque una entre y otra salga o conecten el mismo par de nodos.
 - Separar también los tramos cercanos a las tarjetas para que las flechas no se fusionen visualmente en una única entrada/salida. Aplicar esta regla a todos los grafos, conservando la dirección y las relaciones reales.
 - Los verbos de las relaciones deben tener espacio libre alrededor: ninguna línea ni punta de flecha puede atravesar su etiqueta. Calcular su colocación contra todas las conexiones del mapa, además de tarjetas y otras etiquetas, y reservar un margen visible alrededor del texto.
 
@@ -73,14 +83,14 @@ Esta instrucción se aplica a todas las partes del proyecto y a los chats que co
 
 ## Un pedido abierto por proyecto
 
-- Regla de Sebastian, 26/10/2026: no registrar otro pedido mientras haya uno abierto en ese mismo proyecto. Otros proyectos del mismo cliente son independientes.
+- Regla de el equipo, 26/10/2026: no registrar otro pedido mientras haya uno abierto en ese mismo proyecto. Otros proyectos del mismo cliente son independientes.
 - El bloqueo comienza con el documento email_request, incluso antes de preparar la adenda. Reintentos de la misma subida conservan su idempotencia; fuentes adicionales y feedback del mismo pedido siguen permitidos.
 - Un pedido finalizado con pago verificado, uno aceptado sin adicional o un cierre explícito por rechazo/retiro libera el proyecto. No cerrar unilateralmente una aceptación registrada ni alterar cambios finalizados.
 - El backend y la base de datos deben imponer la regla bajo bloqueo del proyecto, no solo ocultar/deshabilitar el botón. Historial y documentos permanecen consultables.
 
 ## Idiomas de la interfaz
 
-Preferencia de Sebastian, 27/10/2026:
+Preferencia de el equipo, 27/10/2026:
 
 - Trato admite únicamente español (`es`) e inglés (`en`), seleccionables desde el perfil.
 - Todo texto nuevo o modificado de interfaz debe tener ambas traducciones en los catálogos de `locales/`, incluidos errores, estados, formularios, ayudas, títulos, etiquetas accesibles y tooltips.

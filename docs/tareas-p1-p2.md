@@ -37,3 +37,7 @@ Cambiar de proveedor, activar servicios de pago o desplegar infraestructura requ
 - [Grafo conectado](grafo-conectado.md)
 - [Estándar de prompts](estandar-prompts.md)
 - [Bases y evaluación](bases-y-evaluacion-hackathon.md)
+
+## Próximo bloque de Ensayos
+
+Cinco guías seleccionadas en [fuentes-evaluador-ensayos.md](fuentes-evaluador-ensayos.md). El [flujo interno](flujo-interno-evaluador-ensayos.md) exige leerlas antes de evaluar y validar las citas. Incorporación de archivos, herramienta de lectura y conexión del agente pendientes.

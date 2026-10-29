@@ -1,17 +1,38 @@
 """Authenticated community projections. Private projects are checked inside the RPC."""
+import re
 from typing import Annotated
 from uuid import UUID
-from urllib.parse import urlparse
+from urllib.parse import urlparse, quote
 from fastapi import APIRouter, Depends, Query, Request
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, Response
 from pydantic import BaseModel, ConfigDict, Field, StringConstraints, field_validator
 from starlette.concurrency import run_in_threadpool
 from .business_routes import read_bytes
 from .persistence import Repository
 from .errors import ApiError
+from . import reputation_evidence as evidence
+
+def normalized_public_email(value):
+    if value is None:return None
+    value=value.strip(' \t\r\n').lower()
+    if not value or len(value)>254 or not re.fullmatch(r"[a-z0-9.!#$%&'*+/=?^_`{|}~-]+@[a-z0-9.-]+\.[a-z]{2,63}",value):
+        raise ValueError('Invalid public email')
+    local,domain=value.split('@')
+    if len(local)>64 or local.startswith('.') or local.endswith('.') or '..' in local or any(not re.fullmatch(r'[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?',label) for label in domain.split('.')):
+        raise ValueError('Invalid public email')
+    return value
+
+class EmailLookup(BaseModel):
+    model_config=ConfigDict(extra='forbid',strict=True)
+    public_email: str
+    @field_validator('public_email')
+    @classmethod
+    def email(cls,value):return normalized_public_email(value)
 
 class ReviewInput(BaseModel):
     model_config=ConfigDict(extra='forbid',strict=True)
+    public_email: str | None=None
+    attachment_ids: list[str] | None=Field(default=None,max_length=3)
     project_id: str
     profile_id: str | None=None
     review_id: str | None=None
@@ -32,6 +53,18 @@ class ReviewInput(BaseModel):
         if value is not None:
             return str(UUID(value))
         return value
+
+    @field_validator('public_email')
+    @classmethod
+    def email(cls,value):return normalized_public_email(value)
+
+    @field_validator('attachment_ids')
+    @classmethod
+    def attachments(cls,value):
+        if value is None:return None
+        ids=[str(UUID(item)) for item in value]
+        if len(set(ids))!=len(ids):raise ValueError('Duplicate attachment')
+        return ids
 
     @field_validator('website')
     @classmethod
@@ -62,17 +95,43 @@ def build_reputation_router(settings,require_user,repository_factory=None):
         try:return kind.model_validate_json(await read_bytes(request,20000))
         except (ValueError,ValidationError):raise ApiError('REPUTATION_INVALID',422)
     @router.get('')
-    def directory(search:str=Query(default='',max_length=160),offset:int=Query(default=0,ge=0,le=100000),repo=Depends(repository)):
+    def directory(search:str=Query(default='',max_length=254),offset:int=Query(default=0,ge=0,le=100000),repo=Depends(repository)):
         return reply(repo,'list',{'search':search,'offset':offset})
+    @router.post('/lookup')
+    async def lookup(request:Request,repo=Depends(repository)):
+        item=await model(request,EmailLookup)
+        return await run_in_threadpool(reply,repo,'lookup',item.model_dump())
     @router.get('/review-options')
     def options(repo=Depends(repository)):
         return reply(repo,'options',{})
+    @router.get('/attachments')
+    def attachments(project_id:UUID,repo=Depends(repository)):
+        return reply(repo,'attachment_list',{'project_id':str(project_id)})
+    @router.post('/attachments')
+    async def upload_attachment(request:Request,project_id:UUID,filename:str=Query(min_length=1,max_length=255),repo=Depends(repository)):
+        key=request.headers.get('idempotency-key','')
+        if not key or len(key)>128 or any(ord(c)<33 or ord(c)>126 for c in key):raise ApiError('INVALID_IDEMPOTENCY_KEY',422)
+        if not filename.lower().endswith('.pdf') or any(ord(c)<32 or c in '/\\' for c in filename):raise ApiError('REPUTATION_ATTACHMENT_FORMAT',415)
+        if request.headers.get('content-type','').split(';',1)[0].strip().lower()!='application/pdf':raise ApiError('REPUTATION_ATTACHMENT_FORMAT',415)
+        await run_in_threadpool(evidence.action,repo,'attachment_context',{'project_id':str(project_id)})
+        data=await read_bytes(request,evidence.MAX_FILE_BYTES)
+        if not data.startswith(b'%PDF-'):raise ApiError('REPUTATION_ATTACHMENT_FORMAT',422)
+        value=await run_in_threadpool(evidence.upload,repo,str(project_id),filename,key,data)
+        return JSONResponse({'data':value},headers={'Cache-Control':'no-store'})
+    @router.get('/attachments/{attachment_id}/file')
+    def attachment_file(attachment_id:UUID,repo=Depends(repository)):
+        item,data=evidence.download(repo,str(attachment_id))
+        return Response(data,media_type='application/pdf',headers={'Cache-Control':'no-store','X-Content-Type-Options':'nosniff','Content-Disposition':"inline; filename=document.pdf; filename*=UTF-8''"+quote(item['filename'],safe='')})
+    @router.delete('/attachments/{attachment_id}')
+    def discard_attachment(attachment_id:UUID,repo=Depends(repository)):
+        return JSONResponse({'data':evidence.discard(repo,str(attachment_id))},headers={'Cache-Control':'no-store'})
     @router.get('/clients/{profile_id}')
     def detail(profile_id:UUID,offset:int=Query(default=0,ge=0,le=100000),repo=Depends(repository)):
         return reply(repo,'detail',{'profile_id':str(profile_id),'offset':offset})
     @router.post('/reviews')
     async def save(request:Request,repo=Depends(repository)):
         item=await model(request,ReviewInput)
+        if not item.public_email and not item.review_id:raise ApiError('REPUTATION_EMAIL_REQUIRED',422)
         if not item.consent:raise ApiError('REPUTATION_CONSENT_REQUIRED',422)
         if not item.profile_id and not 2<=len(item.name)<=160:raise ApiError('REPUTATION_INVALID',422)
         return await run_in_threadpool(reply,repo,'save',item.model_dump())

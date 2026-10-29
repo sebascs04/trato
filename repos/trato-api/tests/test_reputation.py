@@ -18,9 +18,9 @@ class Repo:
 class ReputationTests(unittest.TestCase):
  def setUp(self):
   Repo.calls=[];self.client=TestClient(create_app(Settings(),Services(),Repo));self.headers={'Authorization':'Bearer owner'}
-  self.payload=dict(project_id=PROJECT,alias='Designer',name='Example studio',rating=4,communication=5,scope=4,payment='late',body='This is a test of a reviewed experience.',consent=True)
+  self.payload=dict(project_id=PROJECT,alias='Designer',name='Example studio',public_email='studio@example.invalid',rating=4,communication=5,scope=4,payment='late',body='This is a test of a reviewed experience.',consent=True)
  def test_requires_authentication_for_reads_and_writes(self):
-  for method,path in [('get','/api/v1/reputation'),('get','/api/v1/reputation/review-options'),('get',f'/api/v1/reputation/clients/{PROFILE}'),('post','/api/v1/reputation/reviews')]:
+  for method,path in [('get','/api/v1/reputation'),('post','/api/v1/reputation/lookup'),('get','/api/v1/reputation/review-options'),('get',f'/api/v1/reputation/clients/{PROFILE}'),('post','/api/v1/reputation/reviews')]:
    self.assertEqual(getattr(self.client,method)(path).status_code,401)
   self.assertEqual(Repo.calls,[])
  def test_rpc_keeps_user_token_and_safe_action(self):
@@ -46,3 +46,22 @@ class ReputationTests(unittest.TestCase):
  def test_report_does_not_publish_a_review(self):
   response=self.client.post('/api/v1/reputation/reviews/report',headers=self.headers,json={'review_id':PROFILE,'reason':'privacy','details':'The review includes private data.'})
   self.assertEqual(response.status_code,200);self.assertEqual(Repo.calls[0][2]['p_action'],'report')
+
+ def test_lookup_normalizes_email_without_dropping_plus_or_dots(self):
+  response=self.client.post('/api/v1/reputation/lookup',headers=self.headers,json={'public_email':'  Name.Tag+work@Example.COM  '})
+  self.assertEqual(response.status_code,200)
+  self.assertEqual(Repo.calls[-1][2],{'p_action':'lookup','p_data':{'public_email':'name.tag+work@example.com'}})
+ def test_invalid_public_email_never_calls_rpc(self):
+  for email in ['', 'not-email', 'a@-example.com','a..b@example.com','a@example..com','a@localhost','a@example.com\r\nBcc:b@example.com','a'*65+'@example.com']:
+   with self.subTest(email=email):
+    self.assertEqual(self.client.post('/api/v1/reputation/lookup',headers=self.headers,json={'public_email':email}).status_code,422)
+  self.assertEqual(Repo.calls,[])
+ def test_creation_requires_email_even_with_profile_selected(self):
+  payload=self.payload.copy();payload.pop('public_email')
+  for extra in [{},{'profile_id':PROFILE}]:
+   self.assertEqual(self.client.post('/api/v1/reputation/reviews',headers=self.headers,json=payload|extra).status_code,422)
+  self.assertEqual(Repo.calls,[])
+ def test_search_accepts_complete_email_and_stays_bounded(self):
+  email='a'*64+'@'+'b'*63+'.'+'c'*63+'.example'
+  self.assertEqual(self.client.get('/api/v1/reputation',params={'search':email},headers=self.headers).status_code,200)
+  self.assertEqual(self.client.get('/api/v1/reputation',params={'search':'a'*255},headers=self.headers).status_code,422)

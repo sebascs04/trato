@@ -2,15 +2,28 @@ begin;
 insert into auth.users(id,email) values('a1111111-1111-4111-8111-111111111111','rep-a@example.invalid'),('b2222222-2222-4222-8222-222222222222','rep-b@example.invalid');
 insert into public.clients(id,owner_id,name,contact_email) values('c1111111-1111-4111-8111-111111111111','a1111111-1111-4111-8111-111111111111','Private customer A','secret-a@example.invalid'),('c2222222-2222-4222-8222-222222222222','b2222222-2222-4222-8222-222222222222','Private customer B','secret-b@example.invalid');
 insert into public.projects(id,owner_id,client_id,name) values('d1111111-1111-4111-8111-111111111111','a1111111-1111-4111-8111-111111111111','c1111111-1111-4111-8111-111111111111','Private project A'),('d2222222-2222-4222-8222-222222222222','b2222222-2222-4222-8222-222222222222','c2222222-2222-4222-8222-222222222222','Private project B');
+insert into public.clients(id,owner_id,name,contact_email) values('c3333333-3333-4333-8333-333333333333','a1111111-1111-4111-8111-111111111111','Other private customer','other-secret@example.invalid');
+insert into public.projects(id,owner_id,client_id,name) values('d3333333-3333-4333-8333-333333333333','a1111111-1111-4111-8111-111111111111','c3333333-3333-4333-8333-333333333333','Other private project');
 set local role authenticated;
 set local request.jwt.claim.sub='a1111111-1111-4111-8111-111111111111';
 set local request.jwt.claims='{"sub":"a1111111-1111-4111-8111-111111111111","role":"authenticated","is_anonymous":false}';
-do $$declare p jsonb; a jsonb; b jsonb; detail jsonb;begin
- p:=jsonb_build_object('project_id','d1111111-1111-4111-8111-111111111111','name','Community test studio','location','Example city','alias','Designer A','rating',4,'communication',4,'scope',5,'payment','late','body','This is an explicit SQL test review with no real customer.','consent',true);
+do $$declare p jsonb; a jsonb; b jsonb; homonym jsonb; detail jsonb;begin
+ p:=jsonb_build_object('project_id','d1111111-1111-4111-8111-111111111111','public_email','shared.tag+work@example.invalid','name','Community test studio','location','Example city','alias','Designer A','rating',4,'communication',4,'scope',5,'payment','late','body','This is an explicit SQL test review with no real customer.','consent',true);
  begin perform public.community_reputation('save',p-'consent');raise exception 'Missing consent accepted';exception when invalid_parameter_value then null;end;
  begin perform public.community_reputation('save',jsonb_set(p,'{project_id}','"d2222222-2222-4222-8222-222222222222"'));raise exception 'Foreign project accepted';exception when raise_exception then if sqlerrm<>'PROJECT_NOT_FOUND' then raise;end if;end;
  a:=public.community_reputation('save',p);
+ if public.community_reputation('lookup','{"public_email":"  SHARED.TAG+work@EXAMPLE.INVALID  "}'::jsonb)->'client'->>'id' is distinct from a->>'profile_id' then raise exception 'Exact normalized lookup failed';end if;
+ if public.community_reputation('lookup','{"public_email":"secret-a@example.invalid"}'::jsonb)->'client' <> 'null'::jsonb then raise exception 'Private email published';end if;
+ if public.community_reputation('lookup','{"public_email":"sharedtag+work@example.invalid"}'::jsonb)->'client' <> 'null'::jsonb then raise exception 'Local email dots discarded';end if;
+ if public.community_reputation('lookup','{"public_email":"shared.tag@example.invalid"}'::jsonb)->'client' <> 'null'::jsonb then raise exception 'Plus tag discarded';end if;
+ begin perform private.community_reputation_core('list','{}');raise exception 'Core callable directly';exception when insufficient_privilege then null;end;
+ begin perform public.community_reputation('save',p-'public_email');raise exception 'Missing email accepted';exception when invalid_parameter_value then null;end;
+
  detail:=public.community_reputation('detail',jsonb_build_object('profile_id',a->>'profile_id'));
+ homonym:=public.community_reputation('save',p||jsonb_build_object('project_id','d3333333-3333-4333-8333-333333333333','public_email','different-person@example.invalid'));
+ if homonym->>'profile_id'=a->>'profile_id' then raise exception 'Homonyms merged';end if;
+ if jsonb_array_length(public.community_reputation('list','{"search":"Community test studio"}'::jsonb)->'clients')<>2 then raise exception 'Homonyms not distinguished';end if;
+ if public.community_reputation('lookup','{"public_email":"different-person@example.invalid"}'::jsonb)->'client'->>'id' is distinct from homonym->>'profile_id' then raise exception 'Different email points to wrong client';end if;
  if detail->'client'->>'review_count'<>'1' or detail->'reviews'->0->>'mine'<>'true' then raise exception 'Own review missing';end if;
  begin perform public.community_reputation('save',p);raise exception 'Duplicate accepted';exception when unique_violation then null;end;
  perform public.community_reputation('save',p||jsonb_build_object('profile_id',a->>'profile_id','review_id',a->>'review_id','rating',5));
@@ -22,7 +35,12 @@ do $$declare p jsonb; a jsonb; b jsonb; detail jsonb;begin
  if detail::text like '%secret-a%' or detail::text like '%Private project%' or detail::text like '%author_id%' or detail->'reviews'->0->>'project_id' is not null then raise exception 'Private data leaked';end if;
  begin perform public.community_reputation('withdraw',jsonb_build_object('review_id',a->>'review_id'));raise exception 'Foreign withdrawal accepted';exception when raise_exception then if sqlerrm<>'REPUTATION_NOT_FOUND' then raise;end if;end;
  p:=p||jsonb_build_object('project_id','d2222222-2222-4222-8222-222222222222','profile_id',a->>'profile_id','alias','Designer B','rating',3);
+ begin perform public.community_reputation('save',p||jsonb_build_object('review_id',a->>'review_id'));raise exception 'Foreign edit accepted';exception when raise_exception then if sqlerrm<>'REPUTATION_NOT_FOUND' then raise;end if;end;
+ begin perform public.community_reputation('save',p||jsonb_build_object('public_email','different@example.invalid'));raise exception 'Identity changed';exception when invalid_parameter_value then null;end;
  b:=public.community_reputation('save',p);
+ if public.community_reputation('detail',jsonb_build_object('profile_id',a->>'profile_id'))->'client'->>'rating'<>'4.0' then raise exception 'Aggregate average incorrect';end if;
+ if public.community_reputation('detail',jsonb_build_object('profile_id',a->>'profile_id'))->'reviews'->0->>'version' is null then raise exception 'Review version missing';end if;
+
  if public.community_reputation('detail',jsonb_build_object('profile_id',a->>'profile_id'))->'client'->>'review_count'<>'2' then raise exception 'Community not shared';end if;
  perform public.community_reputation('report',jsonb_build_object('review_id',a->>'review_id','reason','identity','details','SQL test report for review.'));
  perform public.community_reputation('report',jsonb_build_object('review_id',a->>'review_id','reason','identity','details','Same report is idempotent.'));

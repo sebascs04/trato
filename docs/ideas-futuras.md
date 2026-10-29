@@ -80,13 +80,13 @@ No dar a un agente del freelancer acceso al historial privado del cliente ni al 
 
 ## Recomendación provisional
 
-### Actualización de Sebastian · 24 de octubre de 2026
+### Actualización de el equipo · 24 de octubre de 2026
 
-**Modo ensayo:** nombre elegido para el simulador de conversaciones difíciles de la idea 2. La IA representa a un cliente para practicar objeciones sobre alcance, precio y plazos, usando el acuerdo y la solicitud como contexto. El entrenamiento no predice la conducta del cliente ni registra una aceptación real. Sebastian manifestó especial interés en esta función; queda para una etapa posterior al recorrido funcional principal.
+**Modo ensayo:** nombre elegido para el simulador de conversaciones difíciles de la idea 2. La IA representa a un cliente para practicar objeciones sobre alcance, precio y plazos, usando el acuerdo y la solicitud como contexto. El entrenamiento no predice la conducta del cliente ni registra una aceptación real. el equipo manifestó especial interés en esta función; queda para una etapa posterior al recorrido funcional principal.
 
-**Investigación retomada ·25deoctubre:** Sebastian pidió recuperar esta dirección y contrastarla con referentes profesionales. La ampliación, con observación de las cuatro páginas y referencias de Linear/Atlassian para el área de trabajo, está en [investigacion-ux-trato-2026-10-25.md](investigacion-ux-trato-2026-10-25.md). Se documenta investigación; no implica implementación ni despliegue.
+**Investigación retomada ·25deoctubre:** el equipo pidió recuperar esta dirección y contrastarla con referentes profesionales. La ampliación, con observación de las cuatro páginas y referencias de Linear/Atlassian para el área de trabajo, está en [investigacion-ux-trato-2026-10-25.md](investigacion-ux-trato-2026-10-25.md). Se documenta investigación; no implica implementación ni despliegue.
 
-**Portada cinematográfica con scroll — pendiente, sin prioridad actual.** Sebastian pidió anotar esta dirección visual para retomarla después; no implementarla ahora ni sustituir el espacio de trabajo existente.
+**Portada cinematográfica con scroll — pendiente, sin prioridad actual.** el equipo pidió anotar esta dirección visual para retomarla después; no implementarla ahora ni sustituir el espacio de trabajo existente.
 
 Referencias compartidas, con Polpharma como favorita:
 
@@ -109,13 +109,25 @@ Antes de llamar disruptiva o novedosa a una idea, contrastar alternativas actual
 
 ### Investigación del Modo ensayo · 27/10/2026
 
-Se retomó la idea 2 a petición de Sebastian. Hay testimonios freelance sobre miedo a cobrar extras y evidencia limitada de utilidad de la preparación con IA; también hay estudios que favorecen una guía estructurada frente a chats extensos. La categoría tiene competidores, incluido Negosim con tarifas freelance. La recomendación es validar un ensayo breve y opcional dentro de un pedido, con fuentes y salida a un borrador, sin efectos sobre acuerdos ni pagos.
+Se retomó la idea 2 a petición de el equipo. Hay testimonios freelance sobre miedo a cobrar extras y evidencia limitada de utilidad de la preparación con IA; también hay estudios que favorecen una guía estructurada frente a chats extensos. La categoría tiene competidores, incluido Negosim con tarifas freelance. La recomendación es validar un ensayo breve y opcional dentro de un pedido, con fuentes y salida a un borrador, sin efectos sobre acuerdos ni pagos.
 
 Evidencia, limitaciones, recorrido propuesto y prueba con usuarios en [investigacion-modo-ensayo.md](investigacion-modo-ensayo.md). No se ha demostrado demanda de Trato ni se activaron modelos o pantallas nuevas por esta anotación.
 
 
 ### Reputación y organización de cobros ·28/10/2026
 
-Sebastian autorizó una sección Reputación debajo de Ensayos: fichas compartidas de clientes con experiencias de distintos freelancers, dentro de la aplicación autenticada. Implementación y límites en [reputacion.md](reputacion.md). Compartir es explícito; no se vuelca el directorio privado ni se declara fraude o impago verificado por una puntuación.
+el equipo autorizó una sección Reputación debajo de Ensayos: fichas compartidas de clientes con experiencias de distintos freelancers, dentro de la aplicación autenticada. Implementación y límites en [reputacion.md](reputacion.md). Compartir es explícito; no se vuelca el directorio privado ni se declara fraude o impago verificado por una puntuación.
 
-Sebastian prefiere explorar cómo organizar pagos al comenzar un proyecto antes que dar prioridad a recordatorios por impagos: un mensaje de IA no obliga a pagar a quien ignora al profesional. Se propone separar el futuro plan de entregables/pagos por etapas de Reputación y de Ensayos. Esta conversación no autoriza todavía implementar cobros iniciales, una pasarela nueva, reportes externos o envíos automáticos. No presentar pagos fraccionados como protección garantizada ni confundir una opinión compartida con una resolución de PayPal.
+**Decisión posterior del mismo día:** Reputación conserva el directorio de experiencias; no se añade un análisis de IA independiente solo para sumar IA a la sección. Las experiencias publicadas podrían servir de contexto con fuentes a los agentes de organización del proyecto, conversación y negociación. Esta decisión reemplaza la propuesta anterior de un resumen IA separado en la ficha. Mantener permisos, identidad del cliente, antigüedad, contradicciones y citas; las reseñas siguen siendo testimonios, no hechos contractuales ni decisiones de pago. No activa todavía esa integración ni el plan inicial de cobros.
+
+el equipo prefiere explorar cómo organizar pagos al comenzar un proyecto antes que dar prioridad a recordatorios por impagos: un mensaje de IA no obliga a pagar a quien ignora al profesional. Se propone separar el futuro plan de entregables/pagos por etapas de Reputación y de Ensayos. Esta conversación no autoriza todavía implementar cobros iniciales, una pasarela nueva, reportes externos o envíos automáticos. No presentar pagos fraccionados como protección garantizada ni confundir una opinión compartida con una resolución de PayPal.
+
+#### Plan del proyecto y de cobros desde el inicio
+
+**Objetivo propuesto:** ayudar al freelancer a preparar el trabajo antes de comenzarlo, definiendo entregables, hitos, criterios de aprobación, anticipo y momento de cada cobro. Separa la planificación preventiva de la gestión posterior de cambios o impagos.
+
+**Recorrido por explorar:** el profesional aporta alcance, presupuesto y condiciones; la IA identifica datos ausentes y propone una organización revisable; el profesional ajusta y comparte el plan; se registra qué versión aceptaron las partes. Solo después se habilitarían los cobros que correspondan, con autorización y estado de pago verificado por backend.
+
+**Límites:** no elegir un porcentaje de anticipo como regla universal, prometer que los hitos evitan impagos ni presentar un pago como escrow. Las tarifas, estimaciones y condiciones proceden del profesional; la IA no inventa acuerdos ni cobra por decidir un plan. Faltaría validar esta propuesta con usuarios y concretar el producto/API PayPal que se usaría.
+
+**Estado:** idea futura documentada, sin implementación iniciada ni modificaciones al flujo contractual. El compañero humano está desarrollando el recorrido acuerdo inicial → pedido → adenda → aceptación → pago y devoluciones; no intervenir en ese bloque para adelantar esta idea. Cuando lo libere, acordar alcance y contrato de la planificación antes de escribir código.

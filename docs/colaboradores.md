@@ -2,6 +2,8 @@
 
 Esta guía corresponde al código publicado el 26 de octubre de 2026. El frontend oficial vive en la raíz; los servicios están en `repos/`.
 
+Antes de implementar herramientas o flujos de IA, leer [arquitectura acordada de herramientas de Trato y diferencia con MCP](herramientas-archivos-agentes.md). Diseño objetivo: worker → backend → procesador → backend → worker, mediante contratos internos HTTP, sin MCP en esta etapa. El documento distingue lo acordado de las adaptaciones todavía pendientes en el código.
+
 ## 1. Dependencias
 
 Node.js 18+, Python 3.12, Redis para la ingesta conectada y las bibliotecas de sistema de Chromium si vas a ejecutar pruebas de navegador.

@@ -86,6 +86,9 @@ class Repository:
     def soft_delete_client(self,client_id):
         return self.rpc('soft_delete_client',{'p_client_id':uuid(client_id)})
 
+    def soft_delete_project(self,project_id):
+        return self.rpc('soft_delete_project',{'p_project_id':uuid(project_id)})
+
     def list_projects(self,client_id=None):
         params={'select':'id,client_id,name,status,created_at','order':'created_at.desc','limit':100}
         if client_id is not None:params['client_id']='eq.'+uuid(client_id)

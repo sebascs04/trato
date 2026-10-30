@@ -28,7 +28,7 @@ export class ConnectedWorkspace {
     try {
       const value=JSON.parse(this.storage.getItem(this.navigationKey())||'null');
       const id=value=>typeof value==='string'&&/^[a-zA-Z0-9-]{1,80}$/.test(value);
-      if(value?.version!==1||!['acuerdo','solicitudes','devoluciones','documentos','historial','gestion','comparar'].includes(value.tab))return null;
+      if(value?.version!==1||!['acuerdo','plan','solicitudes','devoluciones','documentos','historial','gestion','comparar'].includes(value.tab))return null;
       if([value.clientId,value.projectId,value.requestId,value.revisionId].some(value=>value!==''&&!id(value)))return null;
       return {...value,historyView:value.historyView==='map'?'map':'history'};
     } catch {return null;}
@@ -41,7 +41,7 @@ export class ConnectedWorkspace {
     const requestId=projectId&&this.documents.some(d=>d.id===this.requestId&&d.kind==='email_request')?this.requestId:'';
     const details=this.proposalDetails?.proposal?.request_document_id===requestId?this.proposalDetails:null;
     const revisionId=this.tab==='gestion'&&requestId?(details?.revision?.id||this.proposalRetryRevision||''):'';
-    const tab=['acuerdo','solicitudes','devoluciones','documentos','historial','gestion','comparar'].includes(this.tab)?this.tab:'acuerdo';
+    const tab=['acuerdo','plan','solicitudes','devoluciones','documentos','historial','gestion','comparar'].includes(this.tab)?this.tab:'acuerdo';
     try {this.storage.setItem(this.navigationKey(),JSON.stringify({version:1,clientId,projectId,tab,requestId,revisionId,historyView:this.historyView==='map'?'map':'history'}));} catch { /* Navigation storage is optional; business operations are unaffected. */ }
   }
   async restoreProjectNavigation(nav) {
@@ -89,7 +89,7 @@ export class ConnectedWorkspace {
     this.modal.setAttribute('aria-labelledby','cloud-dialog-title'); this.document.body.append(this.modal);
     this.modal.addEventListener('click',event=>{if(event.target.closest('[data-cloud-close]')) this.modal.close();const switcher=event.target.closest('[data-cloud-auth-mode]');if(switcher){const email=this.modal.querySelector('[name="email"]')?.value||'';this.openAccount(switcher.dataset.cloudAuthMode);this.modal.querySelector('[name="email"]').value=email;}});
     this.modal.addEventListener('submit',event=>{event.preventDefault(); this.submit(event);});
-    this.modal.addEventListener('close',()=>{if(!this.modal.open){this.releasePreview();this.modal.replaceChildren();}});
+    this.modal.addEventListener('close',()=>{if(!this.modal.open){this.releasePreview();this.planUploadProject=null;this.modal.replaceChildren();}});
     this.document.addEventListener('click',event=>this.click(event));
     this.document.addEventListener('change',event=>{
       if(event.target.matches('[data-cloud-project]')) {
@@ -235,7 +235,7 @@ export class ConnectedWorkspace {
   }
   show(title,html) {
     this.releasePreview();
-    this.modal.classList.remove('cloud-profile-dialog','cloud-auth-dialog','cloud-document-preview','cloud-mail-dialog');
+    this.modal.classList.remove('cloud-profile-dialog','cloud-auth-dialog','cloud-document-preview','cloud-mail-dialog','cloud-project-setup');
     if(this.modal.open) this.modal.close();
     this.modal.innerHTML=`<div class="upload-modal-header"><div><span class="eyebrow">${uiText("TU ESPACIO EN TRATO")}</span><h2 id="cloud-dialog-title">${escape(title)}</h2></div><button type="button" class="close" data-cloud-close aria-label="${uiText("Cerrar")}" title="${uiText("Cerrar")}">${uiIcon('x')}</button></div>${html}<p class="cloud-error" data-cloud-error role="alert"></p>`;
     this.modal.showModal();
@@ -273,9 +273,15 @@ export class ConnectedWorkspace {
         await this.request(`/api/v1/clients/${id}/delete`,{method:'POST'});
         if(this.clientId===id){this.clientId='';this.projectId='';this.documents=[];this.events=[];this.comparison=null;this.requestId='';}
         this.clients=this.clients.filter(client=>client.id!==id);this.projectClientsLoaded.delete(id);this.projects=this.projects.filter(project=>project.client_id!==id);this.modal.close();await this.loadProject();this.message=uiText("Cliente eliminado de tu espacio.");this.notify();
+      } else if(kind==='project-delete') {
+        const id=form.dataset.projectId;
+        await this.request(`/api/v1/projects/${id}/delete`,{method:'POST'});
+        this.discardProjectPlan?.(id);this.projects=this.projects.filter(project=>project.id!==id);
+        if(this.projectId===id){this.stopIngestionPolling();this.releaseProjectMap();this.projectId='';this.documents=[];this.events=[];this.projectActivity=[];this.requestId='';this.comparison=null;}
+        this.modal.close();this.message=uiText('projectStart.projectDeleted');this.notify();
       } else if(kind==='project') {
         const project=await this.request('/api/v1/projects',this.json({client_id:values.get('client'),name:values.get('name')}));
-        this.projects=[project,...this.projects.filter(item=>item.id!==project.id)];this.clientId=project.client_id;this.projectId=project.id;this.tab='acuerdo';this.modal.close();await this.loadProject();
+        this.projects=[project,...this.projects.filter(item=>item.id!==project.id)];this.clientId=project.client_id;this.projectId=project.id;this.tab=values.get('project_start')==='new'?'plan':'acuerdo';this.modal.close();await this.loadProject();
       } else if(kind==='upload') {
         const id=this.projectId, epoch=this.epoch, file=values.get('file');
         if(!file?.size || file.size>10485760) throw new Error(uiText("Selecciona un PDF o DOCX de hasta 10 MB."));
@@ -287,7 +293,7 @@ export class ConnectedWorkspace {
           await this.request(`/api/v1/projects/${id}/documents?${new URLSearchParams(metadata)}`,{method:'POST',body:file,headers:{'Content-Type':mime,'Idempotency-Key':this.uploadCommand.key}});
         } catch(error) {await this.loadProject(); throw error;}
         if(epoch!==this.epoch || id!==this.projectId) return;
-        this.uploadCommand=null; this.comparison=null; this.tab=metadata.kind==='initial_agreement'?'acuerdo':'solicitudes'; this.modal.close(); await this.loadProject();
+        this.uploadCommand=null; this.comparison=null; this.tab=this.planUploadProject===id?'plan':metadata.kind==='initial_agreement'?'acuerdo':'solicitudes';this.planUploadProject=null; this.modal.close(); await this.loadProject();
         this.message=metadata.kind==='initial_agreement'?uiText("Archivo guardado."):uiText("Pedido guardado."); this.notify();
       }
     });
@@ -303,6 +309,7 @@ export class ConnectedWorkspace {
     if(action==='client') this.show(uiText("Nuevo cliente"),`<form data-cloud-form="client"><label class="field">${uiText("Nombre")}<input name="name" class="context-box" required maxlength="200"></label><label class="field">${uiText("Correo de contacto")}<input name="email" class="context-box" type="email" maxlength="254"></label><div class="dialog-actions"><button type="submit" class="button">${uiText("Guardar cliente")}</button></div></form>`);
     if(action==='client-delete'){const client=this.clients.find(c=>c.id===id);if(client)this.show(uiText("Eliminar cliente"),`<p>${uiText("Eliminarás a")} <strong>${escape(client.name)}</strong> de tu espacio junto con sus proyectos y documentos.</p><p>${uiText("Conservaremos los registros mediante borrado lógico para permitir su recuperación.")}</p><form data-cloud-form="client-delete" data-client-id="${escape(client.id)}"><div class="dialog-actions"><button class="button cloud-delete-confirm" type="submit">${uiIcon('trash-2')}${uiText("Eliminar cliente")}</button><button class="button secondary" type="button" data-cloud-close>${uiText("Cancelar")}</button></div></form>`);}
     if(action==='project') this.openProject(id);
+    if(action==='project-delete'){const project=this.projects.find(item=>item.id===id);if(project)this.show(uiText('projectStart.deleteProject'),`<p>${uiText('projectStart.deleteProjectIntro')} <strong>${escape(project.name)}</strong>.</p><p>${uiText('projectStart.deleteProjectHelp')}</p><form data-cloud-form="project-delete" data-project-id="${escape(id)}"><div class="dialog-actions"><button type="submit" class="button cloud-delete-confirm">${uiIcon('trash-2')}${uiText('projectStart.deleteProject')}</button><button type="button" class="button secondary" data-cloud-close>${uiText("Cancelar")}</button></div></form>`);}
     if(action==='upload') this.openSource(target.dataset.cloudPurpose);
     if(action==='graph-preview'){this.historyView='map';this.tab='historial';this.notify();}
     if(action==='history-view'){this.historyView='history';this.notify();}
@@ -362,7 +369,7 @@ export class ConnectedWorkspace {
     const clientField=client
       ? `<div class="context-entry"><small>${uiText("CLIENTE DEL PROYECTO")}</small><strong>${escape(client.name)}</strong></div><input type="hidden" name="client" value="${client.id}">`
       : `<label class="field">${uiText("Cliente del proyecto")}<select name="client" class="context-box" required><option value="" selected disabled>${uiText("Elige un cliente guardado")}</option>${this.clients.map(item=>`<option value="${item.id}">${escape(item.name)}</option>`).join('')}</select></label>`;
-    this.show(uiText("Nuevo proyecto"),`<form data-cloud-form="project">${clientField}<label class="field">${uiText("Nombre del nuevo proyecto")}<input name="name" class="context-box" required maxlength="200" placeholder="${uiText("Por ejemplo: sitio web corporativo")}"></label><div class="dialog-actions"><button type="submit" class="button">${uiText("Crear proyecto")}</button></div></form>`);
+    this.show(uiText("Nuevo proyecto"),`<form data-cloud-form="project">${clientField}<label class="field">${uiText("Nombre del nuevo proyecto")}<input name="name" class="context-box" required maxlength="200" placeholder="${uiText("Por ejemplo: sitio web corporativo")}"></label><h3>${uiText('projectStart.moment')}</h3><div class="project-start-choices">${[['new','sparkles','newTitle','newCopy'],['ongoing','folder-open','ongoingTitle','ongoingCopy']].map(([value,glyph,title,copy])=>`<label class="project-start-choice"><input type="radio" name="project_start" value="${value}" ${value==='new'?'checked':''}><div>${uiIcon(glyph)}<strong>${uiText(`projectStart.${title}`)}</strong><p>${uiText(`projectStart.${copy}`)}</p></div></label>`).join('')}</div><div class="dialog-actions"><button type="submit" class="button">${uiText('projectStart.continue')}${uiIcon('arrow-right')}</button></div></form>`);
   }
   initialSources() {return this.documents.filter(doc=>doc.kind==='initial_agreement');}
   sourceReady(doc) {
@@ -406,8 +413,8 @@ export class ConnectedWorkspace {
     panel.innerHTML=`<section class="workspace-panel cloud-refunds" aria-label="${uiText("Devoluciones del proyecto")}"><header class="cloud-refund-heading"><span class="cloud-refund-symbol" aria-hidden="true">${uiIcon('undo-2')}</span><div><span class="eyebrow">${uiText("DEVOLUCIONES")}</span><h3>${uiText("Revisar dinero que ya se pagó")}</h3><p>${uiText("Cuando el cliente pide recuperar todo o parte de un pago, revisa el acuerdo, el trabajo realizado y el importe que corresponde proponer.")}</p></div></header><div class="cloud-refund-context"><strong>${uiText("Una devolución parte de un pago recibido.")}</strong><p>${uiText("Si el cliente pide más trabajo o una nueva fecha, corresponde a Cambios. Si pide dinero de vuelta, corresponde a Devoluciones. Una cancelación puede requerir revisar el cierre antes de decidir si hay dinero que devolver.")}</p></div><div class="cloud-refund-trial"><button type="button" class="button" data-cloud-action="refund-preview">${uiText("Probar flujo de devolución")} ${uiIcon('arrow-right')}</button></div></section>`;
   }
   projectNavigation(tab) {
-    const selected=['solicitudes','comparar','gestion'].includes(tab)?'solicitudes':['devoluciones','documentos','historial'].includes(tab)?tab:'acuerdo';
-    const sections=[['acuerdo','file-text',uiText("Proyecto"),uiText("Acuerdo y fuentes iniciales")],['solicitudes','git-compare-arrows',uiText("Cambios"),uiText("Alcance, precio o plazo")],['devoluciones','undo-2',uiText("Devoluciones"),uiText("Dinero de un pago recibido")],['documentos','file-text',uiText("Documentos"),uiText("Archivos por pedido")],['historial','history',uiText("Historial del proyecto"),uiText("Historial y mapa")]];
+    const selected=['solicitudes','comparar','gestion'].includes(tab)?'solicitudes':['plan','devoluciones','documentos','historial'].includes(tab)?tab:'acuerdo';
+    const sections=[['acuerdo','file-text',uiText("Proyecto"),uiText("Acuerdo y fuentes iniciales")],['plan','wallet',uiText('projectStart.plan'),uiText('projectStart.planNavigation')],['solicitudes','git-compare-arrows',uiText("Cambios"),uiText("Alcance, precio o plazo")],['devoluciones','undo-2',uiText("Devoluciones"),uiText("Dinero de un pago recibido")],['documentos','file-text',uiText("Documentos"),uiText("Archivos por pedido")],['historial','history',uiText("Historial del proyecto"),uiText("Historial y mapa")]];
     return `<nav class="cloud-project-navigation" aria-label="${uiText("Secciones del proyecto")}">${sections.map(([id,icon,title,description])=>`<button type="button" data-cloud-action="tab" data-cloud-tab="${id}" aria-label="${title}: ${description}" ${selected===id?'aria-current="page"':''}>${uiIcon(icon)}<span><strong>${title}</strong><small>${description}</small></span></button>`).join('')}</nav>`;
   }
   async reviewChange(id) {
@@ -470,13 +477,14 @@ export class ConnectedWorkspace {
     const projects=this.projects.filter(p=>p.client_id===client.id);
     const toolbar=`<div class="cloud-breadcrumb"><button class="text-button" data-cloud-action="clients">${uiText("← Todos los clientes")}</button>${project?("<span>/</span><button class=\"text-button\" data-cloud-action=\"projects\">"+uiText("Proyectos del cliente")+"</button>"):''}</div>${project?'':`<section class="workspace-panel cloud-client-header" aria-label="${uiText("Cliente seleccionado")}"><div><span class="eyebrow">${uiText("CLIENTE")}</span><h2>${escape(client.name)}</h2><p class="cloud-client-meta">${escape(client.contact_email || '')}${client.contact_email?' · ':''}${projects.length} ${projects.length===1?uiText("proyecto"):uiText("proyectos")}</p></div><button class="button" data-cloud-action="project" data-cloud-id="${client.id}">${uiText("＋ Nuevo proyecto")}</button></section>`}`;
     if(!project) {
-      workspace.innerHTML=toolbar+`<section class="workspace-panel cloud-project-directory" aria-label="${uiText("Proyectos del cliente")}"><span class="eyebrow">${uiText("ESPACIO DE TRABAJO")}</span><h3>${uiText("Proyectos de")} ${escape(client.name)}</h3>${this.projectsLoading?this.renderSkeleton('list',uiText("Cargando proyectos…")):projects.map(p=>`<article class="cloud-client-row"><div><strong>${escape(p.name)}</strong></div><button class="button secondary" data-cloud-action="project-open" data-cloud-id="${p.id}" aria-label="${uiText("Abrir proyecto")} ${escape(p.name)}">${uiText("Abrir proyecto ↗")}</button></article>`).join('') || ("<p>"+uiText("Este cliente todavía no tiene proyectos. Crea su primer proyecto para incorporar el acuerdo y los documentos.")+"</p>")}</section><p class="cloud-notice" role="status" ${this.message?'':'hidden'}>${escape(this.message)}</p>`; return;
+      workspace.innerHTML=toolbar+`<section class="workspace-panel cloud-project-directory" aria-label="${uiText("Proyectos del cliente")}"><span class="eyebrow">${uiText("ESPACIO DE TRABAJO")}</span><h3>${uiText("Proyectos de")} ${escape(client.name)}</h3>${this.projectsLoading?this.renderSkeleton('list',uiText("Cargando proyectos…")):projects.map(p=>`<article class="cloud-client-row"><div><strong>${escape(p.name)}</strong></div><div class="cloud-client-actions"><button type="button" class="cloud-icon-button cloud-delete-client" data-cloud-action="project-delete" data-cloud-id="${p.id}" aria-label="${uiText('projectStart.deleteProject')} ${escape(p.name)}" title="${uiText('projectStart.deleteProject')}">${uiIcon('trash-2')}</button><button class="button secondary" data-cloud-action="project-open" data-cloud-id="${p.id}" aria-label="${uiText("Abrir proyecto")} ${escape(p.name)}">${uiText("Abrir proyecto ↗")}</button></div></article>`).join('') || ("<p>"+uiText("Este cliente todavía no tiene proyectos. Crea su primer proyecto para incorporar el acuerdo y los documentos.")+"</p>")}</section><p class="cloud-notice" role="status" ${this.message?'':'hidden'}>${escape(this.message)}</p>`; return;
     }
     const tab=this.tab;
-    workspace.innerHTML=toolbar+`<div class="cloud-project-picker" ${projects.length<2?'hidden':''}><label class="field" for="cloud-picker">${uiText("Proyecto")}</label><select id="cloud-picker" class="context-box" data-cloud-project>${projects.map(p=>`<option value="${p.id}" ${p.id===this.projectId?'selected':''}>${escape(p.name)}</option>`).join('')}</select></div><div class="client-banner"><span class="client-avatar">${escape((client?.name || '').slice(0,2).toUpperCase())}</span><div><span class="eyebrow">${uiText("PROYECTO")}</span><h2>${escape(project.name)}</h2><p>${escape(client.name)}</p></div></div>${this.projectNavigation(tab)}<p class="cloud-notice" role="status" ${this.message?'':'hidden'}>${escape(this.message)}</p><div id="client-panel"></div>`;
+    workspace.innerHTML=toolbar+`<div class="cloud-project-picker" ${projects.length<2?'hidden':''}><label class="field" for="cloud-picker">${uiText("Proyecto")}</label><select id="cloud-picker" class="context-box" data-cloud-project>${projects.map(p=>`<option value="${p.id}" ${p.id===this.projectId?'selected':''}>${escape(p.name)}</option>`).join('')}</select></div><div class="client-banner"><span class="client-avatar">${escape((client?.name || '').slice(0,2).toUpperCase())}</span><div><span class="eyebrow">${uiText("PROYECTO")}</span><h2>${escape(project.name)}</h2><p>${escape(client.name)}</p></div><button type="button" class="cloud-icon-button cloud-delete-project" data-cloud-action="project-delete" data-cloud-id="${escape(project.id)}" aria-label="${uiText('projectStart.deleteProject')} ${escape(project.name)}" title="${uiText('projectStart.deleteProject')}">${uiIcon('trash-2')}</button></div>${this.projectNavigation(tab)}<p class="cloud-notice" role="status" ${this.message?'':'hidden'}>${escape(this.message)}</p><div id="client-panel"></div>`;
     const panel=workspace.querySelector('#client-panel');
     if(this.loading) {panel.innerHTML=`<section class="workspace-panel">${this.renderSkeleton('project',uiText("Cargando información del proyecto…"))}</section>`; return;}
-    if(tab==='gestion') this.renderChangeManagement(panel);
+    if(tab==='plan') this.renderProjectPlan(panel);
+    else if(tab==='gestion') this.renderChangeManagement(panel);
     else if(tab==='comparar') this.renderChangeReview(panel);
     else if(tab==='revision') this.renderReview(panel);
     else if(tab==='solicitudes') this.renderRequests(panel);

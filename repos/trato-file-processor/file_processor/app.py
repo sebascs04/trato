@@ -8,6 +8,9 @@ from fastapi.responses import JSONResponse
 from starlette.concurrency import run_in_threadpool
 
 from .extraction import ExtractionError, MAX_FILE_BYTES, extract_document
+from .source_text import search_text_file_id, MAX_BUNDLE_BYTES
+from pydantic import ValidationError
+import json
 
 
 def create_app(token=None):
@@ -38,6 +41,24 @@ def create_app(token=None):
             return JSONResponse({'data': result}, headers={'Cache-Control': 'no-store'})
         except ExtractionError as error:
             return JSONResponse({'error': {'code': error.code, 'message': str(error)}}, status_code=error.status)
+
+    @app.post('/v1/source-text/read')
+    async def source_text(request: Request):
+        if not service_token:
+            return JSONResponse({'error': {'code': 'SERVICE_NOT_CONFIGURED'}}, status_code=503)
+        if not secrets.compare_digest(request.headers.get('authorization', '').encode(), ('Bearer ' + service_token).encode()):
+            return JSONResponse({'error': {'code': 'UNAUTHORIZED'}}, status_code=401)
+        parts, size = [], 0
+        async for chunk in request.stream():
+            size += len(chunk)
+            if size > MAX_BUNDLE_BYTES:
+                return JSONResponse({'error': {'code': 'SOURCE_BUNDLE_TOO_LARGE'}}, status_code=413)
+            parts.append(chunk)
+        try:
+            result = await run_in_threadpool(search_text_file_id, json.loads(b''.join(parts)))
+            return JSONResponse({'data': result}, headers={'Cache-Control': 'no-store'})
+        except (ValueError, TypeError, ValidationError, RecursionError):
+            return JSONResponse({'error': {'code': 'INVALID_SOURCE_BUNDLE'}}, status_code=422)
 
     return app
 

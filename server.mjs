@@ -8,6 +8,8 @@ import {simulationThreadsEndpoint} from './simulation-threads.mjs';
 const localPorts = JSON.parse(readFileSync(new URL('./local-ports.json', import.meta.url), 'utf8'));
 const port = Number(process.env.PORT || localPorts.web);
 const assets = new Map([
+  ['/project-planning.mjs',['project-planning.mjs','text/javascript; charset=utf-8']],
+  ['/project-planning.css',['project-planning.css','text/css; charset=utf-8']],
   ['/i18n.mjs',['i18n.mjs','text/javascript; charset=utf-8']],
   ['/locales/es.mjs',['locales/es.mjs','text/javascript; charset=utf-8']],
   ['/locales/en.mjs',['locales/en.mjs','text/javascript; charset=utf-8']],

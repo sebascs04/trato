@@ -96,6 +96,8 @@ if __name__ == '__main__':
                         time.sleep(.1)
             children.append(subprocess.Popen([str(PYTHON),'-m','trato_api.thread_runner','--mode','connected'],cwd=REPOS/'trato-api',env=environment(REPOS/'trato-api')))
             children.append(subprocess.Popen([str(REPOS/'trato-worker/.venv/bin/python'),'-m','trato_worker.run','--mode','connected'],cwd=REPOS/'trato-worker',env=worker_env))
+            if worker_env.get('TRATO_REHEARSAL_EVALUATOR_ENABLED')=='true':
+                children.append(subprocess.Popen([str(REPOS/'trato-worker/.venv/bin/python'),'-m','trato_worker.rehearsal_jobs'],cwd=REPOS/'trato-worker',env=worker_env))
         frontend = REPOS / 'trato-web' if args.tools else ROOT
         frontend_env=os.environ.copy();frontend_env['TRATO_API_URL']=f'http://127.0.0.1:{args.api_port}'
         frontend_env['PORT']=str(web_port)

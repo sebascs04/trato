@@ -24,6 +24,8 @@ async function bootTrato() {
       installPracticeWorkspace(window.TratoCloud);
       const {installReputationWorkspace}=await import('/reputation-workspace.mjs');
       installReputationWorkspace(window.TratoCloud);
+      const {installProjectPlanning}=await import('/project-planning.mjs');
+      installProjectPlanning(window.TratoCloud);
       const {installVisitorLanding}=await import('/visitor-landing.mjs');
       installVisitorLanding(window.TratoCloud);
       const {installProposalWorkspace} = await import('/proposal-workspace.mjs');

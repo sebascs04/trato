@@ -107,6 +107,10 @@ def build_business_router(settings, services, require_user, repository_factory=N
     def activity(project_id:str,repo=Depends(repository)):
         return reply(repo.activity(uuid(project_id)))
 
+    @router.post('/projects/{project_id}/delete')
+    def delete_project(project_id:str,repo=Depends(repository)):
+        return reply(repo.soft_delete_project(uuid(project_id)))
+
     @router.get('/projects/{project_id}/request-status')
     def request_status(project_id:str,repo=Depends(repository)):
         return reply(repo.request_status(uuid(project_id)))

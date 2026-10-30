@@ -52,14 +52,17 @@ export function scriptedPracticeLine(context,turn){
  if(turn===2)return uiText(context.persona.flexibility>=3?'practice.last.flexible':'practice.last.firm');
  return uiText('practice.endLine');
 }
-function renderPracticeEvaluation(messages,scenario,selected){
- const turns=messages.flatMap((message,index)=>message.role==='user'?[{reply:message.text,client:messages[index-1].text}]:[]);
- const sources=['https://www.pon.harvard.edu/daily/negotiation-skills-daily/listening-skills-for-maximum-success/','https://hms.harvard.edu/sites/default/files/Departments/Ombuds%20Office/files/SEVEN%20ELEMENTS%20OF%20EFFECTIVE%20NEGOTIATIONS.pdf'];
- return `<section class="practice-evaluation" aria-label="${uiText('eval.title')}"><header><span class="eyebrow">${uiText('eval.mode')}</span><h3>${uiText('eval.title')}</h3><p>${uiText('eval.note')}</p></header><nav class="practice-message-switcher" aria-label="${uiText('eval.messages')}">${turns.map((_,index)=>`<button type="button" data-practice-evaluation="${index}" aria-pressed="${selected===index}">${uiText('eval.message',{number:index+1})}</button>`).join('')}</nav><div class="practice-evaluation-grid practice-evaluation-turns">${turns.map((turn,index)=>`<article class="practice-evaluation-card" ${index!==selected?'hidden':''}><h4>${uiText('eval.message',{number:index+1})}</h4><div class="practice-evaluation-exchange"><div><small>${uiText('eval.yourMessage')}</small><blockquote class="practice-evidence">${esc(turn.reply)}</blockquote></div><div><small>${uiText('eval.clientMessage')}</small><p>${esc(turn.client)}</p></div></div><section class="practice-evaluation-finding"><strong>${uiText('eval.finding')}</strong><p>${uiText(`eval.finding.${index}`)}</p></section><section class="practice-evaluation-example"><strong>${uiText('eval.suggestedReply')}</strong><p>${uiText(`eval.rewrite.${scenario}.${index}`)}</p></section><div class="practice-evaluation-reason"><strong>${uiText('eval.why')}</strong><p>${uiText(`eval.improves.${index}`)}</p><a href="${sources[index===0?0:1]}" target="_blank" rel="noopener noreferrer">${uiText('eval.source')} · Harvard ${icon('arrow-up-right')}</a></div></article>`).join('')}</div><div class="practice-message-pager"><button class="button secondary" data-practice-evaluation="previous" ${selected===0?'disabled':''}>${icon('arrow-left')}${uiText('eval.previous')}</button><span role="status">${uiText('eval.position',{number:selected+1,total:turns.length})}</span><button class="button secondary" data-practice-evaluation="next" ${selected===turns.length-1?'disabled':''}>${uiText('eval.nextMessage')}${icon('arrow-right')}</button></div><p class="practice-note">${uiText('eval.noScore')}</p></section>`;
+function renderPracticeEvaluation(state){
+ const data=state.evaluation,selected=state.evaluationIndex;
+ if(!data){
+  const pending=['queued','running'].includes(state.evaluationStatus),busy=state.evaluationSubmitting;
+  return `<section class="practice-evaluation" aria-label="${uiText('eval.title')}"><p role="status">${pending?icon('refresh-cw')+uiText(state.evaluationStatus==='queued'?'practice.evalQueued':'practice.evalRunning'):uiText('practice.evalReady')}</p>${state.evaluationError?`<p class="cloud-error" role="alert">${esc(state.evaluationError)}</p>`:''}<button class="button" type="button" data-practice-evaluate ${busy||pending?'disabled':''}>${busy?icon('refresh-cw'):icon('sparkles')}${uiText(state.submissionUncertain?'practice.evalRetry':state.jobId&&state.evaluationStatus!=='failed'?'practice.evalCheck':'practice.evalStart')}</button></section>`;
+ }
+ return `<section class="practice-evaluation" aria-label="${uiText('eval.title')}"><header><h3>${uiText('eval.title')}</h3><p>${esc(data.summary)}</p><small>${esc(uiText('practice.evalSourcesRead',{count:data.sources_read}))}</small></header><nav class="practice-message-switcher" aria-label="${uiText('eval.messages')}">${data.items.map((_,i)=>`<button type="button" data-practice-evaluation="${i}" aria-pressed="${i===selected}">${uiText('eval.message',{number:i+1})}</button>`).join('')}</nav>${data.items.map((item,i)=>{const client=state.messages[item.message_index-1];return `<article class="practice-evaluation-card" ${i===selected?'':'hidden'}><h4>${uiText('eval.message',{number:i+1})}</h4><div class="practice-evaluation-exchange"><div><small>${uiText('eval.yourMessage')}</small><blockquote class="practice-evidence">${esc(item.evidence_quote)}</blockquote></div><div><small>${uiText('eval.clientMessage')}</small><p>${esc(client?.text)}</p></div></div><section class="practice-evaluation-finding"><span class="badge review">${uiText(`practice.evalAssessment.${item.assessment}`)}</span><strong>${uiText('eval.finding')}</strong><p>${esc(item.finding)}</p></section>${item.suggestion?`<section class="practice-evaluation-example"><strong>${uiText('eval.suggestedReply')}</strong><p>${esc(item.suggestion)}</p></section>`:''}<div class="practice-evaluation-reason"><strong>${uiText('eval.why')}</strong><p>${esc(item.why)}</p>${item.citations.map(c=>{const locator=c.locator.kind==='page'?uiText('practice.evalPage',{number:c.locator.page}):c.locator.kind==='paragraph'?uiText('practice.evalParagraph',{number:c.locator.paragraph}):c.locator.section;const href=typeof c.url==='string'&&c.url.startsWith('https://')?c.url:'';return `<details class="practice-source-citation"><summary>${esc(c.title)} · ${esc(locator)}</summary><blockquote>${esc(c.quote)}</blockquote><small>${esc(c.author)}</small>${href?`<a href="${esc(href)}" target="_blank" rel="noopener noreferrer">${uiText('eval.source')}${icon('arrow-up-right')}</a>`:''}</details>`;}).join('')}</div></article>`;}).join('')}<div class="practice-message-pager"><button class="button secondary" data-practice-evaluation="previous" ${selected===0?'disabled':''}>${icon('arrow-left')}${uiText('eval.previous')}</button><span role="status">${uiText('eval.position',{number:selected+1,total:data.items.length})}</span><button class="button secondary" data-practice-evaluation="next" ${selected===data.items.length-1?'disabled':''}>${uiText('eval.nextMessage')}${icon('arrow-right')}</button></div><p class="practice-note">${uiText('eval.noScore')}</p></section>`;
 }
 export function installPracticeWorkspace(cloud){
  window.addEventListener('hashchange',()=>{if(window.location.hash!=='#ensayos'&&cloud.active)cloud.scheduleIngestionPolling();});
- let owner='',settings,baseline='',error='',rehearsal=null;
+ let owner='',settings,baseline='',error='',rehearsal=null,pollTimer=null;
  const key=()=>{if(!cloud.navigationOwner||!cloud.session?.key)throw Error(uiText('practice.invalid'));return `${cloud.session.key}:practice:${cloud.navigationOwner}`;};
  function load(){
   if(owner===cloud.navigationOwner&&settings)return;
@@ -67,6 +70,15 @@ export function installPracticeWorkspace(cloud){
   const raw=cloud.storage.getItem(key());
   if(raw!==null){try{settings=validatePracticeSettings(JSON.parse(raw));baseline=JSON.stringify(settings);}catch{settings=null;error=uiText('practice.invalid');}}
   else {settings={version:1,scenario:'scope',persona:{patience:3,flexibility:3,price:3}};baseline=JSON.stringify(settings);}
+  const saved=cloud.storage.getItem(key()+':evaluation');
+  if(saved!==null&&settings){
+   try{
+    const record=JSON.parse(saved),config=validatePracticeSettings(record.settings);
+    if(record.version!==1||!/^[-0-9a-f]{36}$/.test(record.jobId)||!Array.isArray(record.messages)||record.messages.length!==7||record.messages.some((m,i)=>m.role!==(i%2?'user':'client')||typeof m.text!=='string'||!m.text||m.text.length>4000))throw Error('Invalid saved evaluation');
+    rehearsal={context:buildPracticeContext(config,window.TRATO_DATA),turn:3,view:'analysis',evaluationIndex:0,messages:record.messages,jobId:record.jobId,evaluationPayload:record.payload,submissionUncertain:!record.submitted,evaluationStatus:'unavailable'};
+    if(record.submitted)pollTimer=setTimeout(()=>pollEvaluation(rehearsal),0);
+   }catch{settings=null;error=uiText('practice.invalid');}
+  }
  }
  cloud.renderPracticeWorkspace=function(root){
   try{load();}catch{root.innerHTML=`<p class="cloud-error" role="alert">${esc(uiText('practice.storageError'))}</p>`;return;}
@@ -91,10 +103,47 @@ export function installPracticeWorkspace(cloud){
  }
  function renderConversation(root){
   const {context,messages,turn}=rehearsal,finished=turn===3,analysis=rehearsal.view==='analysis';
-  root.innerHTML=`<section class="workspace-panel practice-conversation"><header class="practice-conversation-heading"><div><span class="eyebrow">${uiText('practice.simulation')}</span><h2 id="practice-conversation-title" tabindex="-1">${uiText(scenarios[context.scenario_id].label)}</h2><p>${uiText('practice.scriptHint')}</p></div><button class="text-button" data-practice-back>${uiText('practice.back')}</button></header><ol class="practice-stepper" aria-label="${uiText('practice.steps')}">${[['conversation','practice.stepConversation'],['analysis','eval.title']].map(([id,label],index)=>`<li><button type="button" data-practice-step="${id}" ${rehearsal.view===id?'aria-current="step"':''} ${id==='analysis'&&!finished?'disabled':''}><span>${index+1}</span><strong>${uiText(label)}</strong>${id==='conversation'&&finished?icon('check'):''}</button></li>`).join('')}</ol><div class="practice-stage-content">${analysis?`<section class="practice-finished"><h3 id="practice-finish" tabindex="-1">${uiText('practice.finished')}</h3>${renderPracticeEvaluation(messages,context.scenario_id,rehearsal.evaluationIndex)}</section>`:`<div class="practice-chat" role="log" aria-label="${uiText('practice.conversation')}" aria-live="polite">${messages.map(message=>`<article class="practice-message ${message.role==='user'?'is-user':''}"><span class="practice-message-avatar" aria-hidden="true">${message.role==='user'?esc(cloud.profile.textContent.trim()):icon('user-round')}</span><div class="practice-message-bubble"><strong>${uiText(message.role==='user'?'practice.you':'practice.client')}</strong><p>${esc(message.text)}</p></div></article>`).join('')}</div>${finished?`<p class="practice-note">${uiText('practice.finished')}</p>`:`<form data-practice-chat><div class="practice-chat-label"><label for="practice-response">${uiText('practice.reply')}</label><span>${uiText('practice.round',{value:turn+1})}</span></div><textarea id="practice-response" name="response" rows="3" maxlength="4000" required placeholder="${uiText('practice.replyPlaceholder')}"></textarea><button class="button" type="submit">${uiText('practice.respond')}${icon('arrow-right')}</button></form>`}`}</div>${finished?`<button class="button" data-practice-retry>${uiText('practice.retry')}</button>`:''}</section>`;
+  root.innerHTML=`<section class="workspace-panel practice-conversation"><header class="practice-conversation-heading"><div><span class="eyebrow">${uiText('practice.simulation')}</span><h2 id="practice-conversation-title" tabindex="-1">${uiText(scenarios[context.scenario_id].label)}</h2><p>${uiText('practice.scriptHint')}</p></div><button class="text-button" data-practice-back>${uiText('practice.back')}</button></header><ol class="practice-stepper" aria-label="${uiText('practice.steps')}">${[['conversation','practice.stepConversation'],['analysis','eval.title']].map(([id,label],index)=>`<li><button type="button" data-practice-step="${id}" ${rehearsal.view===id?'aria-current="step"':''} ${id==='analysis'&&!finished?'disabled':''}><span>${index+1}</span><strong>${uiText(label)}</strong>${id==='conversation'&&finished?icon('check'):''}</button></li>`).join('')}</ol><div class="practice-stage-content">${analysis?`<section class="practice-finished"><h3 id="practice-finish" tabindex="-1">${uiText('practice.finished')}</h3>${renderPracticeEvaluation(rehearsal)}</section>`:`<div class="practice-chat" role="log" aria-label="${uiText('practice.conversation')}" aria-live="polite">${messages.map(message=>`<article class="practice-message ${message.role==='user'?'is-user':''}"><span class="practice-message-avatar" aria-hidden="true">${message.role==='user'?esc(cloud.profile.textContent.trim()):icon('user-round')}</span><div class="practice-message-bubble"><strong>${uiText(message.role==='user'?'practice.you':'practice.client')}</strong><p>${esc(message.text)}</p></div></article>`).join('')}</div>${finished?`<p class="practice-note">${uiText('practice.finished')}</p>`:`<form data-practice-chat><div class="practice-chat-label"><label for="practice-response">${uiText('practice.reply')}</label><span>${uiText('practice.round',{value:turn+1})}</span></div><textarea id="practice-response" name="response" rows="3" maxlength="4000" required placeholder="${uiText('practice.replyPlaceholder')}"></textarea><button class="button" type="submit">${uiText('practice.respond')}${icon('arrow-right')}</button></form>`}`}</div>${finished?`<button class="button" data-practice-retry>${uiText('practice.retry')}</button>`:''}</section>`;
  }
  function start(){
+  clearTimeout(pollTimer);pollTimer=null;
+  cloud.storage.removeItem(key()+':evaluation');
   const context=persist();rehearsal={context,turn:0,view:'conversation',evaluationIndex:0,messages:[{role:'client',text:scriptedPracticeLine(context,0)}]};cloud.notify();cloud.document.querySelector('.practice-conversation')?.scrollIntoView({block:'start'});cloud.document.querySelector('#practice-conversation-title')?.focus({preventScroll:true});
+ }
+ function evaluationError(issue){
+  const code=issue?.code||'';
+  const key=code.includes('SOURCE')?'practice.evalSourceError':code.includes('CONTEXT')?'practice.evalContextError':code.includes('CITATION')?'practice.evalCitationError':code.includes('NOT_CONFIGURED')?'practice.evalNotConfigured':code.includes('LOCAL_MODEL')?'practice.evalModelError':'practice.evalFailed';
+  return uiText(key);
+ }
+ async function pollEvaluation(state){
+  if(rehearsal!==state||owner!==cloud.navigationOwner)return;
+  try{
+   const job=await cloud.request(`/api/v1/rehearsals/evaluations/${encodeURIComponent(state.jobId)}`);
+   if(rehearsal!==state||owner!==cloud.navigationOwner)return;
+   state.evaluationStatus=job.status;state.evaluationError='';
+   if(job.status==='completed')state.evaluation=job.evaluation;
+   else if(job.status==='failed')state.evaluationError=evaluationError({code:job.error_code});
+   else if(!['queued','running'].includes(job.status))throw Error('Invalid evaluation status');
+   cloud.notify();
+   if(['queued','running'].includes(job.status))pollTimer=setTimeout(()=>pollEvaluation(state),2000);
+  }catch(issue){if(rehearsal!==state||owner!==cloud.navigationOwner)return;state.evaluationStatus=issue.code==='REHEARSAL_NOT_FOUND'?'failed':'unavailable';state.evaluationError=evaluationError(issue);cloud.notify();}
+ }
+ async function requestEvaluation(){
+  const state=rehearsal;if(!state||state.turn!==3||state.evaluationSubmitting||state.evaluation)return;
+  if(state.jobId&&state.evaluationStatus!=='failed'&&!state.submissionUncertain){pollEvaluation(state);return;}
+  state.evaluationSubmitting=true;state.evaluationError='';cloud.notify();
+  const jobId=state.submissionUncertain?state.jobId:crypto.randomUUID();
+  state.jobId=jobId;
+  try{
+   const payload=state.submissionUncertain?state.evaluationPayload:{action:'evaluate',scenario:state.context.scenario_id,output_language:uiLanguage(),persona:state.context.persona,messages:state.messages};
+   state.evaluationPayload=payload;
+   cloud.storage.setItem(key()+':evaluation',JSON.stringify({version:1,settings:validatePracticeSettings(settings),messages:state.messages,jobId,payload,submitted:false}));
+   const job=await cloud.request('/api/v1/rehearsals/evaluations',{method:'POST',headers:{'Content-Type':'application/json','Idempotency-Key':jobId},body:JSON.stringify(payload)});
+   if(rehearsal!==state||owner!==cloud.navigationOwner)return;
+   state.jobId=job.id;state.evaluationStatus=job.status;state.evaluationSubmitting=false;state.submissionUncertain=false;
+   cloud.storage.setItem(key()+':evaluation',JSON.stringify({version:1,settings:validatePracticeSettings(settings),messages:state.messages,jobId:job.id,payload,submitted:true}));
+   cloud.notify();pollEvaluation(state);
+  }catch(issue){if(rehearsal!==state||owner!==cloud.navigationOwner)return;state.evaluationSubmitting=false;state.submissionUncertain=true;state.evaluationStatus='unavailable';state.evaluationError=evaluationError(issue);cloud.notify();}
  }
  cloud.document.addEventListener('input',event=>{
   if(!event.target.closest('[data-practice-form]'))return;
@@ -124,9 +173,10 @@ export function installPracticeWorkspace(cloud){
   catch(issue){event.target.querySelector('[data-practice-error]').textContent=issue.message;}
  });
  cloud.document.addEventListener('click',event=>{
+  if(event.target.closest('[data-practice-evaluate]')){requestEvaluation();return;}
   const pager=event.target.closest('[data-practice-evaluation]');
   if(pager){
-   if(!rehearsal||rehearsal.turn!==3||rehearsal.view!=='analysis'||pager.disabled)return;
+   if(!rehearsal||!rehearsal.evaluation||rehearsal.view!=='analysis'||pager.disabled)return;
    const value=pager.dataset.practiceEvaluation,count=rehearsal.messages.filter(message=>message.role==='user').length;
    const next=value==='next'?rehearsal.evaluationIndex+1:value==='previous'?rehearsal.evaluationIndex-1:Number(value);
    if(!Number.isInteger(next)||next<0||next>=count||next===rehearsal.evaluationIndex)return;

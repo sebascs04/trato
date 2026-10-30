@@ -15,5 +15,6 @@ with socket.socket() as listener:
 models=root/'.local/ollama/models';models.mkdir(parents=True,exist_ok=True)
 env=os.environ.copy()
 env.update(OLLAMA_HOST=f'127.0.0.1:{port}',OLLAMA_MODELS=str(models),OLLAMA_NO_CLOUD='1',OLLAMA_GO_TEMPLATE='1',
-           OLLAMA_NUM_PARALLEL='1',OLLAMA_MAX_LOADED_MODELS='1',OLLAMA_CONTEXT_LENGTH='8192',OLLAMA_KEEP_ALIVE='15m')
+           OLLAMA_NUM_PARALLEL='1',OLLAMA_MAX_LOADED_MODELS='1',OLLAMA_CONTEXT_LENGTH='8192',OLLAMA_KEEP_ALIVE='15m',
+           OLLAMA_FLASH_ATTENTION='1',OLLAMA_KV_CACHE_TYPE='q8_0')
 os.execve(str(binary),[str(binary),'serve'],env)

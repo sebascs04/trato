@@ -15,6 +15,7 @@ from paypal.client import PayPalError
 from .errors import ApiError
 from .business_routes import build_business_router
 from .thread_routes import build_thread_router
+from .agent_tools import build_agent_tools_router
 from .rehearsal_routes import build_rehearsal_router
 from .graph_routes import build_graph_router
 from .reputation_routes import build_reputation_router
@@ -129,6 +130,7 @@ def create_app(settings=None, services=None, repository_factory=None, *, gmail_s
     app.include_router(build_sandbox_payment_router(sandbox_test_service, require_user))
     app.include_router(build_business_router(settings, services, require_user, repository_factory))
     app.include_router(build_thread_router(settings))
+    app.include_router(build_agent_tools_router(settings))
     app.include_router(build_rehearsal_router(require_user,rehearsal_service))
     app.include_router(build_graph_router(settings,require_user,repository_factory,graph_reader))
     app.include_router(build_reputation_router(settings,require_user,repository_factory))

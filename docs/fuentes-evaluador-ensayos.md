@@ -54,7 +54,7 @@ Las cinco son obligatorias antes de evaluar. Las fuentes 1, 2 y 3 forman la base
 
 Son guías de formación y divulgación, no una escala validada para puntuar freelancers. Los criterios y su adaptación a Trato son nuestros. No sustituyen el acuerdo del caso, las políticas aplicables de PayPal ni una determinación legal sobre devoluciones.
 
-## Contrato pendiente de incorporación
+## Preparación y criterios de incorporación
 
 1. Preparar material permitido para su uso, con atribución y localizadores. Este catálogo no reproduce los documentos completos ni acredita permiso de redistribución.
 2. Registrar los `file_ids` reales del conjunto elegido en configuración controlada. El modelo no decide omitir una fuente obligatoria ni inventa IDs. Los apartados excluidos permanecen identificados como tales.
@@ -64,3 +64,23 @@ Son guías de formación y divulgación, no una escala validada para puntuar fre
 6. Probar diagnósticos contra conversaciones con aclaraciones ya respondidas, negativas razonables, acuerdos incompletos y evidencia insuficiente. Cada recomendación debe enlazar el mensaje observado y la sección pertinente; no usar todas las fuentes por obligación en cada mensaje.
 
 El artículo de escucha que figura en el adaptador anterior no pudo verificarse por timeout durante la investigación. La fuente MIT aquí revisada es una propuesta explícita de sustitución futura, no un fallback activado. No se ha modificado el adaptador en esta entrega.
+
+Actualización del 29/10/2026: mecanismo de lectura obligatoria, registro de herramientas y circuito HTTP implementados localmente para una biblioteca administrada, con pruebas. La configuración real de los cinco materiales sigue pendiente; no se introdujeron archivos de ejemplo como fuentes de producción. Véase [implementación de herramientas](herramientas-archivos-agentes.md#implementación-local-del-29102026).
+
+## Incorporación local del 29/10/2026
+
+Se descargaron y prepararon los tres artículos HTML originales de MIT/PON, conservando autoría, URL y fragmentos identificables; se validaron con la función del procesador. Los dos PDFs siguen pendientes: el de conversaciones difíciles responde403 y el enlace de Seven Elements no entregó un PDF válido en la descarga directa. No se cambió de fuente ni transporte para sustituirlos. La biblioteca no tiene manifiesto activo y no está habilitada para evaluar con tres de cinco fuentes. Los originales y textos preparados permanecen en almacenamiento local ignorado porGit, fuera de documentos de clientes.
+
+### Incorporación completada con los PDFs aportados
+
+El 29/10/2026 el equipo aportó los dos PDFs pendientes. Ambos se procesaron con extracción real por página. La biblioteca local ya contiene los cinco materiales con IDs reales de archivo, hashes y126fragmentos localizables. Seven Elements aporta únicamente los apartados7y8 de la página3; se conserva el original aparte y se excluye5f del material evaluable. Los artículos conservan texto del cuerpo y atribución, sin navegación ni comentarios del sitio.
+
+El manifiesto quedó preparado y configurado exclusivamente en el.env del backend. Lectura de los cinco materiales comprobada mediante worker→rutasrealesAPI→funciónrealprocesador, con clientesHTTPenproceso; no se reiniciaron servicios ni se llamó al modelo. No equivale a una prueba de la instanciaHTTP ya levantada. Los materiales siguen locales e ignoradosporGit, sin subirse a documentos de clientes ni publicarse enelrepositorio.
+
+Contenido extraído total26393bytes; representación completa devuelta por el procesador76214bytes al incluir texto y segmentos. Antes de conectar el modelo hay que medir el contexto final junto con instrucciones/conversación/salida y evitar duplicar texto al construir el prompt, conservando los localizadores. No recortar ni resumir automáticamente para hacerlo caber. Evaluador e interfaz conectados siguen pendientes.
+
+Comprobación posterior con los servicios iniciados por el equipo de Reputación: catálogo y ejecución HTTP internos leyeron correctamente las cinco fuentes mediante API→procesador, con autenticación del worker y el mismo ámbito del manifiesto. No se llamó al modelo. La lectura HTTP de la biblioteca ya está verificada; evaluador/UI siguen pendientes.
+
+## Estado actual del evaluador
+
+Las notas de incorporación anteriores describen etapas de preparación. El evaluador final ya está conectado a API, cola y worker y exige la lectura completa de las cinco guías; véase [evaluador-ensayos-conectado.md](evaluador-ensayos-conectado.md). Los originales y la biblioteca extraída no se redistribuyen en Git. Cada instalación debe preparar su biblioteca administrada y configurar TRATO_REHEARSAL_SOURCE_MANIFEST antes de activar la evaluación; sin ella se muestra un error.

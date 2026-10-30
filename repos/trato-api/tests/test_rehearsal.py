@@ -97,15 +97,14 @@ class RehearsalTests(unittest.TestCase):
         self.assertEqual(error.exception.code, 'LOCAL_MODEL_NOT_CONFIGURED')
         request.assert_not_called()
 
-    def test_invalid_quote_is_rejected(self):
+    def test_legacy_evaluator_is_disabled_instead_of_using_unread_principles(self):
         data = {**body(), 'action': 'evaluate', 'messages': [
             {'role': 'client', 'text': 'Necesito más trabajo.'}, {'role': 'user', 'text': 'Podemos hablarlo.'}]}
-        invalid = {'items': [{'message_index': 1, 'evidence_quote': 'Inventado', 'finding': 'f',
-                             'suggestion': 's', 'why': 'w', 'source_ids': ['listening']}]}
-        with patch.object(LocalRehearsal, 'generate', return_value=invalid):
+        with patch.object(LocalRehearsal, 'generate') as generate:
             with self.assertRaises(ApiError) as error:
                 LocalRehearsal().run(data)
-        self.assertEqual(error.exception.code, 'REHEARSAL_INVALID_CITATION')
+        self.assertEqual(error.exception.code, 'REHEARSAL_EVALUATION_REQUIRES_JOB')
+        generate.assert_not_called()
 
 
 if __name__ == '__main__':

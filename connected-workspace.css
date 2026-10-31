@@ -342,3 +342,15 @@ body.cloud-design{--bg:#faf9fc;--paper:#fff;--surface:#fff;--surface-soft:#f7f5f
 .cloud-home.without-resume{grid-template-columns:minmax(0,1fr)}
 
 .cloud-auth-dialog{max-width:440px}.cloud-auth-intro{font-size:13px;line-height:1.7;color:var(--muted,#817b88);margin:0 0 25px}.cloud-auth-dialog .dialog-actions>.button{width:100%;justify-content:center}.cloud-auth-switch{text-align:center;padding-top:22px;margin:24px 0 0;border-top:1px solid #e9e2ed;font-size:12px;color:#81738b}.cloud-auth-switch button{background:none;border:0;color:#75539b;font:inherit;font-weight:600;min-height:36px;padding:6px 8px;cursor:pointer}.cloud-auth-switch button:focus-visible{outline:2px solid #8969ac;outline-offset:3px;border-radius:5px}
+
+/* Gmail responses are plain text evidence; preserve line breaks and wrap hostile long strings. */
+.cloud-design .cloud-gmail-replies{margin-top:22px}
+.cloud-design .cloud-email-reply{padding:18px 0;border-top:1px solid var(--line);min-width:0}
+.cloud-design .cloud-email-reply>header{display:flex;justify-content:space-between;gap:14px;flex-wrap:wrap;font-size:12px}
+.cloud-design .cloud-email-reply>header span{color:var(--muted);overflow-wrap:anywhere}
+.cloud-design .cloud-email-reply-body{white-space:pre-wrap;overflow-wrap:anywhere;max-height:420px;overflow:auto;padding:14px;border:1px solid var(--line);border-radius:8px;background:var(--surface-soft);font-family:inherit;font-size:12px;line-height:1.8;color:var(--ink)}
+.cloud-design .cloud-email-attachment{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;padding:8px 0;font-size:11px;color:var(--muted);overflow-wrap:anywhere}
+.cloud-design .cloud-email-attachment [data-proposal-action="import-gmail-pdf"]:disabled{cursor:default}
+.cloud-design .cloud-client-feedback{margin:16px 0;padding:14px;border:1px solid var(--line);border-radius:9px;background:var(--surface-soft)}
+.cloud-design .cloud-client-feedback strong{font-size:12px}
+.cloud-design .cloud-client-feedback .cloud-email-reply-body{max-height:280px;margin:10px 0 0}

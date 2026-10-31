@@ -13,6 +13,10 @@ class CallbackInput(BaseModel):
     code:str|None=Field(default=None,min_length=1,max_length=4096)
     error:str|None=Field(default=None,max_length=100)
 
+class ConnectInput(BaseModel):
+    model_config=ConfigDict(extra='forbid')
+    purpose:str=Field(default='send',pattern='^(send|read)$')
+
 
 def build_gmail_router(service,require_user):
     router=APIRouter(prefix='/api/v1/integrations/gmail')
@@ -45,8 +49,9 @@ def build_gmail_router(service,require_user):
     @router.post('/connect')
     async def start(request:Request,user=Depends(require_user)):
         try:
-            await empty(request)
-            return reply(await run_in_threadpool(configured().start,user))
+            try:item=ConnectInput.model_validate_json(await payload(request))
+            except (ValidationError,ValueError):raise GmailError('INVALID_REQUEST',422)
+            return reply(await run_in_threadpool(configured().start,user,item.purpose))
         except GmailError as error:return failure(error)
 
     @router.post('/complete')

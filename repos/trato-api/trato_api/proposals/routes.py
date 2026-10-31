@@ -3,14 +3,15 @@ from typing import Annotated,Literal
 from uuid import UUID
 
 from fastapi import APIRouter,Depends,Request
-from fastapi.responses import JSONResponse
-from pydantic import BaseModel,ConfigDict,Field,StringConstraints, field_validator
+from fastapi.responses import JSONResponse,Response
+from pydantic import BaseModel,ConfigDict,Field,StringConstraints, field_validator,model_validator
 from starlette.concurrency import run_in_threadpool
 
 from ..errors import ApiError
 from ..persistence import uuid
 from .repository import ProposalRepository
 from .pdf import ProposalPdfService
+from ..gmail.vault import GmailError
 
 Description=Annotated[str,StringConstraints(strip_whitespace=True,min_length=1,max_length=1000)]
 
@@ -40,8 +41,14 @@ class DraftEdit(Input):
     source_document_ids:list[UUID]=Field(min_length=2,max_length=100)
 
 class Revise(DraftEdit):
-    feedback_document_id:UUID
+    feedback_document_id:UUID|None=None
+    feedback_email_id:UUID|None=None
     feedback_notes:Annotated[str,StringConstraints(strip_whitespace=True,min_length=1,max_length=4000)]
+
+    @model_validator(mode='after')
+    def feedback_source(self):
+        if self.feedback_email_id is None and self.feedback_document_id is None:raise ValueError('Client feedback evidence is required')
+        return self
 
 class Review(Input):
     expected_revision_id:UUID
@@ -96,6 +103,32 @@ def build_proposal_router(settings,require_user,repository_factory=None,workflow
     @router.get('/proposals/{proposal_id}/revisions/{revision_id}')
     def get_revision(proposal_id:str,revision_id:str,repo=Depends(repository)):
         return reply(repo.get_revision(uuid(proposal_id),uuid(revision_id)))
+    if workflow is not None:
+        @router.post('/projects/{project_id}/gmail-replies/sync')
+        def sync_gmail_replies(project_id:str,repo=Depends(repository),user=Depends(require_user)):
+            project_id=uuid(project_id)
+            repo.project(project_id)
+            try:return reply(workflow.sync_gmail_replies(repo,user,project_id))
+            except GmailError as error:raise ApiError(error.code,error.status) from None
+
+        @router.get('/proposals/{proposal_id}/gmail-replies')
+        def gmail_replies(proposal_id:str,repo=Depends(repository),user=Depends(require_user)):
+            proposal=repo.get_proposal(uuid(proposal_id),summary=True)['proposal']
+            return reply(workflow.gmail_replies(user,proposal['project_id'],proposal['id']))
+
+        @router.get('/proposals/{proposal_id}/gmail-replies/{message_id}/attachments/{attachment_index}')
+        def gmail_reply_attachment(proposal_id:str,message_id:str,attachment_index:int,repo=Depends(repository),user=Depends(require_user)):
+            if not 0<=attachment_index<5:raise ApiError('GMAIL_ATTACHMENT_NOT_FOUND',404)
+            proposal=repo.get_proposal(uuid(proposal_id),summary=True)['proposal']
+            messages=workflow.gmail_replies(user,proposal['project_id'],proposal['id'])
+            message=next((row for row in messages if row['id']==uuid(message_id)),None)
+            if not message or attachment_index>=len(message['attachment_metadata']):raise ApiError('GMAIL_ATTACHMENT_NOT_FOUND',404)
+            attachment=message['attachment_metadata'][attachment_index]
+            if not attachment.get('supported') or not attachment.get('attachment_id'):raise ApiError('GMAIL_ATTACHMENT_UNSUPPORTED',415)
+            try:content=workflow.gmail.read_attachment(user,message['provider_message_id'],attachment['attachment_id'])
+            except GmailError as error:raise ApiError(error.code,error.status) from None
+            filename=attachment.get('filename','client-feedback.pdf').replace('"','')
+            return Response(content,media_type='application/pdf',headers={'Cache-Control':'no-store','Content-Disposition':f'attachment; filename="{filename}"','X-Content-Type-Options':'nosniff'})
     @router.post('/proposals/{proposal_id}/revisions/{revision_id}/returned-pdf')
     async def returned_pdf(proposal_id:str,revision_id:str,request:Request,filename:str,repo=Depends(repository)):
         from ..business_routes import read_bytes

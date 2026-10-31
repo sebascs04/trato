@@ -4,6 +4,7 @@ from dataclasses import dataclass, field
 import hashlib
 import math
 import os
+import re
 import secrets
 import threading
 import time
@@ -14,10 +15,13 @@ from paypal.email import build_payment_email, build_proposal_email, valid_email,
 from .vault import GmailError, TokenVault
 
 SEND_SCOPE = 'https://www.googleapis.com/auth/gmail.send'
-SCOPES = 'openid email ' + SEND_SCOPE
+READ_SCOPE = 'https://www.googleapis.com/auth/gmail.readonly'
+SEND_SCOPES = 'openid email ' + SEND_SCOPE
 TOKEN_URL = 'https://oauth2.googleapis.com/token'
 USERINFO_URL = 'https://openidconnect.googleapis.com/v1/userinfo'
 SEND_URL = 'https://gmail.googleapis.com/gmail/v1/users/me/messages/send'
+THREADS_URL = 'https://gmail.googleapis.com/gmail/v1/users/me/threads'
+ATTACHMENTS_URL = 'https://gmail.googleapis.com/gmail/v1/users/me/messages'
 REVOKE_URL = 'https://oauth2.googleapis.com/revoke'
 
 
@@ -45,20 +49,46 @@ class GmailSettings:
 class GoogleTransport:
     def __init__(self,transport=None):self.transport=transport
     def __call__(self,method,url,**kwargs):
-        if url not in (TOKEN_URL,USERINFO_URL,SEND_URL,REVOKE_URL):raise GmailError('INVALID_GOOGLE_ENDPOINT')
+        thread_read=bool(re.fullmatch(r'https://gmail\.googleapis\.com/gmail/v1/users/me/threads/[A-Za-z0-9_-]{1,200}\?format=full',url))
+        attachment_read=bool(re.fullmatch(r'https://gmail\.googleapis\.com/gmail/v1/users/me/messages/[A-Za-z0-9_-]{1,256}/attachments/[A-Za-z0-9_-]{1,2048}',url))
+        if url not in (TOKEN_URL,USERINFO_URL,SEND_URL,REVOKE_URL) and not (method=='GET' and (thread_read or attachment_read)):
+            raise GmailError('INVALID_GOOGLE_ENDPOINT')
         try:
             with httpx.Client(timeout=20,follow_redirects=False,transport=self.transport) as client:
                 with client.stream(method,url,**kwargs) as response:
                     raw=b''
+                    maximum=15*1024*1024 if attachment_read else 4*1024*1024
                     for chunk in response.iter_bytes():
                         raw+=chunk
-                        if len(raw)>1024*1024:raise GmailError('GOOGLE_RESPONSE_TOO_LARGE',uncertain=url==SEND_URL)
+                        if len(raw)>maximum:raise GmailError('GOOGLE_RESPONSE_TOO_LARGE',uncertain=url==SEND_URL)
                     import json
                     try:body=json.loads(raw) if raw else {}
                     except ValueError:body={}
                     return response.status_code,body
         except httpx.HTTPError:
             raise GmailError('GOOGLE_UNAVAILABLE',uncertain=url==SEND_URL) from None
+
+
+def reply_text(body):
+    """Remove a trailing quoted conversation for display; retain original evidence."""
+    lines = body.splitlines()
+    end = len(lines)
+    while end and not lines[end - 1].strip():
+        end -= 1
+    start = end
+    quoted = False
+    while start and (not lines[start - 1].strip() or lines[start - 1].lstrip().startswith('>')):
+        quoted = quoted or lines[start - 1].lstrip().startswith('>')
+        start -= 1
+    if not quoted:
+        return body.strip()
+    # Gmail wraps attribution headers over several lines (ES and EN).
+    for index in range(max(0, start - 6), start):
+        header = ' '.join(line.strip() for line in lines[index:start]).strip()
+        if re.fullmatch(r'(?:On\s+.+\s+wrote:|El\s+.+\s+escribi[oó]:)', header, re.IGNORECASE):
+            start = index
+            break
+    return '\n'.join(lines[:start]).strip()
 
 
 class GmailConnectionService:
@@ -71,13 +101,22 @@ class GmailConnectionService:
 
     def status(self,user):
         item=self.vault.get(user)
-        return {'configured':True,'connected':bool(item),'email':item['email'] if item else None}
+        scopes=set(item.get('scope','').split()) if item else set()
+        return {'configured':True,'connected':bool(item),'email':item['email'] if item else None,
+                'can_send':SEND_SCOPE in scopes,'can_read':READ_SCOPE in scopes}
 
-    def start(self,user):
+    def start(self,user,purpose='send'):
+        if purpose not in ('send','read'):raise GmailError('INVALID_GMAIL_PURPOSE',422)
+        previous=self.vault.get(user)
+        if purpose=='read' and (not previous or SEND_SCOPE not in previous.get('scope','').split()):
+            raise GmailError('GMAIL_SEND_CONNECTION_REQUIRED',409)
         state,verifier=secrets.token_urlsafe(32),secrets.token_urlsafe(64)
         challenge=base64.urlsafe_b64encode(hashlib.sha256(verifier.encode()).digest()).decode().rstrip('=')
-        self.vault.begin(user,state,verifier)
-        query={'client_id':self.settings.client_id,'redirect_uri':self.settings.redirect_uri,'response_type':'code','scope':SCOPES,'access_type':'offline','prompt':'consent','state':state,'code_challenge':challenge,'code_challenge_method':'S256'}
+        self.vault.begin(user,state,verifier,purpose=purpose)
+        query={'client_id':self.settings.client_id,'redirect_uri':self.settings.redirect_uri,'response_type':'code',
+               'scope':(SEND_SCOPES if purpose=='send' else READ_SCOPE),'access_type':'offline',
+               'include_granted_scopes':'true','prompt':'consent','state':state,'code_challenge':challenge,'code_challenge_method':'S256'}
+        if purpose=='read' and previous.get('email'):query['login_hint']=previous['email']
         return {'authorization_url':'https://accounts.google.com/o/oauth2/v2/auth?'+urlencode(query)}
 
     def token_fields(self,body,previous=None):
@@ -92,15 +131,24 @@ class GmailConnectionService:
         return {'access_token':token,'refresh_token':refresh,'expires_at':self.clock()+expires,'scope':body.get('scope') or previous['scope']}
 
     def complete(self,user,state,code=None,error=None):
-        verifier=self.vault.consume(user,state)
+        authorization=self.vault.consume_authorization(user,state)
+        verifier,purpose=authorization['verifier'],authorization['purpose']
         if error:raise GmailError('GMAIL_AUTHORIZATION_DECLINED',409)
         if not code:raise GmailError('INVALID_AUTHORIZATION_CODE',422)
         with self.lock:
             status,body=self.transport('POST',TOKEN_URL,data={'client_id':self.settings.client_id,'client_secret':self.settings.client_secret,'code':code,'code_verifier':verifier,'redirect_uri':self.settings.redirect_uri,'grant_type':'authorization_code'})
             if status!=200:raise GmailError('GMAIL_AUTHORIZATION_FAILED',409)
-            tokens=self.token_fields(body)
+            previous=self.vault.get(user) if purpose=='read' else None
+            tokens=self.token_fields(body,previous)
+            granted=set(tokens['scope'].split())
+            required={SEND_SCOPE} if purpose=='send' else {SEND_SCOPE,READ_SCOPE}
+            if not required.issubset(granted):
+                if purpose=='read':raise GmailError('GMAIL_READ_PERMISSION_REQUIRED',409)
+                raise GmailError('GMAIL_SEND_PERMISSION_REQUIRED',409)
             status,profile=self.transport('GET',USERINFO_URL,headers={'Authorization':'Bearer '+tokens['access_token']})
             if status!=200 or not isinstance(profile,dict) or profile.get('email_verified') is not True or not valid_email(profile.get('email')) or not isinstance(profile.get('sub'),str) or not profile['sub']:raise GmailError('GMAIL_IDENTITY_NOT_VERIFIED',409)
+            if previous and (profile['sub']!=previous.get('subject') or profile['email'].lower()!=previous.get('email','').lower()):
+                raise GmailError('GMAIL_ACCOUNT_CHANGED',409)
             self.vault.save(user,{**tokens,'email':profile['email'],'subject':profile['sub']})
         return self.status(user)
 
@@ -141,9 +189,104 @@ class GmailConnectionService:
                 if status in (401,403):raise GmailError('GMAIL_SEND_NOT_AUTHORIZED',409)
                 raise GmailError('GMAIL_SEND_FAILED',uncertain=status>=500 or status==429)
             if not isinstance(result,dict) or not isinstance(result.get('id'),str) or not result['id']:raise GmailError('INVALID_GMAIL_SEND_RESPONSE',uncertain=True)
-            return {'status':'accepted_by_gmail','message_id':result['id']}
+            return {'status':'accepted_by_gmail','message_id':result['id'],
+                    'thread_id':result.get('threadId') if isinstance(result.get('threadId'),str) else None}
         except GmailError as error:
             raise EmailDeliveryError(error.code,uncertain=error.uncertain) from None
+
+    @staticmethod
+    def _header(message,name):
+        headers=message.get('payload',{}).get('headers',[])
+        if not isinstance(headers,list):return ''
+        return next((str(h.get('value','')) for h in headers if isinstance(h,dict) and str(h.get('name','')).lower()==name.lower()),'')
+
+    def read_thread(self,user,thread_id):
+        if not isinstance(thread_id,str) or not 1<=len(thread_id)<=200 or not thread_id.replace('-','').replace('_','').isalnum():
+            raise GmailError('INVALID_GMAIL_THREAD',422)
+        connection=self.credentials(user)
+        if READ_SCOPE not in connection.get('scope','').split():raise GmailError('GMAIL_READ_PERMISSION_REQUIRED',409)
+        status,result=self.transport('GET',THREADS_URL+'/'+thread_id+'?format=full',headers={'Authorization':'Bearer '+connection['access_token']})
+        if status in (401,403):raise GmailError('GMAIL_READ_NOT_AUTHORIZED',409)
+        if status==404:return {'id':thread_id,'messages':[]}
+        if status!=200 or not isinstance(result,dict) or result.get('id')!=thread_id or not isinstance(result.get('messages'),list):
+            raise GmailError('GMAIL_READ_FAILED',503)
+        if len(result['messages'])>100:raise GmailError('GMAIL_THREAD_TOO_LARGE',413)
+        return result
+
+    @staticmethod
+    def _body_bytes(value,maximum):
+        if not isinstance(value,str) or len(value)>((maximum+2)//3)*4+4:raise GmailError('GMAIL_MESSAGE_TOO_LARGE',413)
+        if not re.fullmatch(r'[A-Za-z0-9_-]*={0,2}',value):raise GmailError('INVALID_GMAIL_MESSAGE',502)
+        unpadded=value.rstrip('=')
+        expected_padding=(4-len(unpadded)%4)%4
+        if len(unpadded)%4==1 or len(value)-len(unpadded) not in (0,expected_padding):raise GmailError('INVALID_GMAIL_MESSAGE',502)
+        try:raw=base64.urlsafe_b64decode(unpadded+'='*expected_padding)
+        except (ValueError,base64.binascii.Error):raise GmailError('INVALID_GMAIL_MESSAGE',502) from None
+        if base64.urlsafe_b64encode(raw).decode().rstrip('=')!=unpadded:raise GmailError('INVALID_GMAIL_MESSAGE',502)
+        if len(raw)>maximum:raise GmailError('GMAIL_MESSAGE_TOO_LARGE',413)
+        return raw
+
+    @staticmethod
+    def _safe_filename(value):
+        if not isinstance(value,str):return 'attachment.pdf'
+        name=value.replace('\\','/').split('/')[-1].strip()
+        name=re.sub(r'[^A-Za-z0-9._ -]','_',name)[:120].strip(' .')
+        return name or 'attachment.pdf'
+
+    def message_content(self,message):
+        payload=message.get('payload')
+        if not isinstance(payload,dict):raise GmailError('INVALID_GMAIL_MESSAGE',502)
+        text_parts=[];attachments=[];count=0;total=0;parts_seen=0
+        def visit(part,depth=0):
+            nonlocal count,total,parts_seen
+            if depth>20 or parts_seen>=100:raise GmailError('GMAIL_MESSAGE_TOO_COMPLEX',413)
+            parts_seen+=1
+            if not isinstance(part,dict):raise GmailError('INVALID_GMAIL_MESSAGE',502)
+            body=part.get('body') if isinstance(part.get('body'),dict) else {}
+            mime=str(part.get('mimeType','')).lower()
+            filename=self._safe_filename(part.get('filename'))
+            attachment_id=body.get('attachmentId')
+            if (bool(part.get('filename')) or attachment_id) and mime not in ('multipart/mixed','multipart/alternative','multipart/related'):
+                count+=1
+                size=body.get('size')
+                if count>5 or type(size) is not int or size<0 or size>10485760:raise GmailError('GMAIL_ATTACHMENT_LIMIT',413)
+                total+=size
+                if total>15728640:raise GmailError('GMAIL_ATTACHMENT_LIMIT',413)
+                if attachment_id:
+                    if not isinstance(attachment_id,str) or not re.fullmatch(r'[A-Za-z0-9_-]{1,2048}',attachment_id):raise GmailError('INVALID_GMAIL_ATTACHMENT',422)
+                    attachments.append({'attachment_id':attachment_id,'filename':filename,'mime_type':mime,'size_bytes':size,
+                                        'supported':mime=='application/pdf' and filename.lower().endswith('.pdf')})
+                elif body.get('data'):
+                    raw=self._body_bytes(body['data'],10485760)
+                    attachments.append({'filename':filename,'mime_type':mime,'size_bytes':len(raw),'supported':False})
+                return
+            if mime=='text/plain' and body.get('data'):
+                raw=self._body_bytes(body['data'],65536)
+                total+=len(raw)
+                if total>15728640:raise GmailError('GMAIL_MESSAGE_TOO_LARGE',413)
+                text_parts.append(raw.decode('utf-8',errors='replace'))
+            children=part.get('parts',[])
+            if not isinstance(children,list):raise GmailError('INVALID_GMAIL_MESSAGE',502)
+            for child in children:visit(child,depth+1)
+        visit(payload)
+        text='\n\n'.join(x.strip() for x in text_parts if x.strip())
+        if len(text.encode('utf-8'))>50000:raise GmailError('GMAIL_MESSAGE_TOO_LARGE',413)
+        return {'body_text':text,'attachments':attachments}
+
+    def read_attachment(self,user,message_id,attachment_id,maximum=10485760):
+        for value,limit in ((message_id,256),(attachment_id,2048)):
+            if not isinstance(value,str) or not re.fullmatch(r'[A-Za-z0-9_-]{1,'+str(limit)+'}',value):
+                raise GmailError('INVALID_GMAIL_ATTACHMENT',422)
+        connection=self.credentials(user)
+        if READ_SCOPE not in connection.get('scope','').split():raise GmailError('GMAIL_READ_PERMISSION_REQUIRED',409)
+        url=ATTACHMENTS_URL+'/'+message_id+'/attachments/'+attachment_id
+        status,result=self.transport('GET',url,headers={'Authorization':'Bearer '+connection['access_token']})
+        if status in (401,403):raise GmailError('GMAIL_READ_NOT_AUTHORIZED',409)
+        if status!=200 or not isinstance(result,dict) or not isinstance(result.get('data'),str):raise GmailError('GMAIL_ATTACHMENT_UNAVAILABLE',503)
+        raw=self._body_bytes(result['data'],maximum)
+        if type(result.get('size')) is int and result['size']!=len(raw):raise GmailError('GMAIL_ATTACHMENT_INVALID',422)
+        if not raw.startswith(b'%PDF-'):raise GmailError('GMAIL_ATTACHMENT_UNSUPPORTED',415)
+        return raw
 
 
 class GmailMailer:

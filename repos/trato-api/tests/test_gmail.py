@@ -15,7 +15,7 @@ from fastapi import FastAPI, Request, HTTPException
 from fastapi.testclient import TestClient
 from paypal.email import ProposalEmail, PdfAttachment, EmailDeliveryError
 from trato_api.gmail.vault import TokenVault, GmailError
-from trato_api.gmail.service import GmailSettings, GmailConnectionService, GoogleTransport, SEND_SCOPE, TOKEN_URL, USERINFO_URL, SEND_URL
+from trato_api.gmail.service import GmailSettings, GmailConnectionService, GoogleTransport, SEND_SCOPE, READ_SCOPE, TOKEN_URL, USERINFO_URL, SEND_URL, THREADS_URL, ATTACHMENTS_URL, reply_text
 from trato_api.gmail.routes import build_gmail_router
 
 
@@ -56,6 +56,131 @@ class GmailTest(unittest.TestCase):
         self.assertNotIn('fake-secret',data['authorization_url'])
         self.assertNotIn('code_verifier',query)
 
+    def test_read_consent_is_incremental_and_bound_to_existing_sender(self):
+        self.connect()
+        query=parse_qs(urlparse(self.service.start('owner','read')['authorization_url']).query)
+        self.assertEqual(query['scope'],[READ_SCOPE])
+        self.assertEqual(query['include_granted_scopes'],['true'])
+        self.assertEqual(query['login_hint'],['sender@example.com'])
+        self.assertNotIn('gmail.modify',' '.join(query['scope']))
+        self.assertNotIn('mail.google.com',' '.join(query['scope']))
+        self.responses.extend([(200,self.token(scope='openid email '+SEND_SCOPE+' '+READ_SCOPE)),
+                               (200,{'sub':'google-subject','email':'sender@example.com','email_verified':True})])
+        status=self.service.complete('owner',query['state'][0],code='read-consent-code')
+        self.assertTrue(status['can_send']);self.assertTrue(status['can_read'])
+        self.assertEqual(self.vault.get('owner')['refresh_token'],'synthetic-refresh')
+
+    def test_read_consent_requires_existing_send_account_and_does_not_replace_on_denial(self):
+        with self.assertRaises(GmailError):self.service.start('owner','read')
+        self.connect()
+        previous=self.vault.get('owner')
+        query=parse_qs(urlparse(self.service.start('owner','read')['authorization_url']).query)
+        self.responses.extend([(200,self.token(scope='openid email '+SEND_SCOPE)),
+                               (200,{'sub':'google-subject','email':'sender@example.com','email_verified':True})])
+        with self.assertRaises(GmailError) as caught:self.service.complete('owner',query['state'][0],code='read-consent-code')
+        self.assertEqual(caught.exception.code,'GMAIL_READ_PERMISSION_REQUIRED')
+        self.assertEqual(self.vault.get('owner'),previous)
+        self.assertTrue(self.service.status('owner')['can_send'])
+        self.assertFalse(self.service.status('owner')['can_read'])
+
+    def test_read_reconsent_cannot_switch_google_account(self):
+        self.connect()
+        before=self.vault.get('owner')
+        query=parse_qs(urlparse(self.service.start('owner','read')['authorization_url']).query)
+        self.responses.extend([(200,self.token(scope='openid email '+SEND_SCOPE+' '+READ_SCOPE)),
+                               (200,{'sub':'different-subject','email':'other@example.com','email_verified':True})])
+        with self.assertRaises(GmailError) as caught:self.service.complete('owner',query['state'][0],code='read-consent-code')
+        self.assertEqual(caught.exception.code,'GMAIL_ACCOUNT_CHANGED')
+        self.assertEqual(self.vault.get('owner'),before)
+
+    def test_read_endpoints_require_read_scope_and_transport_allows_only_fixed_google_paths(self):
+        self.connect()
+        with self.assertRaises(GmailError) as caught:self.service.read_thread('owner','known-thread')
+        self.assertEqual(caught.exception.code,'GMAIL_READ_PERMISSION_REQUIRED')
+        transport=GoogleTransport(httpx.MockTransport(lambda request:httpx.Response(200,json={})))
+        self.assertEqual(transport('GET',THREADS_URL+'/known-thread?format=full')[0],200)
+        self.assertEqual(transport('GET',ATTACHMENTS_URL+'/known-message/attachments/known-part')[0],200)
+        for method,url in [('POST',THREADS_URL+'/known-thread'),('GET','https://evil.invalid/gmail/v1/users/me/threads/known-thread'),
+                           ('GET',THREADS_URL+'/../messages/send'),('GET',ATTACHMENTS_URL+'/m/attachments/p/extra')]:
+            with self.subTest(method=method,url=url),self.assertRaises(GmailError):transport(method,url)
+
+    def test_read_thread_and_attachment_require_read_scope_before_network(self):
+        self.connect()
+        call_count=len(self.calls)
+        with self.assertRaises(GmailError):self.service.read_thread('owner','known-thread')
+        with self.assertRaises(GmailError):self.service.read_attachment('owner','known-message','known-part')
+        self.assertEqual(len(self.calls),call_count)
+
+    def test_message_parser_preserves_plain_text_and_only_describes_pdf_attachment(self):
+        import base64
+        encoded=lambda value:base64.urlsafe_b64encode(value).decode().rstrip('=')
+        message={'payload':{'mimeType':'multipart/mixed','parts':[
+            {'mimeType':'text/plain','body':{'data':encoded(b'Please revise delivery date.')}},
+            {'mimeType':'application/pdf','filename':'../offer.pdf','body':{'attachmentId':'attachment-1','size':7}},
+            {'mimeType':'application/octet-stream','filename':'other.exe','body':{'attachmentId':'attachment-2','size':4}},
+        ]}}
+        value=self.service.message_content(message)
+        self.assertEqual(value['body_text'],'Please revise delivery date.')
+        self.assertEqual(value['attachments'][0],{'attachment_id':'attachment-1','filename':'offer.pdf','mime_type':'application/pdf','size_bytes':7,'supported':True})
+        self.assertFalse(value['attachments'][1]['supported'])
+
+    def test_reply_text_hides_wrapped_gmail_quotes_in_spanish_and_english(self):
+        answer='Hola,\nProponemos USD 140.\nSaludos,\nCafé Mirador'
+        for header in ['El vie, 30 oct 2026 a la(s) 9:26 p.m., <sender@example.com>\nescribió:',
+                       'On Fri, Oct 30, 2026 at 9:26 PM Sender\n<sender@example.com> wrote:']:
+            with self.subTest(header=header):
+                original=answer+'\n\n'+header+'\n\n> Original proposal\n> USD 250.\n'
+                self.assertEqual(reply_text(original),answer)
+                self.assertIn('USD 250',original)
+        self.assertEqual(reply_text(answer),answer)
+        self.assertEqual(reply_text('Change the amount.\n\n> Previous terms'), 'Change the amount.')
+
+    def test_reply_text_preserves_inline_feedback_after_a_quote(self):
+        original='> Can you deliver Friday?\nYes, Friday works.\n\n> Original terms'
+        self.assertIn('Yes, Friday works.',reply_text(original))
+        self.assertEqual(reply_text('El cliente escribió: debemos cambiar el alcance.'),
+                         'El cliente escribió: debemos cambiar el alcance.')
+
+    def test_long_gmail_attachment_ids_are_parsed_and_downloaded(self):
+        attachment_id='A'*404
+        message={'payload':{'mimeType':'application/pdf','filename':'offer.pdf','body':{'attachmentId':attachment_id,'size':10}}}
+        self.assertEqual(self.service.message_content(message)['attachments'][0]['attachment_id'],attachment_id)
+        self.connect()
+        credentials=self.vault.get('owner');credentials['scope']+=' '+READ_SCOPE;self.vault.save('owner',credentials)
+        raw=b'%PDF-test'
+        self.responses.append((200,{'data':base64.urlsafe_b64encode(raw).decode(),'size':len(raw)}))
+        self.assertEqual(self.service.read_attachment('owner','message-1',attachment_id),raw)
+        transport=GoogleTransport(httpx.MockTransport(lambda request:httpx.Response(200,json={})))
+        self.assertEqual(transport('GET',ATTACHMENTS_URL+'/message-1/attachments/'+attachment_id)[0],200)
+        call_count=len(self.calls)
+        for invalid in [attachment_id+'/escape','A'*2049,'bad?token=x','é']:
+            with self.subTest(invalid_length=len(invalid)),self.assertRaises(GmailError):
+                self.service.read_attachment('owner','message-1',invalid)
+            message['payload']['body']['attachmentId']=invalid
+            with self.assertRaises(GmailError):self.service.message_content(message)
+        self.assertEqual(len(self.calls),call_count)
+
+    def test_message_parser_rejects_oversized_or_malformed_content(self):
+        import base64
+        huge=base64.urlsafe_b64encode(b'x'*65537).decode().rstrip('=')
+        with self.assertRaises(GmailError):self.service.message_content({'payload':{'mimeType':'text/plain','body':{'data':huge}}})
+        with self.assertRaises(GmailError):self.service.message_content({'payload':{'mimeType':'text/plain','body':{'data':'%%%'}}})
+
+    def test_message_parser_enforces_mime_depth_and_total_part_limits(self):
+        def chain(levels):
+            root={'mimeType':'multipart/mixed','parts':[]};node=root
+            for _ in range(levels):
+                child={'mimeType':'multipart/mixed','parts':[]};node['parts'].append(child);node=child
+            return {'payload':root}
+        self.assertEqual(self.service.message_content(chain(20)),{'body_text':'','attachments':[]})
+        with self.assertRaises(GmailError) as depth:self.service.message_content(chain(21))
+        self.assertEqual(depth.exception.code,'GMAIL_MESSAGE_TOO_COMPLEX')
+        exact={'payload':{'mimeType':'multipart/mixed','parts':[{'mimeType':'text/plain'} for _ in range(99)]}}
+        extra={'payload':{'mimeType':'multipart/mixed','parts':[{'mimeType':'text/plain'} for _ in range(100)]}}
+        self.assertEqual(self.service.message_content(exact),{'body_text':'','attachments':[]})
+        with self.assertRaises(GmailError) as count:self.service.message_content(extra)
+        self.assertEqual(count.exception.code,'GMAIL_MESSAGE_TOO_COMPLEX')
+
     def test_state_is_user_bound_single_use_and_exchange_uses_pkce(self):
         query=parse_qs(urlparse(self.service.start('owner')['authorization_url']).query)
         state=query['state'][0]
@@ -85,7 +210,7 @@ class GmailTest(unittest.TestCase):
         self.assertNotIn(b'synthetic-access',data);self.assertNotIn(b'synthetic-refresh',data)
         self.assertEqual(Path(self.settings.vault_path).stat().st_mode & 0o777,0o600)
         self.assertIsNone(self.vault.get('another'))
-        self.assertEqual(self.service.status('owner'),{'configured':True,'connected':True,'email':'sender@example.com'})
+        self.assertEqual(self.service.status('owner'),{'configured':True,'connected':True,'email':'sender@example.com','can_send':True,'can_read':False})
         self.assertNotIn('fake-secret',repr(self.settings))
 
     def test_swapping_encrypted_rows_is_detected(self):
@@ -123,7 +248,7 @@ class GmailTest(unittest.TestCase):
     def test_send_uses_connected_sender_and_preserves_pdf(self):
         self.connect();self.responses.append((200,{'id':'gmail-id'}))
         result=self.service.send('owner',self.proposal(),'notice',proposal=True)
-        self.assertEqual(result,{'status':'accepted_by_gmail','message_id':'gmail-id'})
+        self.assertEqual(result,{'status':'accepted_by_gmail','message_id':'gmail-id','thread_id':None})
         self.assertEqual(self.calls[-1][1],SEND_URL)
         raw=base64.urlsafe_b64decode(self.calls[-1][2]['json']['raw'])
         message=BytesParser(policy=policy.default).parsebytes(raw)

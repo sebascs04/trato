@@ -43,3 +43,11 @@ Esta auditoría no renombra archivos, no repara el historial, no modifica la bas
 ## Entrega de los archivos pendientes
 
 Esta rama de trabajo añade la tabla y el SQL project_soft_delete ya aplicado. La columna «Publicado en main» describe la rama principal en la auditoría; esta entrega no lo fusiona allí. No ejecutar este SQL de nuevo sobre la base compartida.
+
+## Reconciliación local del 31 de octubre de 2026
+
+Los nueve archivos históricos con prefijos distintos se renombran al número de versión aplicado indicado en la tabla. Conservan los bytes del SQL original, incluidos sus saltos de línea. La tabla anterior mantiene los nombres de la auditoría del 29/10 como referencia histórica. Este cambio no reejecuta SQL ni modifica el historial remoto.
+
+Las migraciones de Gmail `20261030035029`, `20261031024840`, `20261031025431` y `20261031103500` quedaron aplicadas en trato-dev durante las pruebas locales autorizadas. Corrigen la persistencia de respuestas, alias SQL ambiguos, la validación de IDs de mensaje y la recuperación de metadatos de adjuntos. Se aplicaron desde un directorio privado con el historial remoto completo, comprobando antes que cada dry run incluyera solo la migración correspondiente.
+
+La reconciliación de estos nueve nombres no acredita que este checkout contenga todas las migraciones de otros lotes. Antes de otro `db push`, consultar `migration list --linked` y resolver cualquier versión remota sin archivo local; no aplicar cambios de reputación u otros módulos por incluirlos accidentalmente en un push de Gmail.

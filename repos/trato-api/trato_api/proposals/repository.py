@@ -59,7 +59,7 @@ class ProposalRepository(Repository):
             'reviews':('proposal_reviews',{'select':'addendum_document_id,addendum_sha256,reviewer_id,reviewed_at',**params}),
             'acceptances':('proposal_acceptances',{'select':'id,returned_document_id,returned_sha256,reviewer_id,review_notes,method,cryptographic_signature_verified,created_at',**params}),
             'events':('proposal_events',{'select':'id,event_type,actor_id,created_at',**params,'order':'created_at.asc'}),
-            'deliveries':('proposal_deliveries',{'select':'id,kind,recipient,status,created_at,updated_at',**params,'order':'created_at.asc'}),
+            'deliveries':('proposal_deliveries',{'select':'id,kind,recipient,status,provider_thread_id,created_at,updated_at',**params,'order':'created_at.asc'}),
             'payments':('proposal_payments',{'select':'id,status,order_id,capture_id,approval_url,amount_minor,currency,created_at,updated_at',**params,'order':'created_at.desc'}),
             'artifacts':('proposal_artifacts',{'select':'document_id,sha256,created_at',**params}),
         }

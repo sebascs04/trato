@@ -1,6 +1,6 @@
 # Trato — backlog de colaboración
 
-Actualizado: 26 de octubre de 2026. Estado contrastado entre los dos chats que desarrollan el proyecto. Este documento no activa servicios, gasto, modelos, correos ni operaciones financieras. Las asignaciones se acuerdan entre los integrantes humanos; no se presume que alguien ya tomó una tarea.
+Actualizado: 31 de octubre de 2026. Se incorpora el cierre del flujo de renegociación validado localmente por el usuario; las demás prioridades conservan el estado de la revisión del 26 de octubre. Este documento no activa servicios, gasto, modelos, correos ni operaciones financieras. Las asignaciones se acuerdan entre los integrantes humanos; no se presume que alguien ya tomó una tarea.
 
 ## Objetivo de la entrega
 
@@ -17,6 +17,10 @@ La revisión final TRATO-09 se realiza contra [bases y lista de evaluación del 
 - [x] Ingesta PDF real asíncrona: Storage, outbox, Redis propio, worker, procesador, resultados y progreso.
 - [x] Propuestas manuales, PDF exacto por instantánea, borradores editables antes de enviar y versiones tras ajustes del cliente.
 - [x] Gmail OAuth y envío explícito de adenda/cobro revisados por el usuario.
+- [x] Lectura de respuestas de Gmail bajo demanda, con consentimiento incremental, vínculo al hilo y versión enviados, validación de participantes y persistencia sin duplicados en Supabase.
+- [x] Consulta de la respuesta del cliente sin la conversación anterior citada, conservando el correo completo como evidencia.
+- [x] Vista previa, descarga e importación de adjuntos PDF del cliente; los documentos importados deben terminar su lectura antes de usarse como fuentes de una revisión.
+- [x] Renegociación del mismo pedido: feedback del cliente → revisión humana de alcance, adicional y plazo → nueva versión de adenda → envío explícito → aceptación o nueva ronda de ajustes. Cada versión conserva su historial y requiere su propia aceptación.
 - [x] Aceptación documental revisada por una persona; no certificación criptográfica.
 - [x] Cobro y pago PayPal Sandbox comprobados. Cambios pagados de solo consulta.
 - [x] Un pedido abierto por proyecto y borrado lógico de clientes.
@@ -24,6 +28,14 @@ La revisión final TRATO-09 se realiza contra [bases y lista de evaluación del 
 - [x] Seguimiento con historial real y mapa alternativo de ejemplo.
 - [x] Flujos simulados de cambios/devoluciones, checkpoints, aprobación humana y ausencia de fallbacks automáticos.
 - [x] Fuentes oficiales PayPal en la devolución simulada, diferenciadas de documentos del proyecto.
+
+### Renegociaciones — Hecho, validado el 31/10/2026
+
+El usuario completó la prueba local del flujo de renegociación con Gmail y trato-dev, recorriendo nuevas versiones de adenda a partir de contraofertas. Se comprobó la persistencia de respuestas, la recuperación de adjuntos reales y la conservación de las versiones anteriores. La aceptación sigue siendo documental y revisada por una persona; una respuesta de Gmail no acepta automáticamente una propuesta ni autoriza un cobro.
+
+Entrega publicada en la rama `codex/renegociacion-cambios-cotizaciones`, commit [fdd35c7](https://github.com/sebascs04/trato/commit/fdd35c7bbaf30b3a7fc8209a439cf8ef99dd5f3a). Validación: 199 pruebas de API, 42 de frontend y paridad ES/EN aprobadas. Detalles técnicos y alcance local en [integración de Gmail](gmail-integracion.md).
+
+Este cierre corresponde al flujo de negocio de cambios y renegociaciones, sin IA. TRATO-02 a 07 conservan sus criterios de análisis conectado con IA y evaluación completa. Las devoluciones reales TRATO-13 a 16 siguen pendientes; la lectura de Gmail para desarrollo no acredita habilitación para producción.
 
 ## Prioridades
 

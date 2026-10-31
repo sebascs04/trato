@@ -33,7 +33,7 @@ for(const language of ['es','en'])test(`new project opens integrated planning, r
  await expect(page.locator('[data-plan-field="brief"]')).toBeEmpty();await expect(page.locator('.project-planning')).not.toContainText('Estudio Aurora');
  const background=await page.locator('.plan-background').boundingBox(),field=await page.locator('[data-plan-field="brief"]').boundingBox();expect(background.y+background.height).toBeLessThan(field.y);
  if(language==='es')await page.screenshot({path:'.local/browser-tests/project-planning-integrated.png',fullPage:true});
- await page.locator('[data-plan-lookup] button').click();await expect(page.locator('.plan-profile')).toContainText('Ficha compartida de prueba');
+ await page.locator('[data-plan-lookup] button').click();await expect(page.locator('.plan-profile')).toContainText('client@example.invalid');
  await expect(page.locator('.plan-experiences')).toHaveCount(0);await page.locator('[data-plan-action="confirm-profile"]').click();await page.locator('.plan-experiences summary').click();await expect(page.locator('.plan-experiences')).toContainText('La entrega intermedia');
  expect(state.lookups).toEqual([{public_email:'client@example.invalid'}]);
  await page.locator('[data-plan-field="brief"]').fill('Crear la web acordada con este cliente.');await page.locator('[data-plan-field="budget"]').fill('1200');await page.locator('[data-plan-field="date"]').fill('2026-11-20');
@@ -62,7 +62,7 @@ test('adding an initial source stays in the same planning step',async({page})=>{
 });
 test('deletion needs confirmation and removes a project only after successful persistence',async({page})=>{
  const state=await setup(page);await create(page,'ongoing');await page.locator('[data-cloud-close]').click();
- await page.locator('[data-cloud-action="project-delete"]').click();await page.getByRole('button',{name:'Cancelar',exact:true}).click();expect(state.deletions).toEqual([]);await expect(page.locator('[data-cloud-action="project-open"]')).toHaveCount(1);
+ await page.locator('[data-cloud-action="project-delete"]').click();await expect(page.locator('.cloud-delete-dialog')).toBeVisible();await page.screenshot({path:'.local/browser-tests/project-delete-dialog.png',fullPage:true});await page.getByRole('button',{name:'Cancelar',exact:true}).click();expect(state.deletions).toEqual([]);await expect(page.locator('[data-cloud-action="project-open"]')).toHaveCount(1);
  await page.locator('[data-cloud-action="project-delete"]').click();await page.locator('[data-cloud-form="project-delete"] button[type=submit]').click();await expect(page.locator('[data-cloud-action="project-open"]')).toHaveCount(0);expect(state.deletions).toHaveLength(1);expect(state.errors).toEqual([]);
 });
 test('failed deletion keeps the project and displays the error',async({page})=>{

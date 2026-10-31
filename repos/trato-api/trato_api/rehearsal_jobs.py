@@ -49,10 +49,14 @@ class RehearsalJobs:
             return self.get(owner, job_id)
         except RedisError: raise ApiError('REHEARSAL_QUEUE_UNAVAILABLE', 503) from None
 
-    def get(self, owner, job_id):
+    def get(self, owner, job_id, action=None):
         try: row = self.connection().hgetall(PREFIX + job_id)
         except RedisError: raise ApiError('REHEARSAL_QUEUE_UNAVAILABLE', 503) from None
         if not row or row.get('owner') != owner: raise ApiError('REHEARSAL_NOT_FOUND', 404)
+        if action is not None:
+            try: kind = json.loads(row['input']).get('action')
+            except (KeyError, ValueError): raise ApiError('REHEARSAL_JOB_INVALID', 502) from None
+            if kind != action: raise ApiError('REHEARSAL_NOT_FOUND', 404)
         status = row['status']
         if status not in ('queued', 'running', 'completed', 'failed'):
             raise ApiError('REHEARSAL_JOB_INVALID', 502)

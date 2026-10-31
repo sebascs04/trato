@@ -56,6 +56,7 @@ class GeminiLangChainModel:
     def __init__(self, config=None, *, client_factory=None):
         self.config = config or GeminiConfig.from_env()
         self.config.validate()
+        self.name = self.config.model
         _check_shared_environment()
         self.last_usage = None
         if client_factory is None:
@@ -63,6 +64,8 @@ class GeminiLangChainModel:
             client_factory = ChatGoogleGenerativeAI
         kwargs = dict(model=self.config.model, vertexai=self.config.backend != 'developer',
                       max_output_tokens=4096, max_retries=0, timeout=60)
+        if self.config.model == 'gemini-3.8-flash':
+            kwargs['thinking_config'] = {'thinking_level': 'MEDIUM'}
         if self.config.backend == 'vertex':
             from google.oauth2 import service_account
             kwargs.update(project=self.config.project, location=self.config.location,

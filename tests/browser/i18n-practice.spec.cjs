@@ -1,6 +1,6 @@
 const {test,expect}=require('@playwright/test');
-async function setup(page,{lang='es',paid=false,user='owner-a',evaluationError=''}={}){
- let evaluationInput;
+async function setup(page,{lang='es',paid=false,user='owner-a',evaluationError='',replyCloseAfter=3,replyError='',evaluationPending=false}={}){
+ let evaluationInput,evaluationHeld=evaluationPending;const replyJobs=new Map(),replyInputs=[];
  const errors=[],writes=[],reads=[];page.on('pageerror',e=>errors.push(e.message));
  await page.addInitScript(({lang,user})=>{
   if(!localStorage.getItem('trato:ui-language'))localStorage.setItem('trato:ui-language',lang);
@@ -11,7 +11,15 @@ async function setup(page,{lang='es',paid=false,user='owner-a',evaluationError='
   let data;
   if(path.endsWith('/config'))data={supabase_url:'https://tests.supabase.invalid',publishable_key:'sb_publishable_test'};
   else if(path.endsWith('/session'))data={user_id:user};
+  else if(path==='/api/v1/rehearsals/replies'&&r.method()==='POST'){
+   const body=r.postDataJSON(),id='d1111111-1111-4111-8111-'+String(replyInputs.length+1).padStart(12,'0');replyInputs.push(body);replyJobs.set(id,body);data={id,status:'queued'};
+  }
+  else if(path.startsWith('/api/v1/rehearsals/replies/')){
+   const id=path.split('/').pop(),body=replyJobs.get(id),turns=body.messages.filter(m=>m.role==='user').length;
+   data=replyError?{id,status:'failed',error_code:replyError}:{id,status:'completed',reply:{mode:'model',message:turns?`Agent response ${turns}`:body.output_language==='es'?'Necesito una respuesta concreta. Quiero cancelar el trabajo.':'I need a direct answer. I want to cancel the work.',ended:turns>=replyCloseAfter}};
+  }
   else if(path==='/api/v1/rehearsals/evaluations'&&r.method()==='POST'){evaluationInput=r.postDataJSON();data={id:'c1111111-1111-4111-8111-111111111111',status:'queued'};}
+  else if(path.startsWith('/api/v1/rehearsals/evaluations/')&&evaluationHeld)data={id:'c1111111-1111-4111-8111-111111111111',status:'running'};
   else if(path.startsWith('/api/v1/rehearsals/evaluations/'))data=evaluationError?{id:'c1111111-1111-4111-8111-111111111111',status:'failed',error_code:evaluationError}:{id:'c1111111-1111-4111-8111-111111111111',status:'completed',evaluation:{mode:'model',model:'test-model',sources_read:5,summary:'Controlled evaluator response.',items:evaluationInput.messages.flatMap((m,i)=>m.role==='user'?[{message_index:i,evidence_quote:m.text,assessment:'strength',finding:'A specific observed behavior.',suggestion:'A contextualized reply.',why:'An explanation grounded in the source.',citations:[{file_id:'test-guide',segment_id:'page-1',title:'Guide for browser test',author:'Test author',url:'https://example.invalid/guide',locator:{kind:'page',page:1},quote:'An exact test source quote.'}]}]:[])}};
 
   else if(path.endsWith('/clients'))data=[{id:'client-a',name:'Clientes',contact_email:'customer@example.invalid'}];
@@ -24,7 +32,7 @@ async function setup(page,{lang='es',paid=false,user='owner-a',evaluationError='
   else {await route.fulfill({status:404,json:{error:{code:'NOT_FOUND'}}});return;}
   await route.fulfill({json:{data}});
  });
- await page.goto('/#clientes');await expect(page.locator('.cloud-client-directory')).toBeVisible().catch(issue=>{throw Error(issue.message+'\nBrowser errors: '+errors.join(' | '));});return {errors,writes,reads};
+ await page.goto('/#clientes');await expect(page.locator('.cloud-client-directory')).toBeVisible().catch(issue=>{throw Error(issue.message+'\nBrowser errors: '+errors.join(' | '));});return {errors,writes,reads,replyInputs,releaseEvaluation:()=>{evaluationHeld=false;}};
 }
 test('profile switches ES and EN while preserving navigation and original user content',async({page})=>{
  const c=await setup(page);
@@ -43,7 +51,7 @@ test('profile switches ES and EN while preserving navigation and original user c
  await Promise.all([page.waitForEvent('load'),page.locator('[data-ui-language]').selectOption('es')]);
  await expect(page.locator('html')).toHaveAttribute('lang','es');
  await expect(page.getByRole('button',{name:'Proyecto: Acuerdo y fuentes iniciales',exact:true})).toBeVisible();
- expect(c.writes).toEqual([]);expect(c.errors).toEqual([]);
+ expect(c.writes.filter(path=>!path.startsWith('/api/v1/rehearsals/replies'))).toEqual([]);expect(c.errors).toEqual([]);
 });
 test('English business labels keep a paid change read-only and leave source terms untouched',async({page})=>{
  const c=await setup(page,{lang:'en',paid:true});
@@ -53,7 +61,7 @@ test('English business labels keep a paid change read-only and leave source term
  await expect(page.getByRole('heading',{name:'Finalized',exact:true})).toBeVisible();
  await expect(page.locator('.cloud-tracking')).toContainText('Texto privado del cliente');
  await expect(page.getByRole('button',{name:'Edit draft',exact:true})).toHaveCount(0);
- expect(c.writes).toEqual([]);expect(c.errors).toEqual([]);
+ expect(c.writes.filter(path=>!path.startsWith('/api/v1/rehearsals/replies'))).toEqual([]);expect(c.errors).toEqual([]);
 });
 test('rehearsal sliders are accessible, isolated and prepare the selected language for the agent',async({page})=>{
  const c=await setup(page,{lang:'en'});
@@ -73,7 +81,7 @@ test('rehearsal sliders are accessible, isolated and prepare the selected langua
  await page.reload();await expect(patience).toHaveValue('1');await expect(flexibility).toHaveValue('5');
  await expect(page.locator('#practice-goal')).toHaveCount(0);
  expect(c.reads.some(p=>p.endsWith('/documents')||p.endsWith('/activity')||p.endsWith('/proposals'))).toBe(false);
- expect(c.writes).toEqual([]);expect(c.errors).toEqual([]);
+ expect(c.writes.filter(path=>!path.startsWith('/api/v1/rehearsals/replies'))).toEqual([]);expect(c.errors).toEqual([]);
  await page.screenshot({path:'.local/browser-tests/rehearsals-en.png',fullPage:true});
 });
 test('Spanish rehearsal stays usable on mobile and requires explicit reset for invalid saved values',async({page})=>{
@@ -86,7 +94,7 @@ test('Spanish rehearsal stays usable on mobile and requires explicit reset for i
  await expect(page.getByRole('slider',{name:'Paciencia',exact:true})).toHaveValue('3');
  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
  await page.screenshot({path:'.local/browser-tests/rehearsals-es-mobile.png',fullPage:true});
- expect(c.errors).toEqual([]);expect(c.writes).toEqual([]);
+ expect(c.errors).toEqual([]);expect(c.writes.filter(path=>!path.startsWith('/api/v1/rehearsals/replies'))).toEqual([]);
 });
 test('English payment and Gmail callback pages keep provider operations unchanged',async({page})=>{
  await page.addInitScript(()=>localStorage.setItem('trato:ui-language','en'));
@@ -97,19 +105,19 @@ test('English payment and Gmail callback pages keep provider operations unchange
  await expect(page.getByRole('heading',{name:'Your payment',exact:true})).toBeVisible();
  await expect(page.locator('#error')).toHaveText('The payment link is invalid.');
 });
-for(const lang of ['es','en'])test(`scripted rehearsal completes three turns without business commands (${lang})`,async({page})=>{
+for(const lang of ['es','en'])test(`agent rehearsal closes when the model signals a conclusion without business commands (${lang})`,async({page})=>{
  const c=await setup(page,{lang});
  await page.getByRole('link',{name:lang==='es'?'Ensayos':'Rehearsals',exact:true}).click();
  await expect(page.getByRole('heading',{name:lang==='es'?'Practica antes de responder a tu cliente':'Practice before replying to your client',exact:true})).toBeVisible();
  await page.locator('#practice-case').selectOption('refund');
  const patience=page.getByRole('slider',{name:lang==='es'?'Paciencia':'Patience',exact:true});await patience.focus();await patience.press('Home');
- await page.getByRole('button',{name:lang==='es'?'Comenzar ensayo simulado':'Start scripted rehearsal',exact:true}).click();
+ await page.getByRole('button',{name:lang==='es'?'Comenzar ensayo':'Start rehearsal',exact:true}).click();
  await expect(page.locator('[data-practice-step=conversation]')).toHaveAttribute('aria-current','step');
  await expect(page.locator('[data-practice-step=analysis]')).toBeDisabled();
- const left=await page.locator('[data-practice-step=conversation]').boundingBox(),right=await page.locator('[data-practice-step=analysis]').boundingBox();
- expect(right.x).toBeGreaterThan(left.x);
  await expect(page.locator('.practice-conversation')).toContainText(lang==='es'?'Necesito una respuesta concreta.':'I need a direct answer.');
  await expect(page.locator('.practice-conversation')).toContainText(lang==='es'?'Quiero cancelar el trabajo.':'I want to cancel the work.');
+ const left=await page.locator('[data-practice-step=conversation]').boundingBox(),right=await page.locator('[data-practice-step=analysis]').boundingBox();
+ expect(right.x).toBeGreaterThan(left.x);
  for(let turn=0;turn<3;turn++){
   await page.getByLabel(lang==='es'?'Tu respuesta':'Your reply',{exact:true}).fill(turn===0?'<script>window.bad=true</script>':`Respuesta original ${turn}`);
   await page.getByRole('button',{name:lang==='es'?'Responder':'Reply',exact:true}).click();
@@ -157,7 +165,7 @@ for(const lang of ['es','en'])test(`scripted rehearsal completes three turns wit
  await expect(page.locator('.practice-message.is-user')).toHaveCount(0);
  await page.getByRole('button',{name:lang==='es'?'Volver a la configuración':'Back to configuration',exact:true}).click();
  await expect(page.locator('#practice-case')).toHaveValue('refund');
- expect(c.writes).toEqual(['/api/v1/rehearsals/evaluations']);expect(c.errors).toEqual([]);
+ expect(c.writes.filter(path=>!path.startsWith('/api/v1/rehearsals/replies'))).toEqual(['/api/v1/rehearsals/evaluations']);expect(c.errors).toEqual([]);
  await page.screenshot({path:`.local/browser-tests/rehearsals-intro-${lang}.png`,fullPage:true});
 });
 for(const lang of ['es','en'])test(`unsaved reminder follows actual changes and clears after save (${lang})`,async({page})=>{
@@ -178,7 +186,7 @@ for(const lang of ['es','en'])test(`unsaved reminder follows actual changes and 
  await slider.press('ArrowRight');await slider.press('ArrowRight');await expect(button).not.toHaveClass(/has-unsaved-changes/);
  await page.reload();await expect(button).not.toHaveClass(/has-unsaved-changes/);await expect(status).toBeEmpty();
  await expect(page.locator('#practice-case')).toHaveValue('refund');
- expect(c.errors).toEqual([]);expect(c.writes).toEqual([]);
+ expect(c.errors).toEqual([]);expect(c.writes.filter(path=>!path.startsWith('/api/v1/rehearsals/replies'))).toEqual([]);
 });
 for(const lang of ['es','en'])test(`home shows actual clients and entry points without requesting project data (${lang})`,async({page})=>{
  const c=await setup(page,{lang});const baseline=c.reads.length;
@@ -190,7 +198,7 @@ for(const lang of ['es','en'])test(`home shows actual clients and entry points w
  expect(c.reads.slice(baseline)).toEqual([]);
  await page.getByRole('link',{name:lang==='es'?'Ir a Ensayos':'Go to Rehearsals',exact:true}).click();
  await expect(page.locator('[data-practice-form]')).toBeVisible();
- expect(c.writes).toEqual([]);expect(c.errors).toEqual([]);
+ expect(c.writes.filter(path=>!path.startsWith('/api/v1/rehearsals/replies'))).toEqual([]);expect(c.errors).toEqual([]);
  await page.getByRole('link',{name:lang==='es'?'Vista general':'Overview',exact:true}).click();
  await page.getByRole('button',{name:lang==='es'?'Abrir cliente Clientes':'Open client Clientes',exact:true}).click();
  await expect(page.locator('.cloud-project-directory')).toContainText('Historial');
@@ -203,7 +211,7 @@ test('missing guide returns an error without fabricated feedback and preserves t
  await page.locator('[data-practice-evaluate]').click();
  await expect(page.locator('.practice-evaluation [role=alert]')).toContainText('No se pudieron leer todas las fuentes');
  await expect(page.locator('.practice-evaluation-card')).toHaveCount(0);
- expect(c.writes).toEqual(['/api/v1/rehearsals/evaluations']);
+ expect(c.writes.filter(path=>!path.startsWith('/api/v1/rehearsals/replies'))).toEqual(['/api/v1/rehearsals/evaluations']);
  await page.locator('[data-practice-step=conversation]').click();
  await expect(page.locator('.practice-message.is-user')).toHaveCount(3);
  expect(c.errors).toEqual([]);
@@ -214,5 +222,34 @@ test('reload retrieves the saved analysis without creating another evaluation',a
  for(let i=0;i<3;i++){await page.locator('#practice-response').fill(`Mi respuesta ${i}`);await page.locator('[data-practice-chat] button').click();}
  await page.locator('[data-practice-evaluate]').click();await expect(page.locator('.practice-evaluation-card')).toHaveCount(3);
  await page.reload();await expect(page.locator('.practice-evaluation-card')).toHaveCount(3);
- expect(c.writes).toEqual(['/api/v1/rehearsals/evaluations']);expect(c.errors).toEqual([]);
+ expect(c.writes.filter(path=>!path.startsWith('/api/v1/rehearsals/replies'))).toEqual(['/api/v1/rehearsals/evaluations']);expect(c.errors).toEqual([]);
+});
+
+for(const lang of ['es','en'])test(`agent conversation continues beyond three replies and can be ended by the user (${lang})`,async({page})=>{
+ const c=await setup(page,{lang,replyCloseAfter:8});await page.getByRole('link',{name:lang==='es'?'Ensayos':'Rehearsals',exact:true}).click();await page.locator('[data-practice-start]').click();
+ for(let i=0;i<5;i++){
+  await page.locator('#practice-response').fill(`Original user response ${i}`);await page.locator('[data-practice-chat] button').click();
+  await expect(page.locator('.practice-message:not(.is-user)').last()).toContainText(`Agent response ${i+1}`);
+ }
+ await expect(page.locator('[data-practice-chat]')).toHaveCount(1);expect(c.replyInputs.at(-1).messages).toHaveLength(10);
+ expect(c.replyInputs.at(-1).messages[1].text).toBe('Original user response 0');
+ await page.locator('[data-practice-end]').click();await expect(page.locator('[data-practice-step=analysis]')).toHaveAttribute('aria-current','step');
+ expect(c.errors).toEqual([]);
+});
+test('model reply failure stays visible with no scripted substitute',async({page})=>{
+ const c=await setup(page,{replyError:'LOCAL_MODEL_UNAVAILABLE'});await page.getByRole('link',{name:'Ensayos',exact:true}).click();await page.locator('[data-practice-start]').click();
+ await expect(page.locator('.practice-conversation [role=alert]')).toContainText('No se pudo completar');await expect(page.locator('.practice-message')).toHaveCount(0);expect(c.replyInputs).toHaveLength(1);
+});
+
+test('analysis waiting animation shows progress without redundant checks and respects reduced motion',async({page})=>{
+ const c=await setup(page,{evaluationPending:true});await page.getByRole('link',{name:'Ensayos',exact:true}).click();await page.locator('[data-practice-start]').click();
+ for(let i=0;i<3;i++){await page.locator('#practice-response').fill(`My reply ${i}`);await page.locator('[data-practice-chat] button').click();}
+ await page.locator('[data-practice-evaluate]').click();await expect(page.locator('.practice-evaluation')).toHaveAttribute('aria-busy','true');await expect(page.locator('.ai-activity-orbit')).toBeVisible();
+ await expect(page.locator('[data-practice-evaluate]')).toHaveCount(0);
+ await expect(page.locator('.practice-ai-wait')).toContainText('El evaluador está leyendo');
+ await page.emulateMedia({reducedMotion:'reduce'});await expect.poll(()=>page.locator('.ai-activity-orbit>span').first().evaluate(el=>getComputedStyle(el).animationName)).toBe('none');
+ await page.locator('.practice-evaluation').screenshot({path:'.local/browser-tests/practice-ai-wait.png'});
+ c.releaseEvaluation();await expect(page.locator('.practice-evaluation-card')).toHaveCount(3);
+ await expect(page.locator('.practice-evaluation-card:visible')).toContainText('En qué se basa esta recomendación');
+ await expect(page.locator('.practice-source-citation').first()).toContainText('Test author');await expect(page.locator('.practice-source-citation a').first()).toHaveText('Abrir documento original');
 });

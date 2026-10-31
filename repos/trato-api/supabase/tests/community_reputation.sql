@@ -1,9 +1,11 @@
 begin;
 insert into auth.users(id,email) values('a1111111-1111-4111-8111-111111111111','rep-a@example.invalid'),('b2222222-2222-4222-8222-222222222222','rep-b@example.invalid');
-insert into public.clients(id,owner_id,name,contact_email) values('c1111111-1111-4111-8111-111111111111','a1111111-1111-4111-8111-111111111111','Private customer A','secret-a@example.invalid'),('c2222222-2222-4222-8222-222222222222','b2222222-2222-4222-8222-222222222222','Private customer B','secret-b@example.invalid');
+insert into public.clients(id,owner_id,name,contact_email) values('c1111111-1111-4111-8111-111111111111','a1111111-1111-4111-8111-111111111111','Private customer A','shared.tag+work@example.invalid'),('c2222222-2222-4222-8222-222222222222','b2222222-2222-4222-8222-222222222222','Private customer B','shared.tag+work@example.invalid');
 insert into public.projects(id,owner_id,client_id,name) values('d1111111-1111-4111-8111-111111111111','a1111111-1111-4111-8111-111111111111','c1111111-1111-4111-8111-111111111111','Private project A'),('d2222222-2222-4222-8222-222222222222','b2222222-2222-4222-8222-222222222222','c2222222-2222-4222-8222-222222222222','Private project B');
-insert into public.clients(id,owner_id,name,contact_email) values('c3333333-3333-4333-8333-333333333333','a1111111-1111-4111-8111-111111111111','Other private customer','other-secret@example.invalid');
+insert into public.clients(id,owner_id,name,contact_email) values('c3333333-3333-4333-8333-333333333333','a1111111-1111-4111-8111-111111111111','Other private customer','different-person@example.invalid');
 insert into public.projects(id,owner_id,client_id,name) values('d3333333-3333-4333-8333-333333333333','a1111111-1111-4111-8111-111111111111','c3333333-3333-4333-8333-333333333333','Other private project');
+-- This private contact has no public review; its email must not be copied to the directory.
+insert into public.clients(id,owner_id,name,contact_email) values('c4444444-4444-4444-8444-444444444444','a1111111-1111-4111-8111-111111111111','Unpublished private contact','secret-a@example.invalid');
 set local role authenticated;
 set local request.jwt.claim.sub='a1111111-1111-4111-8111-111111111111';
 set local request.jwt.claims='{"sub":"a1111111-1111-4111-8111-111111111111","role":"authenticated","is_anonymous":false}';
@@ -22,10 +24,11 @@ do $$declare p jsonb; a jsonb; b jsonb; homonym jsonb; detail jsonb;begin
  detail:=public.community_reputation('detail',jsonb_build_object('profile_id',a->>'profile_id'));
  homonym:=public.community_reputation('save',p||jsonb_build_object('project_id','d3333333-3333-4333-8333-333333333333','public_email','different-person@example.invalid'));
  if homonym->>'profile_id'=a->>'profile_id' then raise exception 'Homonyms merged';end if;
- if jsonb_array_length(public.community_reputation('list','{"search":"Community test studio"}'::jsonb)->'clients')<>2 then raise exception 'Homonyms not distinguished';end if;
+ if jsonb_array_length(public.community_reputation('list','{"search":"example.invalid"}'::jsonb)->'clients')<>2 then raise exception 'Homonyms not distinguished';end if;
  if public.community_reputation('lookup','{"public_email":"different-person@example.invalid"}'::jsonb)->'client'->>'id' is distinct from homonym->>'profile_id' then raise exception 'Different email points to wrong client';end if;
  if detail->'client'->>'review_count'<>'1' or detail->'reviews'->0->>'mine'<>'true' then raise exception 'Own review missing';end if;
- begin perform public.community_reputation('save',p);raise exception 'Duplicate accepted';exception when unique_violation then null;end;
+ -- Duplicate review checks use the confirmed canonical identity.
+ begin perform public.community_reputation('save',p||jsonb_build_object('profile_id',a->>'profile_id'));raise exception 'Duplicate accepted';exception when unique_violation then null;end;
  perform public.community_reputation('save',p||jsonb_build_object('profile_id',a->>'profile_id','review_id',a->>'review_id','rating',5));
  if public.community_reputation('detail',jsonb_build_object('profile_id',a->>'profile_id'))->'client'->>'review_count'<>'1' then raise exception 'Edit duplicated review';end if;
  begin perform 1 from private.reputation_reviews;raise exception 'Private rows exposed';exception when insufficient_privilege then null;end;

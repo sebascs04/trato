@@ -21,12 +21,12 @@ class Model:
     def generate(self, messages, schema):
         self.calls.append(messages)
         payload = json.loads(messages[-1]['content']); f = payload['guides'][0]
-        segment_id, text = next(iter(f['segments'].items()))
+        segment_id, spans = next(iter(f['segments'].items())); ref, text = next(iter(spans.items()))
         result = {'summary': 'A specific observation.', 'items': [{'message_index': 1,
                   'evidence_quote': payload['messages'][1]['text'], 'assessment': 'strength',
                   'finding': 'You clarified the desired outcome.', 'suggestion': None,
                   'why': 'The question explores the actual need.',
-                  'citations': [{'file_id': f['file_id'], 'segment_id': segment_id, 'quote': text}]}]}
+                  'citations': [ref]}]}
         if self.mutation: self.mutation(result)
         return {'summary':result['summary'],'items':{str(item['message_index']):{k:v for k,v in item.items() if k!='message_index'} for item in result['items']}}
 
@@ -66,8 +66,8 @@ class EvaluatorTests(unittest.TestCase):
             self.assertEqual(citation['url'], 'https://example.invalid/guide')
 
     def test_forged_source_quote_message_and_missing_items_are_rejected(self):
-        mutations = [lambda r: r['items'][0]['citations'][0].update(quote='Invented quote'),
-                     lambda r: r['items'][0]['citations'][0].update(file_id='unknown'),
+        mutations = [lambda r: r['items'][0].update(citations=[{'quote':'Invented quote'}]),
+                     lambda r: r['items'][0].update(citations=['unknown']),
                      lambda r: r['items'][0].update(evidence_quote='Not said'),
                      lambda r: r['items'][0].update(citations=[]),
                      lambda r: r.update(items=[])]
@@ -101,3 +101,14 @@ class EvaluatorTests(unittest.TestCase):
         with patch.object(model, 'request', side_effect=responses):
             with self.assertRaisesRegex(ToolError, 'LOCAL_MODEL_INCOMPLETE'):
                 model.generate([{'role': 'user', 'content': 'test'}], {})
+
+class SourceSpanTests(unittest.TestCase):
+    def test_reference_ids_preserve_every_character_and_bind_original_quote(self):
+        from trato_worker.rehearsal_evaluation import citation_references,resolve_citations
+        original='  One two three four five six seven eight.\nNine ten eleven.  '
+        files=[{'file_id':'file','title':'Guide','author':'Author','segments':[{'segment_id':'page-1','text':original}]}]
+        guides,refs=citation_references(files)
+        self.assertEqual(''.join(guides[0]['segments']['page-1'].values()),original)
+        output={'items':[{'citations':['r1']}]};resolve_citations(output,refs)
+        self.assertEqual(output['items'][0]['citations'][0]['quote'],'One two three four five six seven eight.')
+        self.assertTrue(all(len(r['quote'].split())<=8 for r in refs.values()))

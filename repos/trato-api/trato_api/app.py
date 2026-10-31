@@ -16,6 +16,7 @@ from .errors import ApiError
 from .business_routes import build_business_router
 from .thread_routes import build_thread_router
 from .agent_tools import build_agent_tools_router
+from .model_preferences import build_model_preferences_router
 from .rehearsal_routes import build_rehearsal_router
 from .graph_routes import build_graph_router
 from .reputation_routes import build_reputation_router
@@ -50,6 +51,9 @@ class Services:
         self.settings = settings
 
     def authenticate(self, authorization):
+        return self.authenticate_identity(authorization)['id']
+
+    def authenticate_identity(self, authorization):
         s = self.settings
         if not authorization.startswith('Bearer ') or not authorization[7:].strip():
             raise ApiError('UNAUTHORIZED', 401)
@@ -65,8 +69,8 @@ class Services:
                 raise ApiError('UNAUTHORIZED', 401)
             if response.status_code != 200:
                 raise ApiError('AUTH_UNAVAILABLE', 503)
-            user_id = str(UUID(response.json()['id']))
-            return user_id
+            body = response.json()
+            return {'id': str(UUID(body['id'])), 'email': body.get('email', '') if body.get('email_confirmed_at') else ''}
         except (httpx.HTTPError, KeyError, ValueError, TypeError, AttributeError):
             raise ApiError('AUTH_UNAVAILABLE', 503)
 
@@ -106,7 +110,11 @@ class Services:
 
 def require_user(request: Request):
     """Reusable FastAPI dependency for P1's payment router; runs in its thread pool."""
-    return request.app.state.services.authenticate(request.headers.get('authorization', ''))
+    services = request.app.state.services
+    if isinstance(services, Services):
+        request.state.identity = services.authenticate_identity(request.headers.get('authorization', ''))
+        return request.state.identity['id']
+    return services.authenticate(request.headers.get('authorization', ''))
 
 
 def create_app(settings=None, services=None, repository_factory=None, *, gmail_service=None, sandbox_test_service=None, proposal_repository_factory=None, graph_reader=None, rehearsal_service=None):
@@ -131,6 +139,7 @@ def create_app(settings=None, services=None, repository_factory=None, *, gmail_s
     app.include_router(build_business_router(settings, services, require_user, repository_factory))
     app.include_router(build_thread_router(settings))
     app.include_router(build_agent_tools_router(settings))
+    app.include_router(build_model_preferences_router(require_user))
     app.include_router(build_rehearsal_router(require_user,rehearsal_service))
     app.include_router(build_graph_router(settings,require_user,repository_factory,graph_reader))
     app.include_router(build_reputation_router(settings,require_user,repository_factory))

@@ -1,6 +1,6 @@
 # Estándar de prompts de Trato
 
-Solicitado por Sebastian el 26 de octubre de 2026. Referencia leída: `<project-root>/Utiles/prompt-construction-guide.md`. Esta adaptación no modifica otros proyectos ni activa un modelo.
+Solicitado por Sebastian el 26 de octubre de 2026. Referencia leída: `<project-root>/Utiles/prompt-construction-guide.md`. Esta adaptación no modifica QAMAQ ni activa un modelo.
 
 ## Estructura
 
@@ -41,4 +41,4 @@ Acuerdo de Sebastian, 27/10/2026:
 
 ### Migración aplicada
 
-`practice-workspace.mjs` prepara instrucciones únicas en inglés con `output_language`, sin dependencia del idioma de la interfaz para construir sus reglas. El ensayo sigue utilizando un guion explícito, sin inferencia. `repos/trato-worker/prompts/compare-sources.json` y `analyze-change.json` usan instrucciones únicas en inglés; `analysis.analyze()` y su entrada stdin requieren `output_language` explícito. La plantilla de cambios aún no está integrada al flujo real y la UI todavía no llama a ese análisis de modelo. Las citas originales se mantienen y se validan como fragmentos exactos, incluso cuando el texto generado se solicita en otro idioma.
+El personaje de Ensayos utiliza instrucciones únicas en inglés en `trato_worker/rehearsal_dialogue.py`, con `output_language` explícito. La interfaz no mantiene una copia del prompt y los turnos se ejecutan en el worker. `repos/trato-worker/prompts/compare-sources.json` y `analyze-change.json` usan instrucciones únicas en inglés; `analysis.analyze()` y su entrada stdin requieren `output_language` explícito. La plantilla de cambios aún no está integrada al flujo real y la UI todavía no llama a ese análisis de modelo. Las citas originales se mantienen y se validan como fragmentos exactos, incluso cuando el texto generado se solicita en otro idioma.

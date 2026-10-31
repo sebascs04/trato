@@ -65,3 +65,27 @@ class ReputationTests(unittest.TestCase):
   email='a'*64+'@'+'b'*63+'.'+'c'*63+'.example'
   self.assertEqual(self.client.get('/api/v1/reputation',params={'search':email},headers=self.headers).status_code,200)
   self.assertEqual(self.client.get('/api/v1/reputation',params={'search':'a'*255},headers=self.headers).status_code,422)
+
+ def test_new_experience_never_invents_payment_or_legacy_scope(self):
+  payload=self.payload.copy();payload.pop('scope');payload.pop('payment');payload['collaboration']=3
+  self.assertEqual(self.client.post('/api/v1/reputation/reviews',headers=self.headers,json=payload).status_code,200)
+  saved=Repo.calls[-1][2]['p_data']
+  self.assertEqual(saved['collaboration'],3)
+  self.assertNotIn('payment',saved);self.assertNotIn('scope',saved)
+ def test_options_pass_normalized_client_filter_to_database(self):
+  response=self.client.get('/api/v1/reputation/review-options',params={'public_email':' Chosen@Example.invalid '},headers=self.headers)
+  self.assertEqual(response.status_code,200)
+  self.assertEqual(Repo.calls[-1][2],{'p_action':'options','p_data':{'public_email':'chosen@example.invalid'}})
+ def test_invalid_collaboration_or_client_filter_never_calls_rpc(self):
+  payload=self.payload.copy();payload.pop('scope');payload.pop('payment');payload['collaboration']=6
+  self.assertEqual(self.client.post('/api/v1/reputation/reviews',headers=self.headers,json=payload).status_code,422)
+  self.assertEqual(self.client.get('/api/v1/reputation/review-options?public_email=invalid',headers=self.headers).status_code,422)
+  self.assertEqual(Repo.calls,[])
+
+ def test_new_profile_needs_only_email_and_experience(self):
+  payload=self.payload.copy()
+  for field in ('name','location','website','scope','payment'):payload.pop(field,None)
+  payload['collaboration']=4
+  self.assertEqual(self.client.post('/api/v1/reputation/reviews',headers=self.headers,json=payload).status_code,200)
+  saved=Repo.calls[-1][2]['p_data']
+  for field in ('name','location','website'):self.assertNotIn(field,saved)

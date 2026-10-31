@@ -3,9 +3,12 @@ import json
 import os
 import time
 from uuid import UUID, uuid4
+from dataclasses import replace
+from .gemini import GeminiLangChainModel, GeminiUnavailableError, GeminiConfigurationError
 from redis.exceptions import ResponseError
 from .source_tools import BackendToolClient, ToolError
 from .rehearsal_evaluation import RehearsalModel, evaluate_rehearsal
+from .rehearsal_dialogue import DialogueModel, reply_rehearsal
 
 PREFIX = 'trato:rehearsal:evaluation:'
 STREAM = 'trato:rehearsal:evaluations'
@@ -23,8 +26,9 @@ return 0
 
 
 class RehearsalConsumer:
-    def __init__(self, redis, client, model, consumer=None):
+    def __init__(self, redis, client, model, consumer=None, reply_model=None):
         self.redis, self.client, self.model = redis, client, model
+        self.reply_model = reply_model if reply_model is not None else model
         self.consumer = consumer or str(uuid4())
 
     def setup(self):
@@ -50,10 +54,24 @@ class RehearsalConsumer:
         try:
             raw = self.redis.hget(key, 'input')
             data = json.loads(raw)
-            result = evaluate_rehearsal(data, self.client, self.model)
+            selected_model = self.reply_model if data.get('action') == 'reply' else self.model
+            temporary_model = None
+            if isinstance(selected_model, GeminiLangChainModel):
+                model_id = data.get('model_id')
+                allowed = os.getenv('TRATO_TEST_MODEL_IDS', '').split(',')
+                if model_id not in allowed or model_id not in ('gemini-3.8-flash', 'gemini-3.5-flash-lite', 'gemini-3.1-flash-lite', 'gemini-3.5-flash', 'gemini-3.6-flash', 'gemini-3.7-flash', 'gemini-3.1-pro-preview', 'gemini-4-argon'):
+                    raise ToolError('MODEL_SELECTION_UNAVAILABLE')
+                temporary_model = GeminiLangChainModel(replace(selected_model.config, model=model_id))
+                selected_model = temporary_model
+            try:
+                result = reply_rehearsal(data, selected_model) if data.get('action') == 'reply' else evaluate_rehearsal(data, self.client, selected_model)
+            finally:
+                if temporary_model is not None: temporary_model.close()
             self.redis.hset(key, mapping={'status': 'completed', 'result': json.dumps(result, ensure_ascii=False)})
         except ToolError as e:
             self.redis.hset(key, mapping={'status': 'failed', 'error_code': e.code})
+        except (GeminiUnavailableError, GeminiConfigurationError):
+            self.redis.hset(key, mapping={'status': 'failed', 'error_code': 'MODEL_REQUEST_FAILED'})
         except (ValueError, KeyError, TypeError):
             self.redis.hset(key, mapping={'status': 'failed', 'error_code': 'REHEARSAL_EVALUATION_FAILED'})
         # Never retry a failed/incomplete model call automatically after recovery.
@@ -63,7 +81,14 @@ class RehearsalConsumer:
 
     @classmethod
     def from_env(cls, redis):
-        return cls(redis, BackendToolClient.from_env(), RehearsalModel(os.environ.get('TRATO_REHEARSAL_OLLAMA_URL', '')))
+        provider = os.getenv('TRATO_MODEL_PROVIDER', '')
+        if provider == 'gemini':
+            model = GeminiLangChainModel()
+            return cls(redis, BackendToolClient.from_env(), model, reply_model=model)
+        if provider == 'ollama':
+            url = os.environ.get('TRATO_REHEARSAL_OLLAMA_URL', '')
+            return cls(redis, BackendToolClient.from_env(), RehearsalModel(url), reply_model=DialogueModel(url))
+        raise ValueError('Configure TRATO_MODEL_PROVIDER explicitly.')
 
 
 def main():

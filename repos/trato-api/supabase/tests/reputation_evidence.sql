@@ -5,6 +5,7 @@ set local statement_timeout='8s';
 insert into auth.users(id,email) values('a1111111-1111-4111-8111-111111111111','evidence-a@example.invalid'),('b2222222-2222-4222-8222-222222222222','evidence-b@example.invalid');
 insert into public.clients(id,owner_id,name) values('c1111111-1111-4111-8111-111111111111','a1111111-1111-4111-8111-111111111111','Private A'),('c2222222-2222-4222-8222-222222222222','b2222222-2222-4222-8222-222222222222','Private B');
 insert into public.projects(id,owner_id,client_id,name) values('d1111111-1111-4111-8111-111111111111','a1111111-1111-4111-8111-111111111111','c1111111-1111-4111-8111-111111111111','Private A'),('d2222222-2222-4222-8222-222222222222','b2222222-2222-4222-8222-222222222222','c2222222-2222-4222-8222-222222222222','Private B');
+update public.clients set contact_email='evidence-client@example.invalid' where id in ('c1111111-1111-4111-8111-111111111111','c2222222-2222-4222-8222-222222222222');
 set local role authenticated;
 set local request.jwt.claim.sub='a1111111-1111-4111-8111-111111111111';
 set local request.jwt.claims='{"sub":"a1111111-1111-4111-8111-111111111111","role":"authenticated","is_anonymous":false}';

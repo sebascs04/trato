@@ -1,6 +1,6 @@
 # Reputación de clientes
 
-28/10/2026. Implementación autorizada por el equipo como sección propia, debajo de Ensayos. No se crean PR ni se hace merge sin una orden expresa.
+28/10/2026. Implementación autorizada por Sebastian como sección propia, debajo de Ensayos. No se crean PR ni se hace merge sin una orden expresa.
 
 ## Recorrido
 
@@ -38,6 +38,15 @@ SQL real con dos usuarios y ROLLBACK: comunidad compartida, datos privados no ex
 Siete pruebas API; 19 navegador con dobles explícitos de API (Reputación, Ensayos y vista general) aprobadas; se añadieron regresiones para reporte y conservación de borrador ante error de publicación. 35 pruebas Node y npm run check aprobados. Capturas de la vista vacía y ficha inspeccionadas con datos de prueba solo en el transporte del navegador. No se automatizó una publicación mediante una sesión real de usuario en navegador.
 
 Advisors de seguridad: INFO intencionales por tablas privadas con RLS y sin políticas de acceso directo; aviso preexistente de protección de contraseñas filtradas sin modificar. Los recursos del módulo responden200 y el API real rechaza peticiones sin sesión401.
+
+## Coordinación
+
+Rama remota preparada feature/client-reputation desde main 5ea5028, sin subir estos cambios, sin crear PR y sin merge. El workspace compartido no tiene checkout Git operativo en su raíz; no modificar la rama local de API de P1 (feature/local-rehearsal-qwen). Coordinar un snapshot de alcance o checkout separado antes de cualquier publicación autorizada.
+
+Se levantó el supervisor propio de Trato tras comprobar sus puertos: web5173, API8100, procesador8101, Redis6380 y worker; Ollama11435 de P1 intacto. Sesión92067 al implementar. No se tocó QAMAQ. Chromium requiere LD_LIBRARY_PATH=/tmp/trato-browser-libs/runtime/usr/lib/x86_64-linux-gnu; se extrajo libasound2t64 localmente sin instalar paquetes del sistema.
+
+Cierre: seis pruebas propias de Reputación aprobadas, incluidas reportar sin editar una reseña ajena y conservar el borrador ante error. SQL ampliado confirma rechazo de usuarios eliminados y republicación de reseña retirada. Migración adicional20261028160219_reputation_foreign_key_indexes.sql cubre las dos FK nuevas señaladas por Advisors; no se modifica el índice pendiente preexistente de worker_threads.
+
 
 ## Continuación: correo comunitario y flujo de publicación ·28/10/2026
 
@@ -85,13 +94,13 @@ No se dispone de dos sesiones reales autorizadas de navegador para un E2E conect
 Migraciones aplicadas y alineadas con el historial del servidor: `20261029010557_reputation_public_email.sql` y `20261029010728_reputation_review_identity_guard.sql`. Archivos fuente de migraciones generados con CLI; la fecha del nombre es UTC.
 
 
-### Precisión de alcance comunicada por el equipo
+### Precisión de alcance comunicada por Sebastian
 
 El propósito visible de Reputación se enfoca en aportar antecedentes cuando ese cliente solicite un trabajo: un perfil basado en experiencias disponibles, posibles riesgos de pago y propuestas de entregas/cobros por etapas. No anuncia una conversación con el cliente real ni presenta Ensayos como ese recorrido. El número de etapas es un ejemplo revisable, no una regla universal. Las experiencias no permiten garantizar un pago ni inventar probabilidades; las recomendaciones futuras deben conservar fuentes y límites. No se ha activado ese agente mediante el cambio de texto.
 
 ## Continuación: archivos de respaldo
 
-el equipo autorizó compartir hasta tres archivos con otros usuarios registrados de Trato después de revisar y confirmar su publicación. Se aceptan PDF de hasta10MiB cada uno. Los adjuntos seleccionados se muestran en la revisión final antes del consentimiento; los documentos privados del proyecto nunca se adjuntan automáticamente.
+Sebastian autorizó compartir hasta tres archivos con otros usuarios registrados de Trato después de revisar y confirmar su publicación. Se aceptan PDF de hasta10MiB cada uno. Los adjuntos seleccionados se muestran en la revisión final antes del consentimiento; los documentos privados del proyecto nunca se adjuntan automáticamente.
 
 Los archivos pendientes permanecen privados. Al publicar, cualquier cuenta permanente autenticada puede consultar los adjuntos elegidos. Al retirar la experiencia o confirmar una edición que quite un archivo, ese respaldo deja de ser compartido; las versiones internas conservan su referencia. Quitar un archivo de una edición aún no confirmada solo cambia la selección del borrador.
 
@@ -110,3 +119,33 @@ Los archivos pendientes permanecen privados. Al publicar, cualquier cuenta perma
 23pruebas API de Reputación aprobadas y16pruebas de navegador con transporte controlado aprobadas, incluidas publicaciones ES/EN con tres adjuntos, límites, vista previa, conservación del borrador y retirada de selección. Sintaxis y1252claves ES/EN comprobadas. Captura de adjuntos publicados inspeccionada.
 
 SQL de comunidad reejecutado con éxito tras las migraciones de adjuntos. La prueba SQL específica comprueba permisos y estados mediante metadatos sintéticos transaccionales, sin subir bytes reales; incluye publicación, retirada, retención y aislamiento. No equivale a una subida real de Storage ni a un E2E conectado entre dos navegadores. Ambos siguen pendientes de una sesión de prueba autorizada. El proceso API local requiere recargarse para tomar las rutas nuevas antes de probarlas en la aplicación conectada.
+
+
+## Ajustes de experiencia general · 29/10/2026
+
+- El propósito de IA está al comienzo del directorio y del detalle de cliente, con la misma explicación; no se repite al final. Describe el uso previsto de antecedentes en planificación, sin afirmar que el agente pendiente ya se ejecuta.
+- La puntuación general muestra estrellas acumulativas. Después aparecen Comunicación y Colaboración en vertical. Se retira la pregunta de pagos y la etiqueta de pago de las tarjetas/detalle/vista previa; el autor cuenta libremente su experiencia.
+- `collaboration` es un campo nuevo de 1 a 5. `scope` y `payment` se conservan como campos históricos opcionales del contrato; no se convierten ni se rellenan con valores inventados. Editar desde el nuevo formulario conserva sus valores anteriores si no los envía. La API aún acepta el formato antiguo para compatibilidad explícita.
+- `GET /api/v1/reputation/review-options?public_email=...` valida y normaliza el correo y filtra antes del límite de resultados. Devuelve únicamente proyectos propios activos del cliente identificado; no usa coincidencias de nombre. Los nombres de opción solo muestran el proyecto. La UI comprueba también el vínculo devuelto.
+- Para un cliente privado sin vínculo comunitario previo, el correo de su ficha privada debe coincidir exactamente con el correo comunitario elegido. Después de confirmar un vínculo, se usa su ID canónico; cambiar el correo privado no cambia la identidad pública de una reseña anterior. El guardado bloquea proyecto/cliente y rechaza otra identidad aunque se manipule el HTTP.
+- Si no hay proyectos de ese cliente, se explica en el formulario y no se permite publicar una experiencia vinculada a un proyecto ajeno. El filtro no publica ni copia automáticamente contactos privados.
+- Migración aplicada: `20261030034027_reputation_collaboration_and_client_projects.sql`. La versión UTC aplicada se conserva en el nombre local. No se alteraron migraciones anteriores.
+- Validación: API 187 pruebas aprobadas; navegador Reputación + preparación de proyecto 27 aprobadas; vista general 4 aprobadas antes, sin cambios posteriores en su código. Paridad de 1439 claves ES/EN. SQL transaccional `reputation_collaboration.sql`, `community_reputation.sql` y `reputation_evidence.sql` aprobado con rollback; no conserva usuarios/reseñas sintéticos. Los transportes de navegador son controlados; no prueban una publicación real con archivos binarios de usuarios.
+
+El diálogo de eliminar proyecto se presenta con tarjeta de identidad, icono, texto de conservación y acciones separadas Cancelar/Eliminar. La confirmación y el backend de borrado lógico permanecen protegidos; las pruebas siguen comprobando cancelación y fallo de persistencia.
+
+
+## Identidad pública solo por correo · 29/10/2026
+
+Por indicación de Sebastian, el alta y las fichas de Reputación ya no solicitan ni muestran nombre público, ubicación o sitio web. El correo normalizado es el identificador visible; no se cambia la identidad privada de Clientes. El alias corresponde al freelancer que escribe la experiencia, no al cliente.
+
+La migración `20261030040148_reputation_email_identity.sql` permite `name` histórico nullable. Los perfiles nuevos guardan únicamente la identidad explícita `public_email`, con nombre nulo y ubicación/web vacíos; no se inventan datos ni se copia el nombre privado. Se conservan los registros anteriores. La búsqueda comunitaria usa el correo y no pierde perfiles con `name` nulo. Los antecedentes de Plan de trabajo también muestran el correo.
+
+Validación de esta simplificación: API188PASS, navegador27PASS (Reputación y preparación de proyecto), paridad1439 ES/EN; SQL `reputation_email_identity.sql` y regresión `community_reputation.sql` con rollback. No se publicó el lote ni se crearon PRs.
+
+
+### Entrada directa y valoraciones consistentes
+
+El correo se introduce una sola vez y «Continuar» hace la búsqueda exacta y carga los proyectos permitidos antes de abrir la experiencia. Se retiraron la confirmación «Sí, este es mi cliente» y la tarjeta intermedia con el contador de experiencias. Un fallo conserva el correo y permite un reintento manual; no inventa una ficha ni avanza.
+
+Experiencia general, Comunicación y Colaboración usan el mismo componente de cinco estrellas acumulativas. Son grupos de radio independientes, obligatorios y accesibles, con el criterio incluido en cada etiqueta. Mantienen los mismos campos numéricos de API; no cambian los datos ya guardados.

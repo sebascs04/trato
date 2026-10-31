@@ -41,7 +41,7 @@ class RehearsalQueueTests(unittest.TestCase):
     def test_invalid_citation_is_terminal_and_redelivery_does_not_rerun_model(self):
         from trato_api.rehearsal_jobs import RehearsalJobs
         jobs = RehearsalJobs(self.redis); job_id = str(uuid4())
-        model = Model(lambda r: r['items'][0]['citations'][0].update(quote='Not in source'))
+        model = Model(lambda r: r['items'][0].update(citations=['not-in-source']))
         consumer = RehearsalConsumer(self.redis, Client(), model); consumer.setup()
         with patch.dict(os.environ, {'TRATO_REHEARSAL_EVALUATOR_ENABLED': 'true'}):
             self.redis.set('trato:rehearsal:consumer:ready', '1', ex=60)

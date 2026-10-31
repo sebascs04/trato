@@ -1,5 +1,6 @@
 # Evaluador final de Ensayos
 
+Flujo de Ensayos separado de acuerdos, cobros y devoluciones. El proveedor se configura explicitamente; ver modelos-gemini.md para la conexion actual de Google Cloud.
 
 ## Recorrido
 
@@ -11,7 +12,7 @@ El evaluador devuelve una conclusión y un elemento por respuesta del usuario: e
 
 La interfaz conserva las dos etapas horizontales, navegación por mensajes, estados de carga y citas desplegables. Se escapan los textos antes de insertarlos en HTML. Las etiquetas tienen ES/EN y el análisis utiliza el idioma solicitado, conservando citas y mensajes originales.
 
-**El personaje sigue usando el guion de práctica elegido explícitamente.** Este bloque conecta su análisis final real; no convierte las respuestas del personaje en inferencia. Se retiró el feedback fijo de la interfaz y se bloqueó el antiguo evaluador de API basado en principios escritos sin lectura de fuentes.
+**El personaje también responde mediante el worker y el modelo local.** `/replies` encola cada turno con el historial completo y devuelve el cierre indicado por el personaje. No hay un número fijo de turnos; el usuario también puede terminar explícitamente la conversación. Los límites técnicos de contexto se informan sin truncar el historial. Se retiró el feedback fijo de la interfaz y se bloqueó el antiguo evaluador de API basado en principios escritos sin lectura de fuentes.
 
 ## Privacidad, persistencia y fallos
 
@@ -57,3 +58,19 @@ El esquema interno usa un objeto con una clave obligatoria por turno del usuario
 La reserva de salida se amplió en el mismo modelo para permitir su razonamiento y el JSON final de varios turnos. Ensayo real completo ES: tres respuestas, índices1/3/5, cinco guías y una cita válida por respuesta, completado en85.82s; sin truncación observada. El worker actualizado quedó activo tras recarga propia coordinada; API/procesador/web respondieron200 y endpointsprivados rechazaron peticiones sinJWT401. Ollama permaneció intacto. Los resultados son locales; no equivalen a una publicación de código.
 
 Suite final del worker tras los ajustes:90ejecutadas,82aprobadas y8omitidas. Las siete específicas del evaluador y las dos de Redis aislado también pasaron.
+
+## Cliente de práctica y atribución de recomendaciones
+
+El prompt del personaje vive en `trato_worker/rehearsal_dialogue.py`, en inglés y con output_language explícito. El backend aporta el caso canónico; el cliente HTTP no decide acuerdos, fuentes ni herramientas. Cada turno usa un job idempotente, privado y recuperable por su propietario. La interfaz conserva el ID ante respuestas inciertas y vuelve a consultar ese mismo trabajo; no genera una respuesta de guion ante un error. El consumidor reutiliza el modelo local configurado y un presupuesto de salida menor para las intervenciones del cliente.
+
+El evaluador sigue leyendo las cinco guías completas. Su instrucción `why` distingue el principio de la fuente de su aplicación a la conversación. La interfaz presenta ese fundamento junto a autor, título, localizador, cita literal y enlace al documento original; no atribuye consenso a expertos ni ofrece una certificación de negociación. Se mantienen validación literal y límites de citas por fuente.
+
+La espera usa una animación CSS de IA sin progreso porcentual inventado, con estado accesible y soporte de movimiento reducido. El estado pendiente se consulta automáticamente y no muestra un botón redundante para comprobarlo. La interfaz no se vuelve a construir en cada poll si el estado sigue igual, para conservar la animación.
+
+## Estado actual de la conexion Cloud
+
+El personaje funciona mediante Gemini en el worker; el modelo se fija por trabajo y el selector privado se documenta en modelos-gemini.md. Se comprobaron respuestas reales por cola con Flash3.8 y Flash-Lite3.5 y acceso estructurado basico a otros modelos del catalogo. Esto no acredita una evaluacion completa con las cinco fuentes bajo Gemini. Los resultados Qwen anteriores son historicos; no son pruebas de calidad del proveedor nuevo.
+
+Las citas del evaluador ahora se generan como IDs de referencias extractivas. El host resuelve cada ID a texto literal y metadatos del segmento original; toda la guia se conserva sin resumen. Los limites de citas y la validacion semantica pendiente siguen vigentes.
+
+Prioridad de trabajo: conversacion real JSON e historial completo antes de ampliar o dar por validado el evaluador. El indicador comun de actividad esta en ai-activity.mjs/css, documentado en indicador-ia.md.

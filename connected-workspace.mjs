@@ -1,3 +1,4 @@
+import {mountModelPreference} from './model-preferences.mjs';
 import {uiText,uiLocale} from './i18n.mjs';
 import {icon as uiIcon} from './icons.mjs';
 import {SessionClient, apiRequest} from './auth-session.mjs';
@@ -235,7 +236,7 @@ export class ConnectedWorkspace {
   }
   show(title,html) {
     this.releasePreview();
-    this.modal.classList.remove('cloud-profile-dialog','cloud-auth-dialog','cloud-document-preview','cloud-mail-dialog','cloud-project-setup');
+    this.modal.classList.remove('cloud-profile-dialog','cloud-auth-dialog','cloud-document-preview','cloud-mail-dialog','cloud-project-setup','cloud-delete-dialog','cloud-project-create-dialog');
     if(this.modal.open) this.modal.close();
     this.modal.innerHTML=`<div class="upload-modal-header"><div><span class="eyebrow">${uiText("TU ESPACIO EN TRATO")}</span><h2 id="cloud-dialog-title">${escape(title)}</h2></div><button type="button" class="close" data-cloud-close aria-label="${uiText("Cerrar")}" title="${uiText("Cerrar")}">${uiIcon('x')}</button></div>${html}<p class="cloud-error" data-cloud-error role="alert"></p>`;
     this.modal.showModal();
@@ -243,8 +244,9 @@ export class ConnectedWorkspace {
   openAccount(mode='login') {
     if(this.active) {
       const email=this.session.session.user.email || uiText("Sesión iniciada");
-      this.show(uiText("Tu perfil"),`<section class="cloud-identity" aria-label="${uiText("Cuenta de Trato")}"><span class="cloud-account-avatar" aria-hidden="true">${escape(email.slice(0,2).toUpperCase())}</span><div><span class="cloud-account-label">${uiText("Cuenta de Trato")}</span><strong>${escape(email)}</strong></div></section><section class="cloud-account-connections" aria-label="${uiText("Conexiones")}"><header><h3>${uiText("Conexiones")}</h3><p>${uiText("Tu correo y tus cobros, en un solo lugar.")}</p></header><div class="cloud-integrations"></div></section><form data-cloud-form="logout" class="cloud-account-footer"><button class="text-button" type="submit">${uiText("Cerrar sesión")}</button></form>`);
+      this.show(uiText("Tu perfil"),`<section class="cloud-identity cloud-profile-hero" aria-label="${uiText("Cuenta de Trato")}"><span class="cloud-account-avatar" aria-hidden="true">${escape(email.slice(0,2).toUpperCase())}</span><div><span class="cloud-account-label">${uiText("Cuenta de Trato")}</span><strong>${escape(email)}</strong></div></section><section class="cloud-account-connections" aria-label="${uiText("Conexiones")}"><header><h3>${uiText("Conexiones")}</h3><p>${uiText("Tu correo y tus cobros, en un solo lugar.")}</p></header><div class="cloud-integrations"></div></section><form data-cloud-form="logout" class="cloud-account-footer"><button class="text-button" type="submit">${uiText("Cerrar sesión")}</button></form>`);
       this.modal.classList.add('cloud-profile-dialog');
+      void mountModelPreference(this);
     } else {
       const signup=mode==='signup';
       this.show(uiText(signup?'landing.signupTitle':'Accede a tu estudio'),`<p class="cloud-auth-intro">${uiText(signup?'auth.signupIntro':'auth.loginIntro')}</p><form data-cloud-form="auth"><label class="field" for="cloud-email">${uiText("Correo")}</label><input class="context-box" id="cloud-email" name="email" type="email" autocomplete="username" required><label class="field" for="cloud-password">${uiText("Contraseña")}</label><input class="context-box" id="cloud-password" name="password" type="password" minlength="8" autocomplete="${signup?'new-password':'current-password'}" required><div class="dialog-actions"><button type="submit" class="button" value="${signup?'signup':'login'}">${uiText(signup?'Crear cuenta':'Iniciar sesión')}</button></div></form><p class="cloud-auth-switch">${uiText(signup?'auth.hasAccount':'auth.noAccount')} <button type="button" data-cloud-auth-mode="${signup?'login':'signup'}">${uiText(signup?'Iniciar sesión':'Crear cuenta')}</button></p>`);
@@ -309,7 +311,7 @@ export class ConnectedWorkspace {
     if(action==='client') this.show(uiText("Nuevo cliente"),`<form data-cloud-form="client"><label class="field">${uiText("Nombre")}<input name="name" class="context-box" required maxlength="200"></label><label class="field">${uiText("Correo de contacto")}<input name="email" class="context-box" type="email" maxlength="254"></label><div class="dialog-actions"><button type="submit" class="button">${uiText("Guardar cliente")}</button></div></form>`);
     if(action==='client-delete'){const client=this.clients.find(c=>c.id===id);if(client)this.show(uiText("Eliminar cliente"),`<p>${uiText("Eliminarás a")} <strong>${escape(client.name)}</strong> de tu espacio junto con sus proyectos y documentos.</p><p>${uiText("Conservaremos los registros mediante borrado lógico para permitir su recuperación.")}</p><form data-cloud-form="client-delete" data-client-id="${escape(client.id)}"><div class="dialog-actions"><button class="button cloud-delete-confirm" type="submit">${uiIcon('trash-2')}${uiText("Eliminar cliente")}</button><button class="button secondary" type="button" data-cloud-close>${uiText("Cancelar")}</button></div></form>`);}
     if(action==='project') this.openProject(id);
-    if(action==='project-delete'){const project=this.projects.find(item=>item.id===id);if(project)this.show(uiText('projectStart.deleteProject'),`<p>${uiText('projectStart.deleteProjectIntro')} <strong>${escape(project.name)}</strong>.</p><p>${uiText('projectStart.deleteProjectHelp')}</p><form data-cloud-form="project-delete" data-project-id="${escape(id)}"><div class="dialog-actions"><button type="submit" class="button cloud-delete-confirm">${uiIcon('trash-2')}${uiText('projectStart.deleteProject')}</button><button type="button" class="button secondary" data-cloud-close>${uiText("Cancelar")}</button></div></form>`);}
+    if(action==='project-delete'){const project=this.projects.find(item=>item.id===id);if(project){this.show(uiText('projectStart.deleteProject'),`<section class="cloud-delete-content"><p class="cloud-delete-intro">${uiText('projectStart.deleteProjectIntro')}</p><div class="cloud-delete-project-card">${uiIcon('folder-open')}<strong>${escape(project.name)}</strong></div><p class="cloud-delete-explanation">${uiText('projectStart.deleteProjectHelp')}</p><form data-cloud-form="project-delete" data-project-id="${escape(id)}"><div class="dialog-actions"><button type="button" class="button secondary" data-cloud-close>${uiText("Cancelar")}</button><button type="submit" class="button cloud-delete-confirm">${uiText('projectStart.deleteProject')}</button></div></form></section>`);this.modal.classList.add('cloud-delete-dialog');}}
     if(action==='upload') this.openSource(target.dataset.cloudPurpose);
     if(action==='graph-preview'){this.historyView='map';this.tab='historial';this.notify();}
     if(action==='history-view'){this.historyView='history';this.notify();}
@@ -367,9 +369,10 @@ export class ConnectedWorkspace {
   openProject(clientId) {
     const client=this.clients.find(item=>item.id===clientId);
     const clientField=client
-      ? `<div class="context-entry"><small>${uiText("CLIENTE DEL PROYECTO")}</small><strong>${escape(client.name)}</strong></div><input type="hidden" name="client" value="${client.id}">`
+      ? `<div class="cloud-project-client"><small>${uiText("CLIENTE DEL PROYECTO")}</small><strong>${escape(client.name)}</strong></div><input type="hidden" name="client" value="${client.id}">`
       : `<label class="field">${uiText("Cliente del proyecto")}<select name="client" class="context-box" required><option value="" selected disabled>${uiText("Elige un cliente guardado")}</option>${this.clients.map(item=>`<option value="${item.id}">${escape(item.name)}</option>`).join('')}</select></label>`;
     this.show(uiText("Nuevo proyecto"),`<form data-cloud-form="project">${clientField}<label class="field">${uiText("Nombre del nuevo proyecto")}<input name="name" class="context-box" required maxlength="200" placeholder="${uiText("Por ejemplo: sitio web corporativo")}"></label><h3>${uiText('projectStart.moment')}</h3><div class="project-start-choices">${[['new','sparkles','newTitle','newCopy'],['ongoing','folder-open','ongoingTitle','ongoingCopy']].map(([value,glyph,title,copy])=>`<label class="project-start-choice"><input type="radio" name="project_start" value="${value}" ${value==='new'?'checked':''}><div>${uiIcon(glyph)}<strong>${uiText(`projectStart.${title}`)}</strong><p>${uiText(`projectStart.${copy}`)}</p></div></label>`).join('')}</div><div class="dialog-actions"><button type="submit" class="button">${uiText('projectStart.continue')}${uiIcon('arrow-right')}</button></div></form>`);
+    this.modal.classList.add('cloud-project-create-dialog');
   }
   initialSources() {return this.documents.filter(doc=>doc.kind==='initial_agreement');}
   sourceReady(doc) {

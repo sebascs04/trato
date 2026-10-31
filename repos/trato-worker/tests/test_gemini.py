@@ -54,6 +54,10 @@ class GeminiTests(unittest.TestCase):
             self.assertEqual(model._client.kwargs['max_retries'], 0)
             self.assertNotIn('project', model._client.kwargs)
 
+    def test_default_flash_uses_explicit_medium_thinking(self):
+        model = GeminiLangChainModel(GeminiConfig('developer', 'gemini-3.8-flash', 'synthetic-secret'), client_factory=StubClient)
+        self.assertEqual(model._client.kwargs['thinking_config'], {'thinking_level': 'MEDIUM'})
+
     def test_shared_sdk_configuration_cannot_change_backend_or_key(self):
         for name in ['GOOGLE_API_KEY', 'GEMINI_API_KEY', 'GOOGLE_GENAI_USE_VERTEXAI', 'GOOGLE_CLOUD_PROJECT', 'GOOGLE_VERTEX_BASE_URL']:
             with patch.dict(os.environ, {name: 'unexpected'}):

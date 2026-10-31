@@ -23,21 +23,16 @@ test('rehearsal configuration validates temperament and uses normalized project 
  const bad=structuredClone(data);bad.conversations.find(c=>c.id===bad.messages.find(m=>m.id===en.source_context.message_id).conversationId).projectId='other';
  assert.throws(()=>buildPracticeContext(config,bad,'es'));
 });
-test('rehearsal instructions are canonical English with explicit output language and original sources',async()=>{
- const {buildPracticeContext,buildPracticePrompt}=await import('../practice-workspace.mjs');
- const data=JSON.parse(readFileSync(new URL('../data/demo.json',`file://${__filename}`),'utf8'));
- const config={version:1,scenario:'scope',persona:{patience:1,flexibility:5,price:3}};
- const es=buildPracticeContext(config,data,'es'),en=buildPracticeContext(config,data,'en');
- const spanish=buildPracticePrompt(es),english=buildPracticePrompt(en);
- assert.equal(spanish.replace('"output_language": "es"','"output_language": "en"'),english);
- assert.ok(spanish.includes(es.sources.request));
- for(const section of ['## ROLE','## CONTEXT','## PRE-TASK CHECKLIST','## TASK','## FORMAT'])assert.ok(spanish.includes(section));
- assert.ok(spanish.includes('Generate your message directly in output_language'));
- assert.throws(()=>buildPracticePrompt({...es,output_language:'fr'}),/Unsupported rehearsal output language/);
+test('runtime dialogue instructions stay in the worker with explicit output language',()=>{
+ const prompt=readFileSync(new URL('../repos/trato-worker/trato_worker/rehearsal_dialogue.py',`file://${__filename}`),'utf8');
+ const frontend=readFileSync(new URL('../practice-workspace.mjs',`file://${__filename}`),'utf8');
+ for(const section of ['## ROLE','## CONTEXT','## PRE-TASK CHECKLIST','## TASK','## FORMAT'])assert.ok(prompt.includes(section));
+ assert.ok(prompt.includes('output_language'));assert.ok(prompt.includes('no fixed number of turns'));
+ assert.equal(frontend.includes('## ROLE'),false);assert.equal(frontend.includes('scriptedPracticeLine'),false);
 });
 
 test('rehearsal prompt follows its explicit language independently of the UI locale',async()=>{
- const {buildPracticeContext,buildPracticePrompt}=await import('../practice-workspace.mjs');
+ const {buildPracticeContext}=await import('../practice-workspace.mjs');
  const {setUiLanguage,uiLanguage}=await import('../i18n.mjs');
  const data=JSON.parse(readFileSync(new URL('../data/demo.json',`file://${__filename}`),'utf8'));
  const config={version:1,scenario:'scope',persona:{patience:1,flexibility:5,price:3}};
@@ -46,20 +41,18 @@ test('rehearsal prompt follows its explicit language independently of the UI loc
  global.document={documentElement:{lang:'es'}};
  try{
   setUiLanguage('es');
-  const englishContext=buildPracticeContext(config,data,'en'),english=buildPracticePrompt(englishContext);
-  assert.match(english,/Play a fictional client/);
-  assert.match(english,/output_language is es or en/);
+  const englishContext=buildPracticeContext(config,data,'en'),english=JSON.stringify(englishContext,null,2);
+  assert.equal(englishContext.output_language,'en');
   assert.ok(english.includes(englishContext.sources.request));
   assert.ok(english.includes(englishContext.sources.agreement));
   assert.match(english,/"output_language": "en"/);
   setUiLanguage('en');
-  const spanishContext=buildPracticeContext(config,data,'es'),spanish=buildPracticePrompt(spanishContext);
-  assert.match(spanish,/Play a fictional client/);
-  assert.match(spanish,/output_language: es means Spanish/);
+  const spanishContext=buildPracticeContext(config,data,'es'),spanish=JSON.stringify(spanishContext,null,2);
+  assert.equal(spanishContext.output_language,'es');
   assert.ok(spanish.includes(spanishContext.sources.request));
   assert.ok(spanish.includes(spanishContext.sources.agreement));
   assert.match(spanish,/"output_language": "es"/);
-  assert.throws(()=>buildPracticePrompt({output_language:'fr',scenario_id:'scope',persona:{patience:1,flexibility:1,price_sensitivity:1}}),/Unsupported rehearsal output language/);
+  assert.throws(()=>buildPracticeContext(config,data,'fr'),/Unsupported rehearsal language/);
  }finally{
   setUiLanguage(previous.language);
   if(previous.window===undefined)delete global.window;else global.window=previous.window;

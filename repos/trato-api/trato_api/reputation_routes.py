@@ -5,7 +5,7 @@ from uuid import UUID
 from urllib.parse import urlparse, quote
 from fastapi import APIRouter, Depends, Query, Request
 from fastapi.responses import JSONResponse, Response
-from pydantic import BaseModel, ConfigDict, Field, StringConstraints, field_validator
+from pydantic import BaseModel, ConfigDict, Field, StringConstraints, field_validator, model_validator
 from starlette.concurrency import run_in_threadpool
 from .business_routes import read_bytes
 from .persistence import Repository
@@ -42,10 +42,17 @@ class ReviewInput(BaseModel):
     website: Annotated[str,StringConstraints(strip_whitespace=True,max_length=300)]=''
     rating: int=Field(ge=1,le=5)
     communication: int=Field(ge=1,le=5)
-    scope: int=Field(ge=1,le=5)
-    payment: Annotated[str,StringConstraints(pattern='^(on_time|late|unpaid|not_applicable)$')]
+    scope: int | None=Field(default=None,ge=1,le=5)
+    collaboration: int | None=Field(default=None,ge=1,le=5)
+    payment: Annotated[str,StringConstraints(pattern='^(on_time|late|unpaid|not_applicable)$')] | None=None
     body: Annotated[str,StringConstraints(strip_whitespace=True,min_length=20,max_length=3000)]
     consent: bool
+
+    @model_validator(mode='after')
+    def experience_dimension(self):
+        if self.collaboration is None and self.scope is None:
+            raise ValueError('A collaboration rating is required for the new form.')
+        return self
 
     @field_validator('project_id','profile_id','review_id')
     @classmethod
@@ -102,8 +109,11 @@ def build_reputation_router(settings,require_user,repository_factory=None):
         item=await model(request,EmailLookup)
         return await run_in_threadpool(reply,repo,'lookup',item.model_dump())
     @router.get('/review-options')
-    def options(repo=Depends(repository)):
-        return reply(repo,'options',{})
+    def options(public_email: str | None=Query(default=None,max_length=254),repo=Depends(repository)):
+        try: data={} if public_email is None else {'public_email':normalized_public_email(public_email)}
+        except ValueError: raise ApiError('REPUTATION_EMAIL_INVALID',422)
+        if public_email is not None and not data['public_email']:raise ApiError('REPUTATION_EMAIL_INVALID',422)
+        return reply(repo,'options',data)
     @router.get('/attachments')
     def attachments(project_id:UUID,repo=Depends(repository)):
         return reply(repo,'attachment_list',{'project_id':str(project_id)})
@@ -133,8 +143,7 @@ def build_reputation_router(settings,require_user,repository_factory=None):
         item=await model(request,ReviewInput)
         if not item.public_email and not item.review_id:raise ApiError('REPUTATION_EMAIL_REQUIRED',422)
         if not item.consent:raise ApiError('REPUTATION_CONSENT_REQUIRED',422)
-        if not item.profile_id and not 2<=len(item.name)<=160:raise ApiError('REPUTATION_INVALID',422)
-        return await run_in_threadpool(reply,repo,'save',item.model_dump())
+        return await run_in_threadpool(reply,repo,'save',item.model_dump(exclude_unset=True))
     @router.post('/reviews/withdraw')
     async def withdraw(request:Request,repo=Depends(repository)):
         item=await model(request,ReviewRef)

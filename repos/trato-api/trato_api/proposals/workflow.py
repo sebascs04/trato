@@ -1,9 +1,14 @@
 """Gmail and PayPal run directly in the HTTP backend, outside the IA worker."""
 from dataclasses import asdict
 from hashlib import sha256
+from email.utils import getaddresses
 import json
 import os
 import secrets
+import threading
+import time
+from datetime import datetime,timezone
+import re
 from urllib.parse import urlencode
 
 from paypal.client import PayPalSandboxClient, PaymentInstruction, PayPalError
@@ -11,7 +16,7 @@ from paypal.config import SandboxSettings
 from paypal.email import ProposalEmail, PaymentEmail, PdfAttachment, EmailDeliveryError, build_proposal_email, build_payment_email
 from ..errors import ApiError
 from ..persistence import Repository
-from ..gmail.service import GmailMailer
+from ..gmail.service import GmailMailer, reply_text
 
 class BackendStore:
     def __init__(self, settings):
@@ -24,12 +29,31 @@ class BackendStore:
         else:self.repo.headers['Authorization']='Bearer '+key
     def command(self,owner,action,data):
         return self.repo.rpc('proposal_backend',{'p_owner':owner,'p_action':action,'p_data':data})
+    def gmail_inbox(self,owner,action,data):
+        return self.repo.rpc('gmail_inbox',{'p_owner':owner,'p_action':action,'p_data':data})
 
 class ProposalWorkflow:
     def __init__(self,settings,gmail,*,store=None,paypal=None):
         self.settings,self.gmail=settings,gmail
         self.store=store
         self.paypal=paypal
+        self._gmail_sync_guard=threading.Lock()
+        self._gmail_sync_state={}
+
+    def _claim_gmail_sync(self,owner,project_id):
+        key=(str(owner),str(project_id));now=time.monotonic();window=30
+        with self._gmail_sync_guard:
+            for stale,(lock,started) in list(self._gmail_sync_state.items()):
+                if now-started>120 and not lock.locked():self._gmail_sync_state.pop(stale,None)
+            entry=self._gmail_sync_state.get(key)
+            if entry:
+                lock,started=entry
+                if lock.locked():raise ApiError('GMAIL_SYNC_IN_PROGRESS',409)
+                if now-started<window:raise ApiError('GMAIL_SYNC_RATE_LIMITED',429)
+            else:lock=threading.Lock()
+            if not lock.acquire(blocking=False):raise ApiError('GMAIL_SYNC_IN_PROGRESS',409)
+            self._gmail_sync_state[key]=(lock,now)
+        return key,lock
     def backend(self):return self.store if self.store is not None else BackendStore(self.settings)
     def provider(self):
         if self.paypal is not None:return self.paypal
@@ -96,6 +120,83 @@ class ProposalWorkflow:
             return store.command(owner,'mail_finish',{**data,'delivery_id':claim['id'],**result})
         except ApiError:
             raise ApiError('EMAIL_DELIVERY_UNCERTAIN',503) from None
+
+    @staticmethod
+    def _addresses(value):
+        if not isinstance(value,str):return []
+        return [address.lower() for _,address in getaddresses([value]) if address and len(address)<=320]
+
+    @staticmethod
+    def _normal_message_id(value):
+        if not isinstance(value,str):return ''
+        return value.strip().strip('<>').lower()
+
+    def sync_gmail_replies(self,repo,owner,project_id):
+        if not self.gmail:raise ApiError('GMAIL_NOT_CONFIGURED',503)
+        connection=self.gmail.status(owner)
+        if not connection['connected']:raise ApiError('GMAIL_NOT_CONNECTED',409)
+        if not connection.get('can_read'):raise ApiError('GMAIL_READ_PERMISSION_REQUIRED',409)
+        sync_key,sync_lock=self._claim_gmail_sync(owner,project_id)
+        try:
+            targets=self.backend().gmail_inbox(owner,'targets',{'project_id':project_id})
+            synced=0;refreshed=0
+            for target in targets[:5]:
+                if synced>=25:break
+                thread=self.gmail.read_thread(owner,target['provider_thread_id'])
+                messages=thread['messages']
+                sent=next((message for message in messages if message.get('id')==target['provider_message_id']),None)
+                if sent is None or str(sent.get('threadId',''))!=target['provider_thread_id']:
+                    continue
+                sent_header=self._normal_message_id(self.gmail._header(sent,'Message-ID'))
+                if not sent_header:continue
+                self.backend().gmail_inbox(owner,'record_sent_header',{'delivery_id':target['delivery_id'],
+                    'provider_thread_id':target['provider_thread_id'],'provider_rfc_message_id':sent_header})
+                try:sent_at=datetime.fromisoformat(target['sent_at'].replace('Z','+00:00'))
+                except (ValueError,TypeError,AttributeError):raise ApiError('GMAIL_DELIVERY_DATE_INVALID',502)
+                candidates=[]
+                for message in messages:
+                    message_id=message.get('id')
+                    if not isinstance(message_id,str) or message_id==target['provider_message_id'] or str(message.get('threadId',''))!=target['provider_thread_id']:
+                        continue
+                    try:received_at=datetime.fromtimestamp(int(message.get('internalDate'))/1000,tz=timezone.utc)
+                    except (ValueError,TypeError,OverflowError):continue
+                    if received_at<=sent_at:continue
+                    from_header=self.gmail._header(message,'From')
+                    to_header=' '.join((self.gmail._header(message,'To'),self.gmail._header(message,'Cc')))
+                    from_addresses=self._addresses(from_header);to_addresses=self._addresses(to_header)
+                    if len(from_addresses)!=1 or from_addresses[0]!=target['client_email'].lower() or connection['email'].lower() not in to_addresses:
+                        continue
+                    in_reply_to=self.gmail._header(message,'In-Reply-To')[:998]
+                    references=' '.join(self.gmail._header(message,'References').split())[:4000]
+                    reference_ids={self._normal_message_id(item) for item in re.findall(r'<[^<>\s]{1,500}>',in_reply_to+' '+references)}
+                    if sent_header not in reference_ids:continue
+                    candidates.append((message,received_at,from_addresses[0],to_addresses,in_reply_to,references))
+                known=self.backend().gmail_inbox(owner,'known',{'delivery_id':target['delivery_id'],
+                    'provider_message_ids':[candidate[0]['id'] for candidate in candidates]})
+                known=set(known if isinstance(known,list) else [])
+                for message,received_at,from_email,to_addresses,in_reply_to,references in candidates:
+                    if synced>=25:break
+                    content=self.gmail.message_content(message)
+                    if message['id'] in known and (not content['attachments'] or refreshed>=25):continue
+                    if not content['body_text'].strip() and not content['attachments']:continue
+                    body=content['body_text']
+                    record={'project_id':project_id,'delivery_id':target['delivery_id'],'provider_thread_id':target['provider_thread_id'],
+                            'provider_message_id':message['id'],'mailbox_email':connection['email'].lower(),'from_email':from_email,
+                            'provider_rfc_message_id':sent_header,
+                            'to_emails':sorted(set(to_addresses)),'subject':self.gmail._header(message,'Subject')[:1000],
+                            'received_at':received_at.isoformat(),'in_reply_to':in_reply_to,'references_header':references,
+                            'body_text':body,'body_sha256':sha256(body.encode('utf-8')).hexdigest(),
+                            'attachment_metadata':content['attachments']}
+                    self.backend().gmail_inbox(owner,'record',record)
+                    if message['id'] in known:refreshed+=1
+                    else:synced+=1
+            return {'synced':synced}
+        finally:
+            sync_lock.release()
+
+    def gmail_replies(self,owner,project_id,proposal_id):
+        messages=self.backend().gmail_inbox(owner,'list',{'project_id':project_id,'proposal_id':proposal_id})
+        return [{**message,'reply_text':reply_text(message['body_text'])} for message in messages]
     @staticmethod
     def instruction(pay):
         return PaymentInstruction(pay['id'],f'{pay["amount_minor"]//100}.{pay["amount_minor"]%100:02d}',pay['currency'],pay['merchant_id'])

@@ -11,12 +11,16 @@ if(typeof window!=='undefined'){
 }
 export const uiLanguage=()=>language;
 export const uiLocale=()=>language==='es'?'es-PE':'en-US';
-export function uiText(key,values={}){
- if(!Object.hasOwn(catalogs[language],key))throw Error('Missing translation: '+key);
- return catalogs[language][key].replace(/\{([a-zA-Z_][a-zA-Z0-9_]*)\}/g,(_,name)=>{
+export function textForLanguage(target,key,values={}){
+ if(!Object.hasOwn(catalogs,target))throw Error('Unsupported Trato language');
+ if(!Object.hasOwn(catalogs[target],key))throw Error('Missing translation: '+key);
+ return catalogs[target][key].replace(/\{([a-zA-Z_][a-zA-Z0-9_]*)\}/g,(_,name)=>{
   if(!Object.hasOwn(values,name))throw Error('Missing translation parameter: '+name);
   return String(values[name]);
  });
+}
+export function uiText(key,values={}){
+ return textForLanguage(language,key,values);
 }
 export function setUiLanguage(next){
  if(!Object.hasOwn(catalogs,next))throw Error('Unsupported Trato language');

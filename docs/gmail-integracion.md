@@ -24,13 +24,15 @@ Rutas API (todas requieren JWT):
 - `POST /api/v1/integrations/gmail/complete`: code+state, o error+state; sin dueño/destinatario/redirección arbitrarios.
 - `POST /api/v1/integrations/gmail/disconnect`: elimina tokens locales e intenta revocar el permiso. Si Google no respondió, `revoked:false`; la UI aclara que el usuario puede revisar el acceso desde Google.
 
-Permisos: `openid`, `email` y `https://www.googleapis.com/auth/gmail.send`. No lectura de Gmail. Identidad verificada usando userinfo; es independiente del correo usado para iniciar sesión a Trato.
+Permisos base de conexión/envío: `openid`, `email` y `https://www.googleapis.com/auth/gmail.send`; la conexión inicial no pide lectura. Identidad verificada usando userinfo; es independiente del correo usado para iniciar sesión a Trato.
+
+La lectura de respuestas usa consentimiento incremental: solo se solicita después de que la persona elige **Buscar respuestas en Gmail**, con la conexión de envío existente. Añade `https://www.googleapis.com/auth/gmail.readonly` y conserva los permisos concedidos (`include_granted_scopes=true`). La lectura no es necesaria para enviar. `gmail.readonly` es un permiso restringido de Gmail; almacenar o transmitir esos datos desde un servidor exige completar la verificación de Google y el security assessment aplicable antes de habilitarlo públicamente.
 
 ## Configuración que falta
 
 1. Crear/seleccionar proyecto Google Cloud para Trato y habilitar Gmail API.
 2. Configurar Google Auth Platform, nombre/app/contacto, audiencia y usuarios de prueba cuando corresponda. Añadir la cuenta que hará la demo como usuario de prueba si se mantiene la app en pruebas.
-3. Configurar los permisos anteriores, sin solicitar lectura de la bandeja.
+3. Para el envío, configurar `openid`, `email` y `gmail.send`. No añadir `gmail.readonly` a la conexión inicial; el flujo de lectura lo pedirá en forma incremental y solo por acción explícita.
 4. Crear un cliente OAuth de tipo Aplicación web. URI de redirección exacta: `http://localhost:5173/gmail-callback.html`.
 5. Ejecutar localmente, desde la raíz:
 
@@ -51,6 +53,22 @@ Los cuatro módulos originales de correo/propuestas/rutas se trasladaron a `repo
 **Falta el repositorio persistente de propuestas/aceptaciones/outbox/pagos y su montaje.** Las rutas de envío de adenda/cobro siguen503 cuando no hay ese servicio. No se habilita un endpoint de correo libre para eludir revisión o enviar a destinatarios arbitrarios. La UI de vista previa de cobros sigue separada del envío conectado.
 
 El vault actual es para desarrollo local, proceso API único y disco privado persistente. No es una tabla Supabase de negocio. Para Render/múltiples procesos se necesita persistencia privada compartida o disco durable y coordinación de renovación, además de mover redirectURI a HTTPS y registrar esa URI en Google. No desplegar asumiendo persistencia del filesystem efímero.
+
+## MVP de lectura de respuestas Gmail (no habilitado para producción)
+
+El flujo nuevo se ejecuta bajo demanda, sin polling ni Gmail push. `POST /api/v1/projects/{project_id}/gmail-replies/sync` usa solo los `threadId` guardados por envíos de adenda conocidos; no hace búsquedas ni listados de la bandeja. Por ejecución consulta como máximo los 5 hilos elegibles más recientes y guarda como máximo 25 respuestas nuevas, con hasta 100 mensajes por hilo y 4 MiB por respuesta de hilo (hasta 20 MiB de respuesta de Google en el peor caso). La respuesta de sync solo devuelve el conteo, no el texto. La búsqueda no es exhaustiva: puede haber respuestas en hilos que no se revisaron y la interfaz lo advierte. La lista muestra como máximo 50 respuestas recientes por propuesta. Solo conserva respuestas posteriores al envío cuando coinciden el hilo, el `Message-ID` RFC de la adenda citada por `In-Reply-To` o `References`, el remitente registrado del cliente y el buzón destinatario. El asunto no sirve como prueba de vínculo. No se aceptan respuestas automáticamente, no se cambia el estado comercial y una respuesta jamás autoriza cobro.
+
+La conexión de envío continúa disponible si se deniega `gmail.readonly`. El token debe conservar la identidad Google previamente vinculada y se valida el conjunto de permisos realmente concedidos. Las consultas de mensajes y adjuntos usan HTTPS y rutas Gmail fijas. Se procesa solo texto `text/plain`, con límite por hilo/mensaje, 20 niveles de anidación MIME y 100 partes; HTML no se presenta ni se ejecuta. El mensaje se muestra como texto escapado y debe tratarse como evidencia no confiable, nunca como instrucciones para el sistema. Los PDFs se validan por tipo, tamaño y firma `%PDF-`, pero este incremento no incluye antivirus, análisis de malware ni sanitización de contenido activo.
+
+La tabla privada `gmail_inbound_messages` queda con RLS habilitado y sin acceso directo de cliente: el servidor valida propietario, proyecto, propuesta, versión y entrega. La unicidad por propietario, buzón y `messageId` hace idempotente la sincronización. Se guarda el texto plano acotado (máximo 50 KB), hashes y encabezados necesarios; no se guarda el cuerpo HTML ni bytes de adjuntos durante la sincronización. Los adjuntos PDF pueden importarse individualmente mediante el almacenamiento privado de documentos existente, que vuelve a comprobar tipo, tamaño y firma PDF. El documento importado no se asocia como fuente de revisión hasta que termina su extracción.
+
+Al usar una respuesta como feedback, el RPC vuelve a comprobar bajo bloqueo que el mensaje pertenece al mismo propietario/proyecto/propuesta, está vinculado a la revisión enviada vigente y aún no fue consumido. La revisión conserva `feedback_email_id`; si se importó un PDF y su extracción está lista, también puede conservarlo como fuente/documento. Para respuestas solo de prosa se usa el email guardado como evidencia; no se inventa un PDF. Si el cuerpo supera los 4.000 caracteres del campo editable, la interfaz conserva el email completo y pide resumirlo para la nota de feedback.
+
+La retención automática todavía no está implementada y **bloquea la habilitación en producción**. Propuesta para decidir con producto/legal: conservar la evidencia mientras el proyecto siga activo y eliminarla al borrar el proyecto; además fijar un plazo máximo tras el cierre (recomendación inicial: 12 meses), con un mecanismo de eliminación verificable. La política y su plazo deben cubrir los mensajes, documentos importados y respaldos.
+
+La limitación de frecuencia y exclusión mutua actual vive en memoria del proceso API: hay un lock por propietario/proyecto y una ventana de 30 segundos. No coordina varias instancias o workers; producción requiere enforcement compartido/persistente, no solo este lock local.
+
+**Este incremento no está habilitado ni verificado en Google para producción.** No se ha iniciado OAuth ni se han hecho llamadas externas en esta implementación. Antes de exponer el flujo a usuarios reales hay que aprobar la pantalla de consentimiento, verificar la aplicación y completar cualquier evaluación de seguridad requerida por Google para `gmail.readonly`, implementar y revisar la política de retención/borrado, y mover la limitación por propietario/proyecto a coordinación compartida. La autorización previa de `gmail.send` no cubre el nuevo permiso restringido; también se debe evaluar el control de malware de PDFs antes de permitir su uso en producción.
 
 ## Verificación
 
@@ -79,3 +97,17 @@ El usuario completó el consentimiento. Se comprobó en el filesystem que usa el
 ### Envío de revisiones conectado, 25/10
 
 `proposal-workspace.mjs` muestra el correo y PDF de una revisión. El backend compara el digest de destinatario/contenido/PDF/remitente con la vista revisada; Gmail verifica el remitente dentro del lock de credenciales. El outbox Supabase deduplica por revisión/tipo. Un envío `sending` o incierto no se reenvía automáticamente. Una adenda enviada no autoriza el pago: requiere retorno del PDF y revisión humana. Aún no se ha enviado un correo real en esta integración.
+
+### Respuestas y adjuntos: correcciones del 31/10/2026
+
+La lista de respuestas entrega `reply_text` para presentar la respuesta sin el bloque final de conversación citado por Gmail (cabeceras ES/EN). `body_text` y su hash se conservan completos como evidencia. El feedback usa el texto de respuesta; esta separación es determinista y no ejecuta IA.
+
+Los identificadores de adjuntos admiten hasta 2048 caracteres ASCII de URL segura, separados del límite de 256 del ID de mensaje. El correo de prueba contenía un ID de adjunto de 404 caracteres: el límite anterior lo omitía. Un identificador inválido ahora produce un error explícito.
+
+Una búsqueda explícita vuelve a comprobar hasta 25 mensajes conocidos con adjuntos, además del límite existente de 25 respuestas nuevas. La migración `20261031103500_gmail_missing_attachment_metadata.sql` permite completar una lista de adjuntos vacía mediante el mismo comando validado e idempotente, conservando fila, texto y hash. No reemplaza metadatos existentes ni modifica respuestas usadas; mantiene los controles de propietario, versión actual, envío y cambio sin finalizar.
+
+La interfaz permite abrir y descargar un PDF adjunto mediante la ruta autenticada existente, antes de importarlo. La vista previa no añade documentos ni inicia extracción. Los archivos siguen sujetos a los límites y validaciones existentes; no se presenta HTML del correo.
+
+### Validación local de la entrega, 31/10/2026
+
+El usuario validó el ciclo de renegociación con respuestas reales del buzón de prueba y nuevas versiones de adenda. Se verificó la persistencia en trato-dev y la lectura de un adjunto PDF real de 4933 bytes; recuperar sus metadatos conservó la misma fila, el cuerpo original y su hash. Esto actualiza las afirmaciones históricas de este documento sobre pruebas todavía sin llamadas a Google. La habilitación para producción continúa fuera de esta entrega.

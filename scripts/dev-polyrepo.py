@@ -86,7 +86,7 @@ if __name__ == '__main__':
             worker_env['FILE_PROCESSOR_URL']=f'http://127.0.0.1:{args.processor_port}'
             # Wait for these exact local endpoints; no alternative port or transport is selected.
             import urllib.request
-            deadline=time.monotonic()+15
+            deadline=time.monotonic()+60
             for ready_port in (args.api_port,args.processor_port):
                 while True:
                     try:

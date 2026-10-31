@@ -62,14 +62,19 @@ class TokenVault:
             db.execute('DELETE FROM connections WHERE owner=?',(owner,))
             db.execute('DELETE FROM oauth_states WHERE owner=?',(owner,))
 
-    def begin(self, owner, state, verifier):
+    def begin(self, owner, state, verifier, *, purpose='send'):
+        if purpose not in ('send','read'):
+            raise GmailError('INVALID_GMAIL_PURPOSE',422)
         with self.connect() as db:
             db.execute('DELETE FROM oauth_states WHERE expires <= ?', (self.clock(),))
             # Starting a new consent flow invalidates older flows for this user.
             db.execute('DELETE FROM oauth_states WHERE owner=?', (owner,))
-            db.execute('INSERT INTO oauth_states VALUES (?,?,?,?)', (hashlib.sha256(state.encode()).hexdigest(),owner,self.encrypt(owner,{'verifier':verifier}),self.clock()+600))
+            db.execute('INSERT INTO oauth_states VALUES (?,?,?,?)', (hashlib.sha256(state.encode()).hexdigest(),owner,self.encrypt(owner,{'verifier':verifier,'purpose':purpose}),self.clock()+600))
 
     def consume(self, owner, state):
+        return self.consume_authorization(owner,state)['verifier']
+
+    def consume_authorization(self, owner, state):
         digest = hashlib.sha256(state.encode()).hexdigest()
         with self.connect() as db:
             db.execute('BEGIN IMMEDIATE')
@@ -77,4 +82,7 @@ class TokenVault:
             if not row or row[1] <= self.clock():
                 raise GmailError('GMAIL_AUTHORIZATION_EXPIRED',409)
             db.execute('DELETE FROM oauth_states WHERE digest=? AND owner=?',(digest,owner))
-        return self.decrypt(owner,row[0])['verifier']
+        value=self.decrypt(owner,row[0])
+        if value.get('purpose') not in ('send','read') or not isinstance(value.get('verifier'),str):
+            raise GmailError('GMAIL_VAULT_UNREADABLE')
+        return value

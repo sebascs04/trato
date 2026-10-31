@@ -5,10 +5,12 @@ const amount=minor=>new Intl.NumberFormat(uiLocale(),{style:'currency',currency:
 const when=value=>new Intl.DateTimeFormat(uiLocale(),{dateStyle:'medium',timeStyle:'short',timeZone:'America/Lima'}).format(new Date(value));
 export function installProposalWorkspace(cloud){
  cloud.requestStatus=null;cloud.proposals=[];cloud.proposalDetails=null;cloud.proposalRetryRevision=null;cloud.proposalLoading=false;cloud.proposalError='';
+ cloud.gmailReplies=[];cloud.gmailReplyError='';cloud.gmailImportedFeedbackDocs=new Map();cloud.selectedGmailReply=null;cloud.gmailProjectId=cloud.projectId||'';
  const originalDocuments=cloud.renderDocuments.bind(cloud),originalLoad=cloud.loadProject.bind(cloud),originalReview=cloud.renderChangeReview.bind(cloud),originalRows=cloud.requestRows.bind(cloud),originalClick=cloud.click.bind(cloud),originalSubmit=cloud.submit.bind(cloud),originalReset=cloud.reset.bind(cloud);
- cloud.reset=function(){originalReset();this.requestStatus=null;this.proposals=[];this.proposalDetails=null;this.proposalRetryRevision=null;this.proposalError='';};
+ cloud.reset=function(){originalReset();this.requestStatus=null;this.proposals=[];this.proposalDetails=null;this.proposalRetryRevision=null;this.proposalLoading=false;this.proposalError='';this.gmailReplies=[];this.gmailReplyError='';this.gmailImportedFeedbackDocs=new Map();this.selectedGmailReply=null;this.gmailProjectId='';};
  cloud.loadProject=async function(){
-  const id=this.projectId,epoch=this.epoch;this.requestStatus=null;this.proposals=[];this.proposalDetails=null;this.proposalRetryRevision=null;this.proposalError='';
+  const id=this.projectId,epoch=this.epoch;this.requestStatus=null;this.proposals=[];this.proposalDetails=null;this.proposalRetryRevision=null;this.proposalLoading=false;this.proposalError='';
+  if(id!==this.gmailProjectId){this.gmailProjectId=id||'';this.gmailReplies=[];this.gmailReplyError='';this.gmailImportedFeedbackDocs=new Map();this.selectedGmailReply=null;}
   if(!id){await originalLoad();return;}
   try{
    const [,proposals,status]=await Promise.all([originalLoad(),this.request(`/api/v1/projects/${id}/proposals`),this.request(`/api/v1/projects/${id}/request-status`)]);
@@ -33,9 +35,14 @@ export function installProposalWorkspace(cloud){
    const revision=this.proposalDetails?.revision;
    const revisionId=revision&&this.proposalDetails.proposal.current_revision_id!==revision.id?revision.id:proposal?.current_revision_id;
    const details=tab==='gestion'&&proposal?await this.request(`/api/v1/proposals/${proposal.id}/revisions/${revisionId}`):null;
+   let replies=[],replyError='';
+   if(details){
+    try{replies=await this.request(`/api/v1/proposals/${proposal.id}/gmail-replies`);}
+    catch(error){replyError=error.message;}
+   }
    if(!current())return;
    this.proposals=proposals;this.requestStatus=status;
-   if(tab==='gestion')this.proposalDetails=details;
+   if(tab==='gestion'){this.proposalDetails=details;this.gmailReplies=replies;this.gmailReplyError=replyError;}
    this.historyGeneration++;this.historyLoaded=false;this.historyPending=null;this.projectActivity=[];
    this.proposalError='';this.message='';this.notify();
   }catch(error){if(current()){this.message=`${uiText("No pudimos actualizar el estado del pedido.")} ${error.message}`;this.notify();}}
@@ -58,11 +65,20 @@ export function installProposalWorkspace(cloud){
  };
  const summary=id=>cloud.proposals.find(p=>p.request_document_id===id);
  const base=data=>`/api/v1/proposals/${data.proposal.id}/revisions/${data.revision.id}`;
+ const gmailFeedbackKey=(message,index)=>`${message.id}:${index}`;
+ const gmailFeedbackTitle=(message,index,attachment)=>`Gmail reply ${message.id} ${index+1} · ${attachment.filename}`;
+ function gmailImportedDocumentId(message,index,attachment){
+  const key=gmailFeedbackKey(message,index),cached=cloud.gmailImportedFeedbackDocs.get(key);
+  if(cached)return cached;
+  const document=cloud.documents.find(item=>item.title===gmailFeedbackTitle(message,index,attachment));
+  if(document){cloud.gmailImportedFeedbackDocs.set(key,document.id);return document.id;}
+  return null;
+ }
  let detailGeneration=0;
  async function refresh(id=cloud.requestId,revision,{reloadList=true,reloadStatus=false}={}){
   const project=cloud.projectId,epoch=cloud.epoch,generation=++detailGeneration;
   const current=()=>project===cloud.projectId&&epoch===cloud.epoch&&generation===detailGeneration&&cloud.requestId===id&&cloud.tab==='gestion';
-  cloud.requestId=id;cloud.proposalRetryRevision=revision||summary(id)?.current_revision_id||null;cloud.tab='gestion';cloud.proposalLoading=true;cloud.proposalError='';cloud.message='';cloud.notify();
+  cloud.requestId=id;cloud.proposalRetryRevision=revision||summary(id)?.current_revision_id||null;cloud.tab='gestion';cloud.proposalLoading=true;cloud.proposalError='';cloud.gmailReplies=[];cloud.gmailReplyError='';cloud.message='';cloud.notify();
   try{
    if(reloadList){
     const [proposals,status]=await Promise.all([cloud.request(`/api/v1/projects/${project}/proposals`),reloadStatus?cloud.request(`/api/v1/projects/${project}/request-status`):Promise.resolve(null)]);if(!current())return;
@@ -75,6 +91,8 @@ export function installProposalWorkspace(cloud){
    const details=await cloud.request(`/api/v1/proposals/${p.id}/revisions/${revision||p.current_revision_id}`);
    if(!current())return;
    cloud.proposalDetails=details;
+   try{const replies=await cloud.request(`/api/v1/proposals/${p.id}/gmail-replies`);if(!current())return;cloud.gmailReplies=replies;cloud.gmailReplyError='';}
+   catch(error){if(!current())return;cloud.gmailReplies=[];cloud.gmailReplyError=error.message;}
   }catch(error){if(current()){cloud.proposalError=error.message;error.uiHandled=true;throw error;}}
   finally{if(project===cloud.projectId&&epoch===cloud.epoch&&generation===detailGeneration){cloud.proposalLoading=false;cloud.notify();}}
  }
@@ -106,6 +124,8 @@ export function installProposalWorkspace(cloud){
   if(!data||data.proposal.id!==p.id){panel.insertAdjacentHTML('afterbegin',("<button class=\"button\" data-proposal-action=\"refresh\">"+uiText("Cargar adenda y versiones →")+"</button>"));return;}
   const r=data.revision,current=data.proposal.current_revision_id===r.id,paid=!!data.proposal.locked_at,payment=data.payments[0],artifact=data.artifacts[0];
   const sent=data.deliveries.some(d=>d.kind==='adenda'&&d.status==='accepted_by_gmail');
+  const replies=this.gmailReplies.filter(message=>message.revision_id===r.id);
+  const replyPanel=sent?`<section class="workspace-panel cloud-gmail-replies"><div class="cloud-panel-heading"><h3>${uiText("Respuestas de Gmail")}</h3><button class="button secondary" data-proposal-action="refresh">${uiText("Actualizar respuestas")}</button>${current&&!paid?`<button class="button secondary" data-proposal-action="gmail-sync">${uiText("Buscar respuestas en Gmail")}</button>`:''}</div><p class="cloud-notice">${uiText("Se muestran como máximo las 50 respuestas más recientes de esta propuesta.")}</p>${this.gmailReplyError?`<p class="cloud-error" role="alert">${esc(this.gmailReplyError)}</p>`:''}${replies.length?replies.map(message=>{const importedIds=message.attachment_metadata.map((attachment,index)=>gmailImportedDocumentId(message,index,attachment)).filter(Boolean),pendingImported=importedIds.some(id=>{const doc=this.documents.find(item=>item.id===id);return !doc||!this.sourceReady(doc)});return `<article class="cloud-email-reply"><header><strong>${esc(uiText("Respuesta del cliente · {date}",{date:when(message.received_at)}))}</strong><span>${esc(message.from_email)}</span></header><p class="cloud-email-reply-body">${esc(message.reply_text||'')}</p>${message.attachment_metadata.map((attachment,index)=>{const imported=!!gmailImportedDocumentId(message,index,attachment);return `<div class="cloud-email-attachment"><span>${esc(attachment.filename)} · ${esc(attachment.mime_type)} · ${new Intl.NumberFormat(uiLocale()).format(attachment.size_bytes)} ${uiText("bytes")}</span>${attachment.supported?`<button class="text-button" data-proposal-action="view-gmail-pdf" data-message-id="${esc(message.id)}" data-attachment-index="${index}">${uiText("Ver PDF adjunto")}</button><button class="text-button" data-proposal-action="import-gmail-pdf" data-message-id="${esc(message.id)}" data-attachment-index="${index}" ${imported?'disabled':''}>${uiText(imported?"PDF importado":"Importar PDF al proyecto")}</button>`:`<span>${uiText("Formato no admitido")}</span>`}</div>`}).join('')}${pendingImported?`<p class="cloud-notice">${uiText("Espera a que termine la lectura del PDF importado antes de usar esta respuesta.")}</p>`:''}${current&&!paid?`<button class="button secondary" data-proposal-action="use-gmail-reply" data-message-id="${esc(message.id)}" ${message.used_at||pendingImported?'disabled':''}>${uiText(message.used_at?"Respuesta ya utilizada":"Usar esta respuesta como feedback")}</button>`:''}</article>`}).join(''):this.gmailReplyError?'':`<p class="cloud-notice">${uiText("No se encontraron respuestas vinculadas a esta versión.")}</p>`}</section>`:'';
   const controls=[];
   if(artifact)controls.push(`<button class="button secondary" data-proposal-action="pdf">${uiText("Ver PDF v")}${r.revision_no} ↗</button>`);
   if(current&&!paid){
@@ -124,12 +144,19 @@ export function installProposalWorkspace(cloud){
    if(!payment&&!data.acceptances.length&&sent)controls.push(("<button class=\"text-button\" data-proposal-action=\"revise\">"+uiText("Registrar ajustes del cliente")+"</button>"));
   }
   panel.innerHTML=`<div class="cloud-tracking"><button class="text-button" data-cloud-action="tab" data-cloud-tab="solicitudes">${uiText("← Volver a los pedidos")}</button><header class="cloud-view-heading"><span class="eyebrow">${uiText("DETALLES DEL PEDIDO")}</span><h3>${esc(this.documents.find(d=>d.id===this.requestId)?.title)}</h3></header><section class="workspace-panel"><div class="cloud-panel-heading"><h3>${esc(uiText(p.business_status))}</h3><span class="badge review">${uiText("Adenda v")}${r.revision_no}${current?'':' · '+uiText('anterior')}</span></div><p>${esc(r.scope_summary)}</p><p><strong>${esc(amount(r.additional_minor))}</strong> ${uiText("· Entrega:")} ${esc(r.deadline)}</p><p>${esc(r.conditions)}</p><div class="cloud-tools cloud-flow-actions">${controls.join('')}</div>${paid?("<p>"+uiText("Este cambio está finalizado y se conserva para consulta.")+"</p>"):''}</section>${p.revision_no>1?("<section class=\"workspace-panel\"><h3>"+uiText("Versiones de la adenda")+"</h3><div data-proposal-versions><button class=\"text-button\" data-proposal-action=\"versions\">"+uiText("Ver versiones anteriores")+"</button></div></section>"):''}</div>`;
+  if(replyPanel)panel.querySelector('.cloud-tracking')?.insertAdjacentHTML('beforeend',replyPanel);
  };
  function prepare(mode='create'){
   const old=mode!=='create'?cloud.proposalDetails:null,r=old?.revision,item=old?.line_items?.[0];
+  const emailReply=mode==='revise'?cloud.selectedGmailReply:null;
   const recipient=cloud.clients.find(client=>client.id===cloud.project()?.client_id)?.contact_email || '';
-  cloud.proposalForm={old,mode,key:crypto.randomUUID(),saved:null,recipient};
+  cloud.proposalForm={old,mode,key:crypto.randomUUID(),saved:null,recipient,emailFeedbackId:emailReply?.id||null};
   cloud.show(mode==='edit'?uiText("Editar borrador"):mode==='revise'?uiText("Ajustes solicitados por el cliente"):uiText("Preparar propuesta"),`<p>${uiText("Define el cambio, su adicional y la fecha de entrega. Se guardará con sus fuentes del proyecto.")}</p><form data-cloud-form="proposal-terms">${mode==='revise'?("<label class=\"field\">${uiText('PDF con los ajustes del cliente')}<input class=\"context-box\" type=\"file\" name=\"feedbackFile\" accept=\".pdf\" required></label><label class=\"field\">"+uiText("¿Qué pidió ajustar el cliente?")+"<textarea class=\"context-box\" name=\"feedbackNotes\" required maxlength=\"4000\"></textarea></label>"):''}<label class="field">${uiText("Alcance del cambio")}<textarea class="context-box" name="scope" required maxlength="12000">${esc(r?.scope_summary)}</textarea></label><label class="field">${uiText("Condiciones")}<textarea class="context-box" name="conditions" maxlength="12000">${esc(r?.conditions)}</textarea></label><label class="field">${uiText("Detalle del adicional")}<input class="context-box" name="description" required maxlength="1000" value="${esc(item?.description)}"></label><label class="field">${uiText("Adicional total en USD")}<input class="context-box" name="amount" inputmode="decimal" required pattern="[0-9]+([.,][0-9]{1,2})?" value="${r?(r.additional_minor/100).toFixed(2):''}" placeholder="0.10"></label><label class="field">${uiText("Fecha de entrega")}<input class="context-box" name="deadline" type="date" required value="${esc(r?.deadline)}"></label><section class="cloud-proposal-send-context"><strong>${recipient?'Enviar a '+esc(recipient):uiText("El cliente no tiene un correo registrado")}</strong><p>${recipient?uiText("Guardar y enviar conserva esta versión, genera su PDF y envía la adenda a este destinatario. Revisa el alcance, el importe y la fecha antes de continuar."):uiText("Puedes guardar el borrador. Registra el correo del cliente antes de enviarlo.")}</p></section><div class="dialog-actions"><button class="button" type="submit" name="intent" value="send" ${recipient?'':'disabled'}>${uiText("Guardar y enviar al cliente →")}</button><button class="button secondary" type="submit" name="intent" value="draft">${mode==='edit'?uiText("Guardar cambios del borrador →"):uiText("Guardar borrador")}</button></div></form>`);
+  if(emailReply){
+   const form=cloud.modal.querySelector('[data-cloud-form="proposal-terms"]'),file=form?.querySelector('[name="feedbackFile"]'),notes=form?.querySelector('[name="feedbackNotes"]'),body=emailReply.reply_text||'';
+   file?.closest('.field')?.remove();
+   if(notes){notes.value=body.length<=4000?body:'';notes.parentElement.insertAdjacentHTML('beforebegin',`<section class="cloud-client-feedback"><strong>${uiText("Respuesta recibida desde Gmail")} · ${esc(emailReply.from_email)}</strong><p class="cloud-email-reply-body">${esc(body)}</p></section>`);if(body.length>4000)notes.parentElement.insertAdjacentHTML('afterend',`<p class="cloud-notice">${uiText("El correo original se conserva íntegro como evidencia. Resume aquí los cambios en un máximo de 4.000 caracteres.")}</p>`);}
+  }
  }
  async function preview(kind){
   const data=cloud.proposalDetails,value=await cloud.request(base(data)+`/email-preview?kind=${kind}`);
@@ -137,18 +164,58 @@ export function installProposalWorkspace(cloud){
   cloud.show(kind==='adenda'?uiText("Enviar adenda al cliente"):uiText("Enviar solicitud de pago"),`<div class="cloud-mail-content"><div class="cloud-mail-context"><span class="cloud-mail-label">${kind==='adenda'?uiText("Propuesta de cambio"):uiText("Solicitud de pago")}</span><span>${uiText("Adenda v")}${data.revision.revision_no}</span></div><section class="cloud-mail-envelope" aria-label="${uiText("Vista previa del correo")}"><dl class="cloud-mail-addresses"><div><dt>${uiText("De")}</dt><dd>${esc(value.sender)}<span class="cloud-mail-provider">Gmail</span></dd></div><div><dt>${uiText("Para")}</dt><dd><span class="cloud-mail-recipient">${esc(value.recipient)}</span></dd></div></dl><div class="cloud-mail-message"><span class="cloud-mail-field-label">${uiText("ASUNTO")}</span><h3>${esc(value.subject)}</h3><div class="cloud-mail-body">${esc(value.body)}</div></div></section><button type="button" class="cloud-mail-attachment" data-proposal-action="mail-pdf" aria-expanded="false" aria-controls="proposal-mail-pdf" aria-label="${uiText("Ver PDF adjunto")} ${esc(value.filename)}"><span class="cloud-mail-pdf" aria-hidden="true">PDF</span><span class="cloud-mail-file"><strong>${esc(value.filename)}</strong><small>${uiText("Adenda v")}${data.revision.revision_no} ${uiText("· Documento adjunto")}</small></span><span class="cloud-mail-file-action">${uiText("Ver PDF")} <span aria-hidden="true">↗</span></span></button><div id="proposal-mail-pdf" data-mail-pdf hidden></div></div>${kind==='adenda'&&!data.reviews.length?("<p class=\"cloud-notice\">"+uiText("Al enviar confirmas que revisaste esta versión y su PDF adjunto.")+"</p>"):''}<form data-cloud-form="proposal-send" class="cloud-mail-footer"><button class="button secondary" type="button" data-cloud-close>${uiText("Cancelar")}</button><button class="button" type="submit">${uiIcon('send')}${uiText("Enviar correo →")}</button></form>`);
   cloud.modal.classList.add('cloud-mail-dialog');
  }
+ function showGmailReadConsent(){
+  cloud.show(uiText("Buscar respuestas en Gmail"),`<p class="cloud-notice">${uiText("Para buscar respuestas, Google pedirá a Trato permiso de solo lectura para tu buzón. Ese permiso técnicamente permite acceder a los mensajes del buzón; Trato solo consultará, cuando lo solicites, los hilos de adendas enviados desde Trato. Guardará el texto plano y los datos necesarios para vincular cada respuesta a su versión. No almacenará los archivos adjuntos al sincronizar; podrás importar cada PDF por separado como documento privado del proyecto. Las respuestas no se aceptan ni generan nuevas adendas automáticamente.")}</p><form data-cloud-form="gmail-read-consent"><div class="dialog-actions"><button class="button secondary" type="button" data-cloud-close>${uiText("Cancelar")}</button><button class="button" type="submit">${uiText("Continuar a Google para autorizar")}</button></div></form>`);
+ }
+ function showGmailSyncResult(result){const count=new Intl.NumberFormat(uiLocale()).format(result?.synced||0);cloud.message=uiText("Búsqueda finalizada: {count} respuestas nuevas guardadas. Se revisaron hasta 5 hilos y se guardan como máximo 25 respuestas; puede haber otras sin revisar.",{count});cloud.notify();}
  cloud.click=function(event){
   const button=event.target.closest('[data-proposal-action]');
   if(!button){if(this.busy&&event.target.closest('[data-cloud-action="manage-change"]'))return;const manage=event.target.closest('[data-cloud-action="manage-change"]');originalClick(event);if(manage)this.run(()=>refresh(manage.dataset.cloudId,undefined,{reloadList:false}));return;}
   if(!this.active)return;
   const action=button.dataset.proposalAction,data=this.proposalDetails;
   if(action==='prepare'){prepare();return;}if(action==='edit'){prepare('edit');return;}if(action==='revise'){prepare('revise');return;}
+  if(action==='use-gmail-reply'){
+   const message=this.gmailReplies.find(row=>row.id===button.dataset.messageId);
+   if(!message||message.used_at)return;
+   this.selectedGmailReply=message;prepare('revise');return;
+  }
   if(action==='close-request'){
    this.closingRequestId=this.requestId;
    this.show(uiText("Cerrar pedido"),`<p>${uiText("Registra por qué no continuará este pedido. Sus documentos y versiones quedarán disponibles para consulta.")}</p><form data-cloud-form="proposal-close-request"><label class="field" for="request-close-reason">${uiText("Motivo")}</label><select id="request-close-reason" class="context-box" name="reason" required><option value="" selected disabled>${uiText("Selecciona un motivo")}</option value="rejected">${uiText("El cliente rechazó la propuesta")}</option><option value="withdrawn">${uiText("El cliente retiró el pedido")}</option></select><label class="field">${uiText("Detalle")}<textarea class="context-box" name="notes" required maxlength="4000"></textarea></label><div class="dialog-actions"><button class="button" type="submit">${uiText("Cerrar pedido")}</button><button class="button secondary" type="button" data-cloud-close>${uiText("Volver")}</button></div></form>`);
    return;
   }
   this.run(async()=>{
+   if(action==='gmail-sync'){
+    const status=await this.refreshGmailStatus();
+    if(!status.connected||!status.can_send)throw Error(uiText("Conecta Gmail desde tu perfil antes de buscar respuestas."));
+    if(!status.can_read){showGmailReadConsent();return;}
+    const result=await this.request(`/api/v1/projects/${this.projectId}/gmail-replies/sync`,{method:'POST',body:'{}'});
+    await refresh(this.requestId,undefined,{reloadList:true});showGmailSyncResult(result);return;
+   }
+   if(action==='view-gmail-pdf'){
+    const project=this.projectId,epoch=this.epoch,message=this.gmailReplies.find(row=>row.id===button.dataset.messageId),index=Number(button.dataset.attachmentIndex),attachment=message?.attachment_metadata?.[index];
+    if(!message||!attachment?.supported)throw Error(uiText("Solo se pueden importar adjuntos PDF compatibles."));
+    const blob=await this.request(`/api/v1/proposals/${data.proposal.id}/gmail-replies/${message.id}/attachments/${index}`,{},true);
+    if(project!==this.projectId||epoch!==this.epoch)return;
+    if(blob.type.split(';')[0]!=='application/pdf'||blob.size>10485760)throw Error(uiText("El servidor no devolvió un documento PDF."));
+    this.show(uiText("Ver PDF adjunto"),`<div class="cloud-preview-toolbar"><span>${esc(attachment.filename)}</span><a class="text-button" data-preview-download>${uiText("Descargar PDF ↗")}</a></div><iframe class="cloud-pdf-frame" title="${uiText("Vista previa del documento PDF")}"></iframe>`);
+    this.modal.classList.add('cloud-document-preview');this.previewUrl=URL.createObjectURL(blob);
+    this.modal.querySelector('iframe').src=this.previewUrl+'#view=FitH';
+    const link=this.modal.querySelector('[data-preview-download]');link.href=this.previewUrl;link.download=attachment.filename;return;
+   }
+   if(action==='import-gmail-pdf'){
+    const message=this.gmailReplies.find(row=>row.id===button.dataset.messageId),index=Number(button.dataset.attachmentIndex),attachment=message?.attachment_metadata?.[index];
+    if(!message||!attachment?.supported)throw Error(uiText("Solo se pueden importar adjuntos PDF compatibles."));
+    const blob=await this.request(`/api/v1/proposals/${data.proposal.id}/gmail-replies/${message.id}/attachments/${index}`,{},true);
+    if(blob.type!=='application/pdf'||blob.size>10485760)throw Error(uiText("Solo se pueden importar adjuntos PDF compatibles."));
+    const title=gmailFeedbackTitle(message,index,attachment);
+    const idempotency=`gmail-feedback-${message.id}-${index}`;
+    await this.request(`/api/v1/projects/${this.projectId}/documents?${new URLSearchParams({filename:attachment.filename,title,kind:'reference'})}`,{method:'POST',body:blob,headers:{'Content-Type':'application/pdf','Idempotency-Key':idempotency}});
+    await this.loadProject();const imported=this.documents.find(doc=>doc.title===title);
+    if(!imported)throw Error(uiText("No se pudo vincular el adjunto importado al proyecto."));
+    this.gmailImportedFeedbackDocs.set(`${message.id}:${index}`,imported.id);
+    await refresh(this.requestId,undefined,{reloadList:true});this.message=uiText("Se importó el adjunto. Espera a que termine la lectura del documento antes de preparar la nueva adenda.");this.notify();return;
+   }
    if(action==='refresh')await refresh();
    if(action==='retry-details')await refresh(this.requestId,this.proposalRetryRevision,{reloadList:!summary(this.requestId)});
    if(action==='mail-pdf'){
@@ -178,7 +245,17 @@ export function installProposalWorkspace(cloud){
   });
  };
  cloud.submit=async function(event){
-  const kind=event.target.dataset.cloudForm;if(!kind?.startsWith('proposal-'))return originalSubmit(event);
+  const kind=event.target.dataset.cloudForm;
+  if(kind==='gmail-read-consent'){
+   await this.run(async()=>{
+    const authorization=this.authorizeGmailRead();
+    const status=await authorization;
+    if(!status?.can_read)throw Error(uiText("El permiso de lectura de Gmail no está activo."));
+    const result=await this.request(`/api/v1/projects/${this.projectId}/gmail-replies/sync`,{method:'POST',body:'{}'});
+    this.modal.close();await refresh(this.requestId,undefined,{reloadList:true});showGmailSyncResult(result);
+   });return;
+  }
+  if(!kind?.startsWith('proposal-'))return originalSubmit(event);
   const values=new FormData(event.target),sendWithSave=event.submitter?.value==='send';
   await this.run(async()=>{
    let data=this.proposalDetails;
@@ -198,15 +275,23 @@ export function installProposalWorkspace(cloud){
      const terms={scope_summary:values.get('scope'),conditions:values.get('conditions'),currency:'USD',deadline:values.get('deadline'),line_items:[{description:values.get('description'),quantity:1,unit_amount_minor:minor}]};
      const sources=state.old?state.old.sources.map(s=>s.document_id):[...this.initialSources().filter(d=>this.sourceReady(d)).map(d=>d.id),this.requestId];
      if(state.mode==='revise'){
-      if(!state.feedbackId){
+      if(state.emailFeedbackId){
+       const reply=this.gmailReplies.find(message=>message.id===state.emailFeedbackId);
+       const importedIds=(reply?.attachment_metadata||[]).map((attachment,index)=>gmailImportedDocumentId(reply,index,attachment)).filter(Boolean);
+       for(const importedId of importedIds){const doc=this.documents.find(item=>item.id===importedId);if(this.sourceReady(doc)&&!sources.includes(importedId))sources.push(importedId);}
+      }else if(!state.feedbackId){
        const file=values.get('feedbackFile');if(!file?.size||file.size>10485760)throw new Error(uiText("Adjunta el PDF con los ajustes del cliente, de hasta 10 MB."));
        const upload=await this.request(`/api/v1/projects/${this.projectId}/documents?${new URLSearchParams({filename:file.name,title:`${uiText("Ajustes del cliente a la adenda v")}${state.old.revision.revision_no}`,kind:'reference'})}`,{method:'POST',body:file,headers:{'Content-Type':'application/pdf','Idempotency-Key':'feedback-'+state.key}});
        state.feedbackId=upload.document.id;
       }
-      sources.push(state.feedbackId);
+      if(state.feedbackId)sources.push(state.feedbackId);
      }
      const body=state.old?{expected_revision_id:state.old.revision.id,terms,source_document_ids:sources}:{request_document_id:this.requestId,terms,source_document_ids:sources};
-     if(state.mode==='revise'){body.feedback_document_id=state.feedbackId;body.feedback_notes=values.get('feedbackNotes');}
+     if(state.mode==='revise'){
+      if(state.emailFeedbackId){body.feedback_email_id=state.emailFeedbackId;const reply=this.gmailReplies.find(message=>message.id===state.emailFeedbackId),importedId=(reply?.attachment_metadata||[]).map((attachment,index)=>gmailImportedDocumentId(reply,index,attachment)).find(id=>id&&sources.includes(id));if(importedId)body.feedback_document_id=importedId;}
+      else body.feedback_document_id=state.feedbackId;
+      body.feedback_notes=values.get('feedbackNotes');
+     }
      const url=state.old?`/api/v1/proposals/${state.old.proposal.id}/${state.mode==='edit'?'draft':'revisions'}`:`/api/v1/projects/${this.projectId}/proposals`;
      state.saved=await this.request(url,{...this.json(body),headers:{'Content-Type':'application/json','Idempotency-Key':state.key}});
      state.savedFingerprint=fingerprint;

@@ -5,6 +5,7 @@ import { extractPdfText, extractEmailFields } from './pdf-extraction.mjs';
 import { readFile } from 'node:fs/promises';
 import {proxyApiRequest} from './proxy-api.mjs';
 import {simulationThreadsEndpoint} from './simulation-threads.mjs';
+import {browserOriginAllowed} from './web-origin.mjs';
 const localPorts = JSON.parse(readFileSync(new URL('./local-ports.json', import.meta.url), 'utf8'));
 const port = Number(process.env.PORT || localPorts.web);
 const assets = new Map([
@@ -40,6 +41,7 @@ const assets = new Map([
   ['/styles.css', ['styles.css', 'text/css; charset=utf-8']],
   ['/app.js', ['app.js', 'text/javascript; charset=utf-8']],
   ['/boot.js', ['boot.js', 'text/javascript; charset=utf-8']],
+  ['/ai-jobs.mjs', ['ai-jobs.mjs', 'text/javascript; charset=utf-8']],
   ['/ai-activity.mjs', ['ai-activity.mjs', 'text/javascript; charset=utf-8']],
   ['/ai-activity.css', ['ai-activity.css', 'text/css; charset=utf-8']],
   ['/model-preferences.mjs', ['model-preferences.mjs', 'text/javascript; charset=utf-8']],
@@ -58,13 +60,15 @@ for (const doc of demo.documents) {
 }
 http.createServer(async (req, res) => {
   const pathname = new URL(req.url, 'http://localhost').pathname;
+  if(pathname==='/health'){res.writeHead(200,{'Content-Type':'application/json','Cache-Control':'no-store'});res.end(JSON.stringify({service:'trato-web',status:'ok'}));return;}
+  if(process.env.TRATO_DEPLOYMENT_MODE==='connected'&&pathname.startsWith('/api/')&&!pathname.startsWith('/api/v1/')){res.writeHead(404);res.end();return;}
   if (pathname==='/api/simulation/threads'||pathname.startsWith('/api/simulation/threads/')) {await simulationThreadsEndpoint(req,res);return;}
   if (pathname.startsWith('/api/v1/')) {proxyApiRequest(req,res); return;}
   if (pathname === '/api/workflows') { await workflowEndpoint(req,res); return; }
   if (pathname === '/api/extract-email-pdf') {
     const json = (status, value) => { res.writeHead(status, {'Content-Type':'application/json; charset=utf-8','Cache-Control':'no-store'}); res.end(JSON.stringify(value)); };
     if (req.method !== 'POST') { json(405,{error:'Método no permitido.'}); return; }
-    if (req.headers.origin && req.headers.origin !== `http://${req.headers.host}`) { json(403,{error:'Origen no permitido.'}); return; }
+    if (!browserOriginAllowed(req)) { json(403,{error:'Origen no permitido.'}); return; }
     if (req.headers['content-type'] !== 'application/pdf') { json(415,{error:'Selecciona un PDF.'}); return; }
     try {
       let size=0; const chunks=[];
@@ -86,4 +90,4 @@ http.createServer(async (req, res) => {
     res.writeHead(200, { 'Content-Type': asset[1], 'Cache-Control': pathname==='/assets/fonts/manrope-variable.ttf'?'public, max-age=86400':'no-store' });
     res.end(body);
   } catch { res.writeHead(500); res.end('Unable to read asset'); }
-}).listen(port, '127.0.0.1', () => console.log(`Trato local: http://localhost:${port}`));
+}).listen(port, process.env.HOST || '127.0.0.1', () => console.log(`Trato local: http://localhost:${port}`));

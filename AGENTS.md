@@ -114,7 +114,7 @@ Preferencia de Sebastian, 31/10/2026:
 
 - El perfil permite elegir modelo solo a probadores autorizados por el backend mediante identidad confirmada; nunca autorizar con user_metadata, datos de formulario ni ocultacion de frontend.
 - La preferencia se guarda por usuario y se fija en cada trabajo antes de encolarlo. El worker valida su propia lista permitida; no reemplazar un modelo fallido o retirado.
-- Alcance inicial: Ensayos. No afirmar que modifica agentes de cambios, devoluciones o reputacion hasta conectarlos explicitamente. Consultar docs/modelos-gemini.md.
+- Alcance conectado: Ensayos, Reputacion y planificacion inicial. Los agentes de cambios/devoluciones siguen siendo responsabilidad separada de Flores. Consultar docs/modelos-gemini.md.
 - Credenciales y correos de probadores permanecen en configuracion privada; no publicarlos en el repo.
 
 ## Contratos de agentes y espera de IA
@@ -122,3 +122,34 @@ Preferencia de Sebastian, 31/10/2026:
 - Todas las salidas de agentes deben ser JSON con esquema y validacion en codigo. No aceptar texto libre como sustituto ante un fallo de formato.
 - Usar ai-activity.mjs/css para actividad real en curso; reutilizar el componente en lugar de duplicar animaciones. Ver docs/indicador-ia.md.
 - Prioridad acordada: validar conversacion real de Ensayos y contexto entre turnos antes de ampliar su evaluador/fuentes; el plan inicial con reputacion sigue pendiente de integracion al agente.
+
+## Creacion de proyectos al confirmar
+
+- Elegir Nuevo proyecto o Proyecto en marcha abre un borrador; no crea registros remotos.
+- Crear el proyecto unicamente al confirmar la configuracion final. Los originales seleccionados permanecen locales hasta ese momento y cancelar antes no sube archivos ni deja proyectos incompletos.
+- Mantener una clave idempotente para el comando final. Si falla una subida posterior a crear el proyecto, conservar su ID y reintentar solo archivos pendientes, sin crear duplicados ni declarar exito parcial como completo.
+
+## Prioridad de integracion IA (1 noviembre 2026)
+
+- Completar Ensayos, Reputacion y proyecto inicial antes de ampliar documentos/vectorial y corpus del evaluador.
+- No realizar pruebas desde la interfaz durante esta etapa; el usuario las hara despues. Se permiten comprobaciones de codigo, contratos y aislamiento. No confundir esos resultados con validacion E2E del modelo.
+- API aporta resenas publicadas, worker produce JSON validado; tratar experiencias como opiniones, no hechos garantizados.
+- El plan inicial revisado se guarda con sus etapas al crear el proyecto al final. No ejecutar pagos ni correos desde agentes. Ver docs/integracion-ia-flujos.md.
+
+## Operaciones vectoriales y tenants (1 noviembre 2026)
+
+- El worker orquesta. El backend autoriza propietario/cliente/proyecto, determina IDs/generaciones y valida fuentes/resultados. El file processor ejecuta tanto guardado/embeddings como busqueda en Weaviate. No poner el SDK ni las credenciales de Weaviate en API, worker o frontend.
+- Recorrido de herramientas: worker → backend → file processor → Weaviate y vuelta. Un documento o prompt no puede seleccionar tenant ni ampliar permisos.
+- Una coleccion compartida; tenants `projects_private` y `reputation_public`; tercer tenant libre. No crear un tenant por usuario/cliente/proyecto. Toda consulta privada impone owner/client/project y fuentes vigentes, aunque comparta tenant con otros usuarios.
+- Las cinco guias de Ensayos siguen siendo obligatorias y se leen completas fuera de Weaviate. La recuperacion vectorial no sustituye ese control.
+- Comunicar nuevos parametros de entorno y dependencias a Flores antes de publicar; `.env.example` y docs/configuracion-vectorial-colaboradores.md deben acompanarlos. No subir claves ni biblioteca privada. Crear un tenant no acredita su flujo de indexacion conectado.
+
+
+## Sin compras ni activacion de recursos facturables
+
+Instruccion explicita de Sebastian, 1 de noviembre de 2026:
+
+- No realizar compras, contratar planes/suscripciones/dominios ni activar recursos que puedan generar cargos. No interpretar los creditos promocionales ni una indicacion general de continuar el despliegue como autorizacion para esas acciones.
+- Aclaracion posterior del mismo dia: Sebastian acepta usar servicios que consuman los creditos, pero antes de cada activacion facturable se debe explicar el recurso, su configuracion, costo estimado y efecto sobre los creditos, y esperar su aprobacion concreta. Una consulta sobre opciones o una indicacion general de continuar no equivale a aprobar el recurso.
+- Se permite preparar configuracion y consultar estado/permisos sin crear recursos facturables. No se ha autorizado crear alojamiento en este lote.
+- Alojamiento previsto en Google Cloud. Conservar Supabase, Neo4j y Weaviate existentes; no migrarlos ni contratar alternativas por asumir que todo debe estar en Google.

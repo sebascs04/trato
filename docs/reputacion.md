@@ -43,7 +43,6 @@ Advisors de seguridad: INFO intencionales por tablas privadas con RLS y sin pol�
 
 Rama remota preparada feature/client-reputation desde main 5ea5028, sin subir estos cambios, sin crear PR y sin merge. El workspace compartido no tiene checkout Git operativo en su raíz; no modificar la rama local de API de P1 (feature/local-rehearsal-qwen). Coordinar un snapshot de alcance o checkout separado antes de cualquier publicación autorizada.
 
-Se levantó el supervisor propio de Trato tras comprobar sus puertos: web5173, API8100, procesador8101, Redis6380 y worker; Ollama11435 de P1 intacto. Sesión92067 al implementar. No se tocó QAMAQ. Chromium requiere LD_LIBRARY_PATH=/tmp/trato-browser-libs/runtime/usr/lib/x86_64-linux-gnu; se extrajo libasound2t64 localmente sin instalar paquetes del sistema.
 
 Cierre: seis pruebas propias de Reputación aprobadas, incluidas reportar sin editar una reseña ajena y conservar el borrador ante error. SQL ampliado confirma rechazo de usuarios eliminados y republicación de reseña retirada. Migración adicional20261028160219_reputation_foreign_key_indexes.sql cubre las dos FK nuevas señaladas por Advisors; no se modifica el índice pendiente preexistente de worker_threads.
 
@@ -149,3 +148,11 @@ Validación de esta simplificación: API188PASS, navegador27PASS (Reputación y 
 El correo se introduce una sola vez y «Continuar» hace la búsqueda exacta y carga los proyectos permitidos antes de abrir la experiencia. Se retiraron la confirmación «Sí, este es mi cliente» y la tarjeta intermedia con el contador de experiencias. Un fallo conserva el correo y permite un reintento manual; no inventa una ficha ni avanza.
 
 Experiencia general, Comunicación y Colaboración usan el mismo componente de cinco estrellas acumulativas. Son grupos de radio independientes, obligatorios y accesibles, con el criterio incluido en cada etiqueta. Mantienen los mismos campos numéricos de API; no cambian los datos ya guardados.
+
+### Análisis de experiencias con IA
+
+El detalle del cliente ofrece una acción explícita para analizar las reseñas mediante `POST /api/v1/ai/reputation`. La interfaz usa `AIJobClient` con ámbito por propietario y perfil, conserva la clave idempotente y el cuerpo ante un envío incierto y consulta el estado del trabajo sin crear otra inferencia. Al volver a abrir el perfil se restaura el estado; consultar o actualizar requiere una acción del usuario. Cambiar de perfil, cerrar sesión o salir de Reputación cancela el seguimiento local.
+
+El resultado presenta resumen, observaciones, recomendaciones, citas literales con ID y versión de la reseña, limitaciones, modelo y cantidad de experiencias revisadas. Los relatos se presentan como opiniones compartidas. Los archivos adjuntos y la búsqueda vectorial quedan fuera de este análisis. Un resultado inválido o un fallo de acceso/guardado muestra un error; no se sustituye por contenido de ejemplo.
+
+Verificación local sin navegador: sintaxis del módulo, paridad ES/EN y `node --test tests/reputation-ai-job.test.mjs` para restauración, reintentos idempotentes, separación por propietario/perfil y nueva ejecución tras fallo confirmado. Esto no acredita una prueba real completa del proveedor.

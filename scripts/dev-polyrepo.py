@@ -53,24 +53,26 @@ def environment(repo):
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Inicia los servicios y la interfaz oficial de Trato.')
     parser.add_argument('--with-worker',action='store_true',help='Iniciar Redis propio, publicador/resultados y worker de ingesta.')
+    parser.add_argument('--with-ai',action='store_true',help='Iniciar Redis propio y workers IA sin ingesta de documentos.')
     parser.add_argument('--tools', action='store_true', help='Usar la pantalla técnica de 5174 en lugar de la interfaz oficial.')
     parser.add_argument('--api-port',type=int,default=PORTS['api'])
     parser.add_argument('--processor-port',type=int,default=PORTS['file_processor'])
     args = parser.parse_args()
     web_port = PORTS['tools' if args.tools else 'web']
+    queue_requested=args.with_worker or args.with_ai
     try:
         services=[('web',web_port),('API',args.api_port),('file processor',args.processor_port)]
-        if args.with_worker:services.append(('Redis de Trato',PORTS['redis_reserved']))
+        if queue_requested:services.append(('Redis de Trato',PORTS['redis_reserved']))
         check_ports(services)
     except (ValueError, RuntimeError) as exc:
         raise SystemExit(str(exc)) from exc
     if not PYTHON.exists():
         raise SystemExit('Instala primero el entorno de trato-file-processor según su README.')
-    if args.with_worker and not (ROOT/'.local/redis/redis.conf').exists():
+    if queue_requested and not (ROOT/'.local/redis/redis.conf').exists():
         raise SystemExit('Ejecuta primero scripts/configure-ingestion.py para configurar la cola privada de Trato.')
     children = []
     try:
-        if args.with_worker:
+        if queue_requested:
             children.append(subprocess.Popen(['redis-server',str(ROOT/'.local/redis/redis.conf')],cwd=ROOT))
 
         for name, service_port, module in [('trato-file-processor', str(args.processor_port), 'file_processor.app:app'),
@@ -80,7 +82,7 @@ if __name__ == '__main__':
             if name=='trato-api':service_env['FILE_PROCESSOR_URL']=f'http://127.0.0.1:{args.processor_port}'
             children.append(subprocess.Popen([str(PYTHON), '-m', 'uvicorn', module, '--host', '127.0.0.1',
                 '--port', service_port, '--limit-concurrency', '8', '--no-access-log'], cwd=repo, env=service_env))
-        if args.with_worker:
+        if queue_requested:
             worker_env=environment(REPOS/'trato-worker')
             worker_env['TRATO_API_URL']=f'http://127.0.0.1:{args.api_port}'
             worker_env['FILE_PROCESSOR_URL']=f'http://127.0.0.1:{args.processor_port}'
@@ -94,8 +96,11 @@ if __name__ == '__main__':
                     except OSError:
                         if time.monotonic()>deadline:raise RuntimeError('No arrancaron los servicios de Trato.')
                         time.sleep(.1)
-            children.append(subprocess.Popen([str(PYTHON),'-m','trato_api.thread_runner','--mode','connected'],cwd=REPOS/'trato-api',env=environment(REPOS/'trato-api')))
-            children.append(subprocess.Popen([str(REPOS/'trato-worker/.venv/bin/python'),'-m','trato_worker.run','--mode','connected'],cwd=REPOS/'trato-worker',env=worker_env))
+            if args.with_worker:
+                children.append(subprocess.Popen([str(PYTHON),'-m','trato_api.thread_runner','--mode','connected'],cwd=REPOS/'trato-api',env=environment(REPOS/'trato-api')))
+                children.append(subprocess.Popen([str(REPOS/'trato-worker/.venv/bin/python'),'-m','trato_worker.run','--mode','connected'],cwd=REPOS/'trato-worker',env=worker_env))
+            if worker_env.get('TRATO_AI_WORKFLOWS_ENABLED')=='true':
+                children.append(subprocess.Popen([str(REPOS/'trato-worker/.venv/bin/python'),'-m','trato_worker.ai_jobs'],cwd=REPOS/'trato-worker',env=worker_env))
             if worker_env.get('TRATO_REHEARSAL_EVALUATOR_ENABLED')=='true':
                 children.append(subprocess.Popen([str(REPOS/'trato-worker/.venv/bin/python'),'-m','trato_worker.rehearsal_jobs'],cwd=REPOS/'trato-worker',env=worker_env))
         frontend = REPOS / 'trato-web' if args.tools else ROOT

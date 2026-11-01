@@ -24,7 +24,7 @@ Referencias: https://docs.cloud.google.com/gemini-enterprise-agent-platform/mode
 
 ## Perfil y alcance
 
-El selector se muestra a los usuarios de prueba autorizados por el servidor. Por ahora afecta exclusivamente a las siguientes respuestas y evaluaciones de Ensayos. No altera cambios, devoluciones ni reputacion. Se guarda por ID de usuario en el Redis privado persistente de Trato. Cambiar el modelo no modifica trabajos ya encolados ni resultados anteriores. La cola fija el ID de modelo antes de ejecutarlo. Un modelo retirado o un fallo de Redis/proveedor produce error, nunca sustitucion.
+El selector se muestra a los usuarios de prueba autorizados por el servidor. Afecta a las respuestas y evaluaciones de Ensayos, al analisis de Reputacion y a la propuesta inicial de Nuevo proyecto. No altera los agentes de cambios ni devoluciones. Se guarda por ID de usuario en el Redis privado persistente de Trato. Cambiar el modelo no modifica trabajos ya encolados ni resultados anteriores. La cola fija el ID de modelo antes de ejecutarlo. Un modelo retirado o un fallo de Redis/proveedor produce error, nunca sustitucion.
 
 El backend verifica el usuario con Supabase Auth y usa su correo confirmado para la lista privada de probadores. Nunca se autoriza con user_metadata ni un correo enviado por el navegador. El worker vuelve a comprobar su propia lista de modelos permitidos.
 
@@ -69,3 +69,7 @@ Fuentes directas:
 - https://artificialanalysis.ai/models/gemini-3-5-flash-lite
 
 El enlace compartido por Sebastian compara GPT5.6 Luna LOW con GPT5mini MEDIUM; es un ejemplo del comparador y no una medicion de GPT6 Luna MEDIUM. Precio por token no equivale a costo por caso: contar texto de entrada, salida y razonamiento facturado.
+
+## Arranque de los flujos integrados
+
+`python3 scripts/dev-polyrepo.py --with-ai` inicia los consumidores de Ensayos y de Reputacion/planificacion. La API necesita `TRATO_AI_WORKFLOWS_ENABLED=true`; consultar `docs/integracion-ia-flujos.md`. Esta integracion no implica que se hayan validado los recorridos desde la interfaz ni la calidad de sus respuestas reales.

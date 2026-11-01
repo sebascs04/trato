@@ -1,4 +1,5 @@
 from datetime import date
+import os
 from typing import Annotated,Literal
 from uuid import UUID
 
@@ -144,10 +145,21 @@ def build_proposal_router(settings,require_user,repository_factory=None,workflow
         reservation=await run_in_threadpool(repo.reserve,snapshot['proposal']['project_id'],f"Aceptación de adenda v{snapshot['revision']['revision_no']}",'addendum',filename,'application/pdf',content,operation_key)
         document=reservation['document']
         await run_in_threadpool(repo.upload,document,content)
+        from ..file_processing import remember_options
+        await run_in_threadpool(remember_options,settings,repo,document,request.headers.get('accept-language','es'),
+                               'acceptance_evidence',{'revision_id':revision_id})
+        await run_in_threadpool(repo.queue_document,document['id'])
         return reply({'document_id':document['id'],'sha256':document['sha256']})
     @router.post('/proposals/{proposal_id}/revisions/{revision_id}/pdf')
-    def save_pdf(proposal_id:str,revision_id:str,repo=Depends(repository)):
-        return reply(ProposalPdfService().save(repo,uuid(proposal_id),uuid(revision_id)))
+    def save_pdf(proposal_id:str,revision_id:str,request:Request,repo=Depends(repository)):
+        proposal_id,revision_id=uuid(proposal_id),uuid(revision_id)
+        artifact=ProposalPdfService().save(repo,proposal_id,revision_id)
+        if os.getenv('TRATO_FILE_PROCESSING_ENABLED')=='true':
+            from ..file_processing import remember_options
+            document=repo.document(artifact['document_id'])
+            remember_options(settings,repo,document,request.headers.get('accept-language','es'),'generated_addendum',{'revision_id':revision_id})
+            repo.queue_document(document['id'])
+        return reply(artifact)
     @router.post('/projects/{project_id}/proposals')
     async def create(project_id:str,request:Request,repo=Depends(repository)):
         return await command(request,repo,'create',Create,{'project_id':uuid(project_id)})

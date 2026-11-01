@@ -1,0 +1,12 @@
+FROM python:3.12-slim
+ENV PYTHONUNBUFFERED=1 PYTHONDONTWRITEBYTECODE=1
+WORKDIR /app
+COPY repos/trato-api/requirements.lock.txt ./
+RUN pip install --no-cache-dir -r requirements.lock.txt
+COPY repos/trato-api/trato_api ./trato_api
+COPY repos/trato-api/paypal ./paypal
+COPY repos/trato-api/resources ./resources
+RUN useradd --uid 10001 --create-home api && mkdir -p /var/lib/trato/gmail /var/lib/trato/paypal && chown api:api /var/lib/trato/gmail /var/lib/trato/paypal
+USER api
+EXPOSE 8100
+CMD ["uvicorn", "trato_api.app:app", "--host", "0.0.0.0", "--port", "8100", "--limit-concurrency", "8", "--proxy-headers", "--forwarded-allow-ips", ""]

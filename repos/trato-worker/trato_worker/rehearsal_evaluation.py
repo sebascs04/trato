@@ -110,8 +110,13 @@ def evaluate_rehearsal(data, client, model):
         validate_feedback(output, user_turns, by_file)
         if client.catalog()['scope_id'] != bundle['scope_id']:
             raise ToolError('SOURCE_SCOPE_CHANGED')
+        cited = {citation['file_id'] for item in output['items'] for citation in item['citations']}
+        sources = [{key: f[key] for key in ('file_id', 'title', 'author', 'url', 'text_sha256')}
+                   | {'cited': f['file_id'] in cited,
+                      'locators': [s['locator'] for s in f['segments']]} for f in bundle['files']]
         return {'mode': 'model', 'model': model.name, 'output_language': data['output_language'],
-                'scope_id': bundle['scope_id'], 'sources_read': len(bundle['files']), **output}
+                'scope_id': bundle['scope_id'], 'sources_read': len(bundle['files']),
+                'sources': sources, **output}
 
     # This gate checks the read bundle first. The model adapter separately budgets
     # the final prompt, full history, schema and output reserve without truncation.

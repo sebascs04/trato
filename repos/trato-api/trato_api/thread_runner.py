@@ -27,6 +27,9 @@ class BackendPump:
             if not str(exc).startswith('BUSYGROUP'):raise
 
     def publish_once(self):
+        if os.getenv('TRATO_VECTOR_SEARCH_ENABLED') == 'true':
+            from .reputation_vector import relay_reputation
+            relay_reputation(self.store,self.redis)
         item=self.store.command('relay_claim',{})
         if item is None:return False
         self.redis.xadd(COMMANDS,{'thread':json.dumps(item['envelope'])})
@@ -48,7 +51,13 @@ class BackendPump:
         if valid:
             # The RPC checks the stored context, command, active job lease, dedup and domain data atomically.
             try:
-                self.store.command('result',{'message':message})
+                receipt = self.store.command('result',{'message':message})
+                if (os.getenv('TRATO_VECTOR_SEARCH_ENABLED') == 'true' and
+                    message.get('workflow') == 'ingest_document' and message['action'] == 'completed' and
+                    (receipt.get('stored') or receipt.get('duplicate'))):
+                    from .vector_jobs import IndexJobs
+                    from .ai_jobs import AIJobs
+                    IndexJobs(self.store.settings, jobs=AIJobs(self.redis)).after_extraction(self.store, message['thread_id'])
             except ApiError as error:
                 if error.status not in (404,409,422):raise
                 self.redis.xadd('trato:connected:thread:rejected-events',{'event_ref':identifier,'error_code':error.code})

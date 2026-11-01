@@ -51,3 +51,12 @@ Los nueve archivos históricos con prefijos distintos se renombran al número de
 Las migraciones de Gmail `20261030035029`, `20261031024840`, `20261031025431` y `20261031103500` quedaron aplicadas en trato-dev durante las pruebas locales autorizadas. Corrigen la persistencia de respuestas, alias SQL ambiguos, la validación de IDs de mensaje y la recuperación de metadatos de adjuntos. Se aplicaron desde un directorio privado con el historial remoto completo, comprobando antes que cada dry run incluyera solo la migración correspondiente.
 
 La reconciliación de estos nueve nombres no acredita que este checkout contenga todas las migraciones de otros lotes. Antes de otro `db push`, consultar `migration list --linked` y resolver cualquier versión remota sin archivo local; no aplicar cambios de reputación u otros módulos por incluirlos accidentalmente en un push de Gmail.
+
+## Plan inicial con IA
+
+La migracion `20261101154326_ai_initial_project_plans.sql` coincide con la version aplicada `20261101154326` (`ai_initial_project_plans`). Crea los planes y etapas privados, RPC transaccional y permiso de columna id para creacion idempotente. Se verifico con la prueba `supabase/tests/ai_initial_project_plans.sql` bajo rollback.
+
+
+## Procesamiento de archivos y proyeccion comunitaria
+
+`20261101212324_file_processing_and_public_vector_sources.sql` coincide con la version remota `20261101212324`. El nombre local se ajusto a la version real registrada al aplicar el SQL; no aplicar tambien la version inicial de preparacion. Incluye opciones/artefactos con RLS y RPC server-only de outbox, fuentes y recibos de reputacion. La prueba `supabase/tests/file_processing_and_public_vectors.sql` se ejecuto bajo rollback: aislamiento, permisos, retirada y rechazo de escrituras obsoletas.

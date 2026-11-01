@@ -1,5 +1,6 @@
 # Fuentes concretas para el evaluador de Ensayos
 
+Revisadas y aceptadas por Sebastian el 28/10/2026 como las cinco fuentes fijas del evaluador. Rama compartida `feature/trato-next-iteration`. Este catalogo documenta fuentes y su aplicacion. Actualizacion del 1 noviembre 2026: las cinco selecciones extraidas y su manifiesto se incluyen en `repos/trato-api/resources/rehearsal-sources/`, con IDs/hashes comprobados y herramienta conectada. La evaluacion completa con Gemini sigue pendiente de prueba conjunta. Diseño del recorrido: [flujo-interno-evaluador-ensayos.md](flujo-interno-evaluador-ensayos.md).
 
 ## Selección y propósito
 
@@ -54,7 +55,7 @@ Las cinco son obligatorias antes de evaluar. Las fuentes 1, 2 y 3 forman la base
 
 Son guías de formación y divulgación, no una escala validada para puntuar freelancers. Los criterios y su adaptación a Trato son nuestros. No sustituyen el acuerdo del caso, las políticas aplicables de PayPal ni una determinación legal sobre devoluciones.
 
-## Preparación y criterios de incorporación
+## Contrato de incorporacion y validacion
 
 1. Preparar material permitido para su uso, con atribución y localizadores. Este catálogo no reproduce los documentos completos ni acredita permiso de redistribución.
 2. Registrar los `file_ids` reales del conjunto elegido en configuración controlada. El modelo no decide omitir una fuente obligatoria ni inventa IDs. Los apartados excluidos permanecen identificados como tales.
@@ -73,14 +74,14 @@ Se descargaron y prepararon los tres artículos HTML originales de MIT/PON, cons
 
 ### Incorporación completada con los PDFs aportados
 
-El 29/10/2026 el equipo aportó los dos PDFs pendientes. Ambos se procesaron con extracción real por página. La biblioteca local ya contiene los cinco materiales con IDs reales de archivo, hashes y126fragmentos localizables. Seven Elements aporta únicamente los apartados7y8 de la página3; se conserva el original aparte y se excluye5f del material evaluable. Los artículos conservan texto del cuerpo y atribución, sin navegación ni comentarios del sitio.
+El 29/10/2026 Sebastian aportó los dos PDFs pendientes. Ambos se procesaron con extracción real por página. La biblioteca local ya contiene los cinco materiales con IDs reales de archivo, hashes y126fragmentos localizables. Seven Elements aporta únicamente los apartados7y8 de la página3; se conserva el original aparte y se excluye5f del material evaluable. Los artículos conservan texto del cuerpo y atribución, sin navegación ni comentarios del sitio.
 
 El manifiesto quedó preparado y configurado exclusivamente en el.env del backend. Lectura de los cinco materiales comprobada mediante worker→rutasrealesAPI→funciónrealprocesador, con clientesHTTPenproceso; no se reiniciaron servicios ni se llamó al modelo. No equivale a una prueba de la instanciaHTTP ya levantada. Los materiales siguen locales e ignoradosporGit, sin subirse a documentos de clientes ni publicarse enelrepositorio.
 
 Contenido extraído total26393bytes; representación completa devuelta por el procesador76214bytes al incluir texto y segmentos. Antes de conectar el modelo hay que medir el contexto final junto con instrucciones/conversación/salida y evitar duplicar texto al construir el prompt, conservando los localizadores. No recortar ni resumir automáticamente para hacerlo caber. Evaluador e interfaz conectados siguen pendientes.
 
-Comprobación posterior con los servicios iniciados por el equipo de Reputación: catálogo y ejecución HTTP internos leyeron correctamente las cinco fuentes mediante API→procesador, con autenticación del worker y el mismo ámbito del manifiesto. No se llamó al modelo. La lectura HTTP de la biblioteca ya está verificada; evaluador/UI siguen pendientes.
+Comprobación posterior con los servicios iniciados por P2: catálogo y ejecución HTTP internos leyeron correctamente las cinco fuentes mediante API→procesador, con autenticación del worker y el mismo ámbito del manifiesto. No se llamó al modelo. La lectura HTTP de la biblioteca ya está verificada; evaluador/UI siguen pendientes.
 
-## Estado actual del evaluador
+## Catalogo visible, 1 noviembre 2026
 
-Las notas de incorporación anteriores describen etapas de preparación. El evaluador final ya está conectado a API, cola y worker y exige la lectura completa de las cinco guías; véase [evaluador-ensayos-conectado.md](evaluador-ensayos-conectado.md). Los originales y la biblioteca extraída no se redistribuyen en Git. Cada instalación debe preparar su biblioteca administrada y configurar TRATO_REHEARSAL_SOURCE_MANIFEST antes de activar la evaluación; sin ella se muestra un error.
+El resultado del evaluador incluye las cinco fuentes realmente leidas (ID, autor, titulo, URL, hash del texto y localizadores) y una marca de cuales cito. El navegador muestra ese catalogo en un desplegable, ademas de la atribucion por recomendacion. Los textos completos permanecen en la biblioteca privada y no se incluyen de nuevo en la respuesta del agente. Verificacion tecnica HTTP vigente: cinco fuentes26393bytes y547referencias extractivas; no se llamo aGemini para comprobar calidad en este lote.

@@ -100,7 +100,11 @@ def build_business_router(settings, services, require_user, repository_factory=N
     @router.post('/projects')
     async def create_project(request: Request, repo=Depends(repository)):
         item = await read_model(request, ProjectInput)
-        data = await run_in_threadpool(repo.create_project, item.client_id, item.name)
+        creation_key=request.headers.get('Idempotency-Key')
+        if creation_key is not None:
+            data = await run_in_threadpool(repo.create_project, item.client_id, item.name, uuid(creation_key))
+        else:
+            data = await run_in_threadpool(repo.create_project, item.client_id, item.name)
         return reply(data, 201)
 
     @router.get('/projects/{project_id}/activity')
@@ -128,7 +132,8 @@ def build_business_router(settings, services, require_user, repository_factory=N
 
     @router.post('/projects/{project_id}/documents')
     async def upload(project_id: str, request: Request, filename: str, title: str,
-                     kind: str = 'reference', repo=Depends(repository)):
+                     kind: str = 'reference', purpose: str | None = None, revision_id: str | None = None,
+                     repo=Depends(repository)):
         project_id = uuid(project_id)
         key = request.headers.get('idempotency-key', '')
         if not 1 <= len(key) <= 128 or any(ord(c) < 33 or ord(c) > 126 for c in key):
@@ -145,11 +150,21 @@ def build_business_router(settings, services, require_user, repository_factory=N
             raise ApiError('UNSUPPORTED_FORMAT', 415)
         # Authorize before accepting the body or storing an original.
         await run_in_threadpool(repo.project, project_id)
+        bindings={}
+        if purpose is not None:
+            if purpose!='addendum_adjustments' or kind!='reference' or revision_id is None:
+                raise ApiError('FILE_PURPOSE_CONTEXT_INVALID',422)
+            revisions=await run_in_threadpool(repo.rows,'proposal_revisions',{'select':'id','id':'eq.'+uuid(revision_id),'project_id':'eq.'+project_id})
+            if len(revisions)!=1:raise ApiError('FILE_PURPOSE_CONTEXT_INVALID',409)
+            bindings={'revision_id':revisions[0]['id']}
         data = await read_bytes(request, 10485760)
         if not data.startswith(expected_magic):
             raise ApiError('FORMAT_MISMATCH', 422)
         reservation = await run_in_threadpool(repo.reserve, project_id, title, kind, filename, mime, data, key)
+        from .file_processing import remember_options
+        await run_in_threadpool(remember_options,settings,repo,reservation['document'],request.headers.get('accept-language','es'),purpose,bindings)
         result = await run_in_threadpool(ingestion, repo, services, reservation, data)
+        result={**result,'document':{'id':reservation['document']['id']}}
         return JSONResponse({'data': result, 'persisted': True}, status_code=200 if result['status']=='ready' else 202, headers={'Cache-Control': 'no-store'})
 
     @router.get('/documents/{document_id}/extraction')

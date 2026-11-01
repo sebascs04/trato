@@ -61,10 +61,10 @@ class RehearsalConsumer:
                 allowed = os.getenv('TRATO_TEST_MODEL_IDS', '').split(',')
                 if model_id not in allowed or model_id not in ('gemini-3.8-flash', 'gemini-3.5-flash-lite', 'gemini-3.1-flash-lite', 'gemini-3.5-flash', 'gemini-3.6-flash', 'gemini-3.7-flash', 'gemini-3.1-pro-preview', 'gemini-4-argon'):
                     raise ToolError('MODEL_SELECTION_UNAVAILABLE')
-                temporary_model = GeminiLangChainModel(replace(selected_model.config, model=model_id))
+                temporary_model = GeminiLangChainModel(replace(selected_model.config, model=model_id), max_output_tokens=4096 if data.get('action')=='reply' else 12288)
                 selected_model = temporary_model
             try:
-                result = reply_rehearsal(data, selected_model) if data.get('action') == 'reply' else evaluate_rehearsal(data, self.client, selected_model)
+                result = reply_rehearsal(data, selected_model) if data.get('action') == 'reply' else evaluate_rehearsal(data, self.client if self.client is not None else BackendToolClient.from_env(), selected_model)
             finally:
                 if temporary_model is not None: temporary_model.close()
             self.redis.hset(key, mapping={'status': 'completed', 'result': json.dumps(result, ensure_ascii=False)})
@@ -84,7 +84,7 @@ class RehearsalConsumer:
         provider = os.getenv('TRATO_MODEL_PROVIDER', '')
         if provider == 'gemini':
             model = GeminiLangChainModel()
-            return cls(redis, BackendToolClient.from_env(), model, reply_model=model)
+            return cls(redis, None, model, reply_model=model)
         if provider == 'ollama':
             url = os.environ.get('TRATO_REHEARSAL_OLLAMA_URL', '')
             return cls(redis, BackendToolClient.from_env(), RehearsalModel(url), reply_model=DialogueModel(url))

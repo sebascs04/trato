@@ -30,6 +30,42 @@ class PersistenceTests(unittest.TestCase):
             return httpx.Response(200,json=[])
         self.assertEqual(self.repo(handler).list_projects(CLIENT), [])
 
+    def test_project_creation_key_reuses_only_the_same_creation_command(self):
+        import json
+        stored = {}
+        def handler(request):
+            if request.url.path.endswith('/clients'):return httpx.Response(200,json=[{'id':CLIENT}])
+            if request.method=='POST':
+                data=json.loads(request.content)
+                self.assertNotIn('owner_id',data)
+                self.assertEqual(data['id'],PROJECT)
+                if stored:return httpx.Response(409,json={'code':'23505'})
+                stored.update(data);return httpx.Response(201,json=[dict(stored)])
+            return httpx.Response(200,json=[dict(stored)])
+        repo=self.repo(handler)
+        self.assertEqual(repo.create_project(CLIENT,'Project',PROJECT)['id'],PROJECT)
+        self.assertEqual(repo.create_project(CLIENT,'Project',PROJECT)['id'],PROJECT)
+        with self.assertRaises(ApiError) as error:repo.create_project(CLIENT,'Different project',PROJECT)
+        self.assertEqual(error.exception.code,'PROJECT_CREATION_CONFLICT')
+
+    def test_project_creation_key_cannot_read_foreign_conflicts(self):
+        def handler(request):
+            if request.url.path.endswith('/clients'):return httpx.Response(200,json=[{'id':CLIENT}])
+            if request.method=='POST':return httpx.Response(409,json={'code':'23505'})
+            return httpx.Response(200,json=[])
+        with self.assertRaises(ApiError) as error:self.repo(handler).create_project(CLIENT,'Project',PROJECT)
+        self.assertEqual(error.exception.status,404)
+
+    def test_project_creation_network_failure_is_not_treated_as_success(self):
+        calls=[]
+        def handler(request):
+            calls.append(request.method)
+            if request.url.path.endswith('/clients'):return httpx.Response(200,json=[{'id':CLIENT}])
+            raise httpx.ConnectError('unavailable')
+        with self.assertRaises(ApiError) as error:self.repo(handler).create_project(CLIENT,'Project',PROJECT)
+        self.assertEqual(error.exception.status,503)
+        self.assertEqual(calls,['GET','POST'])
+
     def test_absent_or_foreign_document_is_404(self):
         with self.assertRaises(ApiError) as error:
             self.repo(lambda request: httpx.Response(200, json=[])).document(DOC)

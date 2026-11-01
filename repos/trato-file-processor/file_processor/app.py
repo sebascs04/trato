@@ -9,6 +9,9 @@ from starlette.concurrency import run_in_threadpool
 
 from .extraction import ExtractionError, MAX_FILE_BYTES, extract_document
 from .source_text import search_text_file_id, MAX_BUNDLE_BYTES
+from .chunking_routes import build_chunking_router
+from .vector_routes import build_vector_router
+from .prepared_text import build_prepared_router
 from pydantic import ValidationError
 import json
 
@@ -16,6 +19,9 @@ import json
 def create_app(token=None):
     app = FastAPI(title='Trato File Processor', version='0.1.0', docs_url=None, redoc_url=None)
     service_token = token if token is not None else os.environ.get('FILE_PROCESSOR_TOKEN', '')
+    app.include_router(build_chunking_router(service_token))
+    app.include_router(build_vector_router(service_token))
+    app.include_router(build_prepared_router(service_token))
 
     @app.get('/health')
     def health():

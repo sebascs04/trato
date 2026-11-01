@@ -37,11 +37,15 @@ class ModelPreferences:
         if selected is None: return default
         if selected not in allowed: raise ApiError('MODEL_SELECTION_UNAVAILABLE', 409)
         return selected
+    def for_request(self, request, owner):
+        if self.can_select(request, owner):return self.selected(owner)
+        return self.configuration()[1]
+
     def get(self, request, owner):
         allowed, default = self.configuration()
         editable = self.can_select(request, owner)
-        return {'can_select': editable, 'selected_model': self.selected(owner), 'default_model': default,
-                'scope': 'rehearsals', 'models': [{'id': m, 'name': CATALOG[m], 'family': 'lite' if 'lite' in m else 'pro' if 'pro' in m else 'argon' if 'argon' in m else 'flash'} for m in allowed] if editable else []}
+        return {'can_select': editable, 'selected_model': self.for_request(request, owner), 'default_model': default,
+                'scope': 'ai_workflows', 'models': [{'id': m, 'name': CATALOG[m], 'family': 'lite' if 'lite' in m else 'pro' if 'pro' in m else 'argon' if 'argon' in m else 'flash'} for m in allowed] if editable else []}
     def save(self, request, owner, model):
         if not self.can_select(request, owner): raise ApiError('MODEL_SELECTION_FORBIDDEN', 403)
         allowed, _ = self.configuration()

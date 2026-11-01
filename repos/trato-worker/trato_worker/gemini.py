@@ -53,7 +53,7 @@ def _check_shared_environment():
 
 
 class GeminiLangChainModel:
-    def __init__(self, config=None, *, client_factory=None):
+    def __init__(self, config=None, *, client_factory=None, max_output_tokens=4096):
         self.config = config or GeminiConfig.from_env()
         self.config.validate()
         self.name = self.config.model
@@ -63,7 +63,7 @@ class GeminiLangChainModel:
             from langchain_google_genai import ChatGoogleGenerativeAI
             client_factory = ChatGoogleGenerativeAI
         kwargs = dict(model=self.config.model, vertexai=self.config.backend != 'developer',
-                      max_output_tokens=4096, max_retries=0, timeout=60)
+                      max_output_tokens=max_output_tokens, max_retries=0, timeout=120)
         if self.config.model == 'gemini-3.8-flash':
             kwargs['thinking_config'] = {'thinking_level': 'MEDIUM'}
         if self.config.backend == 'vertex':

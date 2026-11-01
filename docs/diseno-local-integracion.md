@@ -106,3 +106,9 @@ Devoluciones tiene únicamente la explicación del proceso y aviso de registro a
 ## Recorrido de devolución elegido explícitamente
 
 La pestaña Devoluciones permite abrir «Probar flujo de devolución». Importa refund-preview.mjs y su CSS sólo al pulsar. No usa datos financieros del proyecto abierto. Conserva la navegación, el mapa y el historial reales; éstos no reciben eventos de la prueba. El panel de respaldo separa documentos ficticios e información oficial de PayPal con ámbito/fecha/enlace. Véase worker-flujo-devoluciones.md para contrato, pausas, cálculos y límites.
+
+## Creacion al final de la configuracion
+
+Elegir proyecto nuevo o en marcha inicia un borrador local. No se llama POST/projects ni se suben PDFs antes de confirmar el ultimo paso. La opcion final se llama Crear proyecto. Los originales seleccionados se conservan en memoria y se envian despues de la creacion confirmada; cancelar antes no genera registros remotos.
+
+El comando final lleva Idempotency-Key UUID. El backend lo usa como ID del proyecto bajo el JWT/RLS actual, y ante un conflicto solo devuelve el mismo proyecto si cliente y nombre coinciden. No se requiere migracion. Una respuesta incierta se puede reintentar con la misma clave sin duplicar. Si falla una subida posterior, el modal conserva el proyecto creado y las claves de los archivos pendientes; Completar guardado reintenta esas subidas, no la creacion. Los planes por etapas siguen siendo borradores de sesion y no constituyen un acuerdo persistido ni un cobro.

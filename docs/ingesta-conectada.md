@@ -21,7 +21,7 @@ Implementación del 26 de octubre de 2026. Esta entrega conecta extracción PDF 
 - Threads visibles sólo al propietario y proyecto activo, con columnas limitadas. Outbox/inbox sin permisos de usuario ni políticas de acceso de usuario por diseño; sólo funciones de servidor. El linter informa RLS sin políticas en esas dos tablas, coherente con su uso cerrado. No abrirlas para suprimir ese aviso.
 - Streams conectados `trato:connected:thread:commands`, `trato:connected:thread:events`. Los inválidos se apartan sin exponer su contenido en `trato:connected:thread:rejected-events`.
 - Streams de demostración conservan el prefijo `trato:simulation`. Ninguna indisponibilidad conecta ambos modos.
-- Redis propio local en 6380, loopback, contraseña privada, AOF y `noeviction`; archivo `.local/redis/redis.conf` y datos ignorados. AOF cada segundo no equivale a garantía de pérdida cero ni sustituye copias de seguridad. Redis no comparte procesos, archivos ni recursos con otros proyectos.
+- Redis propio local en 6380, loopback, contraseña privada, AOF y `noeviction`; archivo `.local/redis/redis.conf` y datos ignorados. AOF cada segundo no equivale a garantía de pérdida cero ni sustituye copias de seguridad. Redis no comparte procesos, archivos ni recursos con QAMAQ.
 - API 8100, file processor 8101, web 5173. El worker y el publicador/consumidor backend no abren otro puerto HTTP.
 
 Configuración inicial privada, sin imprimir credenciales ni activar IA:
@@ -57,3 +57,7 @@ La subida conectada exige PDF; DOCX devuelve `PDF_CONVERSION_REQUIRED` antes de 
 No se activaron Gemini/Google Cloud ni embeddings/Weaviate. El usuario puede consultar texto real; sólo el agente conectado podrá determinar pertinencia real. No se generaron adendas, correos ni cobros reales durante esta entrega.
 
 Validación de datos mediante SQL local y Supabase real con `ROLLBACK`, sin dejar usuarios/documentos de prueba. La prueba de PDF real llamó al procesador HTTP de 8101 con un archivo de `data/pdfs`, usando dobles explícitos sólo para claim/Storage y sin guardar datos del usuario. No equivale a una subida completa autenticada desde la cuenta del usuario en el navegador.
+
+## Enlace vectorial posterior, 1 noviembre 2026
+
+Con TRATO_VECTOR_SEARCH_ENABLED=true y el consumidor IA en ejecucion, el pump encola index_document despues de confirmar una extraccion nueva. El worker ejecuta esa tarea determinista por backend→FP→Weaviate, sin llamar al LLM. La busqueda y los recibos se describen en busqueda-vectorial-conectada.md. Esto no activa automaticamente la evaluacion semantica de pertinencia, los resumenes ni todos los handlers por proposito. El estado ready de extraccion sigue significando solo texto guardado; no usarlo como confirmacion de indice o acuerdoaceptado.

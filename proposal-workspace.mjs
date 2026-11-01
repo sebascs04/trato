@@ -210,7 +210,7 @@ export function installProposalWorkspace(cloud){
     if(blob.type!=='application/pdf'||blob.size>10485760)throw Error(uiText("Solo se pueden importar adjuntos PDF compatibles."));
     const title=gmailFeedbackTitle(message,index,attachment);
     const idempotency=`gmail-feedback-${message.id}-${index}`;
-    await this.request(`/api/v1/projects/${this.projectId}/documents?${new URLSearchParams({filename:attachment.filename,title,kind:'reference'})}`,{method:'POST',body:blob,headers:{'Content-Type':'application/pdf','Idempotency-Key':idempotency}});
+    await this.request(`/api/v1/projects/${this.projectId}/documents?${new URLSearchParams({filename:attachment.filename,title,kind:'reference',purpose:'addendum_adjustments',revision_id:data.revision.id})}`,{method:'POST',body:blob,headers:{'Content-Type':'application/pdf','Idempotency-Key':idempotency}});
     await this.loadProject();const imported=this.documents.find(doc=>doc.title===title);
     if(!imported)throw Error(uiText("No se pudo vincular el adjunto importado al proyecto."));
     this.gmailImportedFeedbackDocs.set(`${message.id}:${index}`,imported.id);
@@ -281,7 +281,7 @@ export function installProposalWorkspace(cloud){
        for(const importedId of importedIds){const doc=this.documents.find(item=>item.id===importedId);if(this.sourceReady(doc)&&!sources.includes(importedId))sources.push(importedId);}
       }else if(!state.feedbackId){
        const file=values.get('feedbackFile');if(!file?.size||file.size>10485760)throw new Error(uiText("Adjunta el PDF con los ajustes del cliente, de hasta 10 MB."));
-       const upload=await this.request(`/api/v1/projects/${this.projectId}/documents?${new URLSearchParams({filename:file.name,title:`${uiText("Ajustes del cliente a la adenda v")}${state.old.revision.revision_no}`,kind:'reference'})}`,{method:'POST',body:file,headers:{'Content-Type':'application/pdf','Idempotency-Key':'feedback-'+state.key}});
+       const upload=await this.request(`/api/v1/projects/${this.projectId}/documents?${new URLSearchParams({filename:file.name,title:`${uiText("Ajustes del cliente a la adenda v")}${state.old.revision.revision_no}`,kind:'reference',purpose:'addendum_adjustments',revision_id:state.old.revision.id})}`,{method:'POST',body:file,headers:{'Content-Type':'application/pdf','Idempotency-Key':'feedback-'+state.key}});
        state.feedbackId=upload.document.id;
       }
       if(state.feedbackId)sources.push(state.feedbackId);

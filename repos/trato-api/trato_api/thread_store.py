@@ -6,6 +6,7 @@ from .persistence import Repository
 
 class ThreadStore:
     def __init__(self, settings):
+        self.settings = settings
         key = os.environ.get('SUPABASE_SERVER_KEY', '')
         if not key or not (key.startswith('sb_secret_') or key.startswith('eyJ')):
             raise ApiError('THREAD_BACKEND_NOT_CONFIGURED', 503)

@@ -190,11 +190,18 @@ class VectorGateway:
                 redis.set(self.receipt_key(owner, file_id), json.dumps({'status': 'indexing',
                     'generation': value['generation'], 'project_id': project_id}))
                 self.store.write(owner, records)
+                summary=self.summary(repo,{'id':file_id,'generation':value['generation']}) if os.getenv('TRATO_FILE_PROCESSING_ENABLED')=='true' else None
+                if os.getenv('TRATO_FILE_PROCESSING_ENABLED')=='true' and summary is None:raise ApiError('FILE_SUMMARY_NOT_READY',409)
+                if summary is not None:self.store.write_summary(owner,summary_record(owner,project,file_id,value['generation'],summary))
                 after = source(repo, owner, repo.project(project_id), file_id)
                 if value['generation'] != after['generation'] or not lock.owned():
                     raise ApiError('VECTOR_SOURCE_CHANGED', 409)
                 receipt = {'status': 'ready', 'id': file_id, 'project_id': project_id,
                     'generation': value['generation'], 'objects': len(records), 'embedding_identity': PROFILE_ID}
+                if summary is not None:
+                    current_summary=self.summary(repo,{'id':file_id,'generation':value['generation']})
+                    if current_summary is None or current_summary['summary_fingerprint']!=summary['summary_fingerprint']:raise ApiError('FILE_SUMMARY_CHANGED',409)
+                    receipt.update(summary_fingerprint=summary['summary_fingerprint'],objects=len(records)+1)
                 redis.set(self.receipt_key(owner, file_id), json.dumps(receipt))
                 return receipt
             except ApiError as error:
@@ -246,7 +253,10 @@ class VectorGateway:
     def inventory(self, repo, owner, project_id, offset=0, limit=50):
         _, files = self.snapshot(repo, owner, project_id)
         if os.getenv('TRATO_FILE_PROCESSING_ENABLED')=='true':
-            for file in files[offset:offset+limit]:file['summary']=self.summary(repo,file)
+            for file in files[offset:offset+limit]:
+                file['summary']=self.summary(repo,file)
+                receipt=self.receipt(owner,file['id'])
+                file['summary_status']='ready' if file['summary'] is not None and file['status']=='ready' and receipt and receipt.get('summary_fingerprint')==file['summary']['summary_fingerprint'] else 'pending'
         return {'files': [{k: v for k, v in f.items() if not k.startswith('_')} for f in files[offset:offset+limit]],
             'total': len(files), 'next_offset': offset+limit if offset+limit < len(files) else None,
             'complete': all(f['status'] == 'ready' for f in files), 'embedding_identity': PROFILE_ID}
@@ -259,12 +269,16 @@ class VectorGateway:
         value=rows[0]['artifact']
         if value.get('summary_fingerprint')!=digest({k:v for k,v in value.items() if k!='summary_fingerprint'}):
             raise ApiError('FILE_SUMMARY_INVALID',502)
-        return {k:value[k] for k in ('summary','topics','citations','output_language','model_identity','source_fingerprint')}
+        return {k:value[k] for k in ('summary','topics','citations','output_language','model_identity','source_fingerprint','summary_fingerprint')}
 
-    def search(self, repo, owner, project_id, query, limit=8):
+    def search(self, repo, owner, project_id, query, limit=8, file_ids=None):
         if not isinstance(query, str) or not query.strip() or len(query.encode()) > 4096:
             raise ApiError('EMBEDDING_INPUT_LIMIT', 422)
         project, files = self.snapshot(repo, owner, project_id)
+        if file_ids is not None:
+            wanted={uuid(i) for i in file_ids}
+            if not wanted or not wanted.issubset({f['id'] for f in files}):raise ApiError('DOCUMENT_NOT_FOUND',404)
+            files=[f for f in files if f['id'] in wanted]
         if not files:
             raise ApiError('VECTOR_NO_SOURCES', 409)
         if any(f['status'] != 'ready' for f in files):
@@ -301,11 +315,49 @@ class VectorGateway:
                 results[-1]['document_summary']=summaries[f['id']]
         # Changes/deletions/archiving during retrieval invalidate the whole answer.
         _, after = self.snapshot(repo, owner, project_id)
+        if file_ids is not None:after=[f for f in after if f['id'] in wanted]
         if [(f['id'], f['generation'], f['status']) for f in files] != [(f['id'], f['generation'], f['status']) for f in after]:
             raise ApiError('VECTOR_SOURCE_CHANGED', 409)
         return {'matches': results, 'documents_checked': len(files), 'complete_inventory': True,
                 'exhaustive_evidence': False, 'embedding_identity': PROFILE_ID,
                 'hybrid_alpha': 0.7, 'fusion': 'relativeScoreFusion'}
+
+
+    def search_summaries(self,repo,owner,project_id,query,limit=8):
+        if not isinstance(query,str) or not query.strip() or len(query.encode())>4096:raise ApiError('EMBEDDING_INPUT_LIMIT',422)
+        project,files=self.snapshot(repo,owner,project_id)
+        if not files:raise ApiError('VECTOR_NO_SOURCES',409)
+        summaries={};allowed=[]
+        for f in files:
+            summary=self.summary(repo,f)
+            receipt=self.receipt(owner,f['id'])
+            if summary is None or f['status']!='ready' or not receipt or receipt.get('summary_fingerprint')!=summary['summary_fingerprint']:raise ApiError('VECTOR_SUMMARY_INDEX_INCOMPLETE',409)
+            summaries[f['id']]=summary
+            allowed.append({'id':f['id'],'generation':summary_record(owner,project,f['id'],f['generation'],summary)['properties']['generation']})
+        rows=self.store.search_summaries(owner,project['client_id'],project_id,allowed,query,limit)
+        by_id={f['id']:f for f in files};results=[]
+        for row in rows:
+            props=row.get('properties',{});f=by_id.get(props.get('file_id'))
+            if f is None or row.get('properties')!=summary_record(owner,project,f['id'],f['generation'],summaries[f['id']])['properties'] or row.get('id')!=summary_record(owner,project,f['id'],f['generation'],summaries[f['id']])['id'] or type(row.get('score')) not in (float,int) or not math.isfinite(row['score']):raise ApiError('VECTOR_RESULT_INVALID',502)
+            results.append({'file_id':f['id'],'title':f['title'],'generation':f['generation'],
+                'summary_fingerprint':summaries[f['id']]['summary_fingerprint'],'text':props['chunk_text'],
+                'source_kind':'summary','score':row['score']})
+        _,after=self.snapshot(repo,owner,project_id)
+        if [(f['id'],f['generation'],f['status']) for f in files]!=[(f['id'],f['generation'],f['status']) for f in after]:raise ApiError('VECTOR_SOURCE_CHANGED',409)
+        for f in after:
+            current=self.summary(repo,f)
+            if current is None or current['summary_fingerprint']!=summaries[f['id']]['summary_fingerprint']:raise ApiError('FILE_SUMMARY_CHANGED',409)
+        return {'matches':results,'documents_checked':len(files),'complete_inventory':True,'exhaustive_evidence':False,'embedding_identity':PROFILE_ID,'hybrid_alpha':0.7}
+
+
+def summary_record(owner,project,file_id,generation,summary):
+    text=summary['summary']
+    if not isinstance(text,str) or not text.strip() or len(text)>1800 or len(text.encode())>4096:raise ApiError('FILE_SUMMARY_INVALID',502)
+    if not isinstance(summary.get('source_fingerprint'),str) or len(summary['source_fingerprint'])!=64:raise ApiError('FILE_SUMMARY_CHANGED',409)
+    p={'owner_id':owner,'client_id':project['client_id'],'project_id':project['id'],'file_id':file_id,
+       'generation':digest(['document_summary',generation,summary['summary_fingerprint']]),'embedding_identity':PROFILE_ID,'segment_id':'document_summary',
+       'text_sha256':sha256(text.encode()).hexdigest(),'start_char':0,'end_char':len(text),'chunk_text':text}
+    return {'id':str(uuid5(NAMESPACE_URL,'trato:weaviate:'+digest(p))),'properties':p}
 
 
 def build_vector_router(settings, require_user, repository_factory=None, gateway=None):

@@ -115,7 +115,10 @@ def build_ai_router(settings,require_user,repository_factory=None,jobs=None,pref
         plan=rows[0];plan['stages'].sort(key=lambda stage:stage['position'])
         return JSONResponse({'data':plan},headers={'Cache-Control':'no-store'})
     @router.get('/jobs/{job_id}')
-    async def get(job_id:UUID,owner=Depends(require_user)):
+    async def get(job_id:UUID,request:Request,owner=Depends(require_user)):
         result=await run_in_threadpool(jobs.get,owner,str(job_id))
+        if result['status']=='completed' and result['result'].get('kind')=='project_assistant':
+            from .project_assistant import ProjectAssistant
+            result['result']=await run_in_threadpool(ProjectAssistant(settings,jobs=jobs).validate_result,repository(request),owner,str(job_id),result['result'])
         return JSONResponse({'data':result},headers={'Cache-Control':'no-store'})
     return router

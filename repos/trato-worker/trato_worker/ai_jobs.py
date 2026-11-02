@@ -86,7 +86,11 @@ class AIConsumer:
                 temporary_model = GeminiLangChainModel(replace(selected_model.config, model=model_id), max_output_tokens=8192)
                 selected_model = temporary_model
             try:
-                if data.get('workflow')=='process_file':
+                if data.get('workflow')=='project_assistant':
+                    from .project_assistant import run_project_assistant
+                    client=self.client if self.client is not None else BackendToolClient.from_env()
+                    result=run_project_assistant(data,selected_model,client,job_id,execution_id)
+                elif data.get('workflow')=='process_file':
                     if os.getenv('TRATO_FILE_PROCESSING_ENABLED')!='true':raise ToolError('FILE_PROCESSING_NOT_CONFIGURED')
                     from .file_pipeline.runtime import build_file_pipeline
                     from .file_pipeline.backend import BackendFileClient

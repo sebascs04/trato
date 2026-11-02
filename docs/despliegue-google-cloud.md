@@ -41,9 +41,34 @@ ni Cloud NAT para este diseño. Solo la URL de Cloud Run es pública.
   Direct VPC, mínimo/máximo 1 y sin secretos de proveedores en la web.
 
 Verificado: sintaxis Node/shell, cuatro pruebas de proxy HTTP/HTTPS/firma PayPal,
-contratos de secretos/aislamiento y esquema oficial Compose. Docker daemon no
-está disponible en esta instalación WSL: imágenes todavía NO construidas ni
-arrancadas. Sin pruebas desde interfaz ni E2E del proveedor durante esta etapa.
+contratos de secretos/aislamiento y esquema oficial Compose. Tras abrir Docker
+Desktop, se construyeron y comprobaron localmente las cuatro imágenes
+(web, API, file processor y workers) mediante el CLI Windows desde WSL. Las pruebas
+usaron contenedores temporales sin red ni puertos publicados, con usuario no root
+y filesystem de solo lectura; se retiraron únicamente esos contenedores de Trato.
+Se comprobó arranque HTTP de web/API/processor, assets web, cinco fuentes y hashes,
+tres escenarios de Ensayos y dependencias/entrypoints del worker. No se arrancaron
+consumidores reales, no se conectaron bases/colas/modelos ni se probó UI/E2E.
+
+Se verificó además el arranque conjunto de los siete servicios backend mediante
+Docker Compose real, con red internal sin puertos publicados, volúmenes exclusivos
+de la prueba y configuración/credenciales sintéticas sin permisos en proveedores.
+API/file processor respondieron por DNS privado y ambos consumidores IA marcaron
+ready sobre el Redis exclusivo. Redis conservó un dato sintético tras reiniciar
+únicamente su contenedor. Los siete procesos seguían vivos al terminar. El backend
+pump informó THREAD_BACKEND_UNAVAILABLE porque Supabase estuvo deliberadamente
+inaccesible: no se acredita persistencia remota ni procesamiento completo. No se
+encoló ningún trabajo del modelo. Se eliminaron solo contenedores, red y volúmenes
+identificados por el UUID de esta prueba; los servicios/datos locales existentes y
+otros proyectos locales permanecieron fuera de ella.
+
+La primera prueba detectó que ROOT en rehearsal.py depende del layout del monorepo.
+El Dockerfile API conserva explícitamente /app/repos/trato-api y empaqueta
+/app/data/demo.json y /app/local-ports.json; las fuentes aprobadas se mantienen en
+/app/resources/rehearsal-sources. No usa rutas alternativas ni modifica el contenido
+de los casos. Este ajuste de Dockerfile es posterior a PR8 y sigue local hasta
+una nueva publicación autorizada. El resto de imágenes se construyó con fuente
+PR8 verificada por hash contra el árbol publicado. Las imágenes no se subieron.
 
 ## Acceso necesario
 
@@ -57,7 +82,7 @@ Revisar también vencimiento del crédito antes de crear recursos facturables.
 Preferir una identidad administrativa de despliegue separada del worker. El runtime
 web `trato-web` no recibe roles del proyecto; el worker solo recibe la credencial
 Vertex ya autorizada. No conceder Owner/Editor al worker por comodidad. Se puede
-aprovisionar desde Cloud Shell con la identidad de Sebastian, sin exportar su clave.
+aprovisionar desde Cloud Shell con la identidad de el responsable del proyecto, sin exportar su clave.
 Quien ejecute necesita permisos para habilitar servicios, administrar instancias/
 redes/firewall, Cloud Run, Artifact Registry, crear el runtime service account y
 actuar como él. Consultar las guías oficiales de IAM antes de conceder esos roles.
@@ -68,7 +93,7 @@ actuar como él. Consultar las guías oficiales de IAM antes de conceder esos ro
    Comprobar el saldo real y vencimiento en la cuenta propia antes de activar recursos.
 2. Preparar un snapshot revisado de todos los servicios y sus dependencias. El
    último `main` conocido era `81c7ee7`; hay cambios IA/vectoriales locales que no
-   deben omitirse ni darse por publicados. Coordinar con P1/Flores. No usar `git pull`
+   deben omitirse ni darse por publicados. Coordinar con el equipo/el responsable de cambios y devoluciones. No usar `git pull`
    ni resetear la raíz sintética ni checkouts anidados para aparentar una rama.
 3. En una identidad de despliegue autorizada:
 
@@ -83,7 +108,7 @@ actuar como él. Consultar las guías oficiales de IAM antes de conceder esos ro
    No borrar/redimensionar recursos ajenos ni repetir creación a ciegas.
 4. Instalar Docker Engine + Compose **2.30 o superior** en la VM dedicada mediante
    el repositorio oficial de Docker para Debian. No ejecutar esta instalación ni
-   el stack contra el host local de QAMAQ. Verificar listeners y contenedores antes.
+   el stack contra el host local de otros proyectos locales. Verificar listeners y contenedores antes.
 5. Construir las imágenes con contexto público revisado. Registrar el digest de
    la web en Artifact Registry. No usar `gcloud builds submit` sobre el workspace
    original: `.dockerignore` no sustituye `.gcloudignore` para una subida de fuentes.

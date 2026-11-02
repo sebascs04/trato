@@ -105,7 +105,15 @@ class WeaviateStore:
         p = records[0]['properties']
         filters = Filter.all_of([Filter.by_property(k).equal(p[k])
             for k in ('owner_id','client_id','project_id','file_id','generation')])
+        filters=Filter.all_of([filters,Filter.by_property('segment_id').not_equal('document_summary')])
         return self._write('projects_private', records, filters)
+
+    def write_summary(self,owner,record):
+        from weaviate.classes.query import Filter
+        p=record['properties']
+        filters=Filter.all_of([Filter.by_property(k).equal(p[k]) for k in
+            ('owner_id','client_id','project_id','file_id','generation','segment_id')])
+        return self._write('projects_private',[record],filters)
 
     def write_public(self, profile, records):
         from weaviate.classes.query import Filter
@@ -163,6 +171,7 @@ class WeaviateStore:
             filters = Filter.all_of([
                 Filter.by_property('owner_id').equal(owner), Filter.by_property('client_id').equal(client_id),
                 Filter.by_property('project_id').equal(project_id),
+                Filter.by_property('segment_id').not_equal('document_summary'),
                 Filter.by_property('embedding_identity').equal(PROFILE_ID),
                 Filter.any_of([Filter.all_of([Filter.by_property('file_id').equal(f['id']),
                     Filter.by_property('generation').equal(f['generation'])]) for f in files])])
@@ -172,6 +181,26 @@ class WeaviateStore:
                 return_properties=[*KEY_FIELDS, 'chunk_text', 'start_char', 'end_char'])
             return [{'id': str(o.uuid), 'properties': o.properties, 'score': o.metadata.score}
                     for o in response.objects]
+
+    def search_summaries(self,owner,client_id,project_id,files,query,limit):
+        from weaviate.classes.query import Filter, HybridFusion, MetadataQuery
+        with self.connection() as client:
+            self.validate(client)
+            base=client.collections.use(COLLECTION)
+            if 'projects_private' not in base.tenants.get():raise VectorError('VECTOR_INDEX_INCOMPLETE',409)
+            col=base.with_tenant('projects_private')
+            filters=Filter.all_of([Filter.by_property('owner_id').equal(owner),
+                Filter.by_property('client_id').equal(client_id),Filter.by_property('project_id').equal(project_id),
+                Filter.by_property('embedding_identity').equal(PROFILE_ID),
+                Filter.by_property('segment_id').equal('document_summary'),
+                Filter.any_of([Filter.all_of([Filter.by_property('file_id').equal(f['id']),
+                    Filter.by_property('generation').equal(f['generation'])]) for f in files])])
+            if col.aggregate.over_all(filters=filters,total_count=True).total_count!=len(files):raise VectorError('VECTOR_SUMMARY_INDEX_INCOMPLETE',409)
+            rows=col.query.hybrid(query=query,alpha=0.7,fusion_type=HybridFusion.RELATIVE_SCORE,
+                target_vector='text',query_properties=['chunk_text'],filters=filters,limit=limit,
+                return_metadata=MetadataQuery(score=True),return_properties=[*KEY_FIELDS,'chunk_text','start_char','end_char'])
+            if col.aggregate.over_all(filters=filters,total_count=True).total_count!=len(files):raise VectorError('VECTOR_SUMMARY_INDEX_INCOMPLETE',409)
+            return [{'id':str(o.uuid),'properties':o.properties,'score':o.metadata.score} for o in rows.objects]
 
     def search_public(self, profile, files, query, limit, expected_chunks):
         from weaviate.classes.query import Filter, HybridFusion, MetadataQuery

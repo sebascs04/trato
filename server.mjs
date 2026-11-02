@@ -9,6 +9,11 @@ import {browserOriginAllowed} from './web-origin.mjs';
 const localPorts = JSON.parse(readFileSync(new URL('./local-ports.json', import.meta.url), 'utf8'));
 const port = Number(process.env.PORT || localPorts.web);
 const assets = new Map([
+  ['/project-assistant.mjs',['project-assistant.mjs','text/javascript; charset=utf-8']],
+  ['/project-assistant.css',['project-assistant.css','text/css; charset=utf-8']],
+  ['/assets/mascot/trato-guide.png',['assets/mascot/trato-guide.png','image/png']],
+  ['/section-guide.mjs',['section-guide.mjs','text/javascript; charset=utf-8']],
+  ['/section-guide.css',['section-guide.css','text/css; charset=utf-8']],
   ['/project-planning.mjs',['project-planning.mjs','text/javascript; charset=utf-8']],
   ['/project-planning.css',['project-planning.css','text/css; charset=utf-8']],
   ['/i18n.mjs',['i18n.mjs','text/javascript; charset=utf-8']],

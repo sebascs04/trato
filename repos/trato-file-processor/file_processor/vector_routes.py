@@ -102,6 +102,32 @@ class SearchInput(Strict):
             raise ValueError('Invalid scope or query')
         return self
 
+class SummaryProperties(Properties):
+    segment_id:Literal['document_summary']
+    chunk_text:str=Field(min_length=1,max_length=1800)
+
+class SummaryRecord(Strict):
+    id:str
+    properties:SummaryProperties
+    @model_validator(mode='after')
+    def binding(self):
+        if self.id!=str(uuid5(NAMESPACE_URL,'trato:weaviate:'+digest(self.properties.model_dump()))):raise ValueError('Invalid summary identity')
+        return self
+
+class SummaryIndex(Strict):
+    schema_version:Literal[1]
+    embedding_identity:Literal[PROFILE_ID]
+    owner_id:str
+    record:SummaryRecord
+    @model_validator(mode='after')
+    def binding(self):
+        canonical(self.owner_id)
+        if self.record.properties.owner_id!=self.owner_id:raise ValueError('Invalid summary owner')
+        return self
+
+class SummarySearch(SearchInput):
+    pass
+
 class PublicProperties(Strict):
     community_client_id: str
     review_id: str
@@ -218,6 +244,14 @@ def build_vector_router(service_token, store=None):
             'embedding_identity': PROFILE_ID,
             'matches': store.search(value.owner_id, value.client_id, value.project_id,
                 [f.model_dump() for f in value.files], value.query, value.limit)})
+
+    @router.post('/summary-index')
+    async def summary_index(request:Request):
+        return await execute(request,SummaryIndex,lambda value:store.write_summary(value.owner_id,value.record.model_dump()))
+
+    @router.post('/summary-search')
+    async def summary_search(request:Request):
+        return await execute(request,SummarySearch,lambda value:{'embedding_identity':PROFILE_ID,'matches':store.search_summaries(value.owner_id,value.client_id,value.project_id,[f.model_dump() for f in value.files],value.query,value.limit)})
 
     @router.post('/public-index')
     async def public_index(request: Request):

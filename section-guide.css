@@ -1,0 +1,24 @@
+/* Voluntary, section-scoped help. Does not intercept the controls it explains. */
+.section-guide[hidden],.section-guide [hidden]{display:none!important}
+.section-guide{--guide-violet:#7051c6;--guide-ink:#30283b;--guide-line:#e4dcf0;font:400 14px/1.6 Manrope,sans-serif;color:var(--guide-ink)}
+.guide-launcher{position:fixed;right:28px;bottom:24px;z-index:120;display:flex;align-items:center;gap:10px;min-height:54px;padding:8px 17px 8px 10px;border:1px solid #dcd2ef;border-radius:32px;background:#fff;color:var(--guide-violet);box-shadow:0 6px 25px #3c28651a;font:500 13px Manrope,sans-serif;cursor:pointer}
+.guide-launcher>span:first-child{display:grid;place-items:center;width:36px;height:36px;border-radius:50%;background:#f0eafa}.guide-launcher .ui-icon{width:25px;height:25px}.guide-launcher:hover{background:#faf7ff;transform:translateY(-2px)}
+.guide-panel{position:fixed;right:28px;bottom:92px;z-index:122;width:350px;max-width:calc(100vw - 32px);max-height:calc(100vh - 120px);overflow:auto;border:1px solid var(--guide-line);border-radius:20px;background:#fff;box-shadow:0 18px 65px #34204424;animation:guide-arrive .24s ease-out}
+.guide-panel header{display:flex;align-items:center;gap:12px;padding:19px 20px 15px;border-bottom:1px solid #f0ebf7;background:linear-gradient(120deg,#f5efff,#fff)}
+.guide-avatar{display:grid;place-items:center;flex:0 0 48px;height:48px;border-radius:16px;border:1px solid #dfd2f5;background:#fff;color:var(--guide-violet);box-shadow:0 5px 12px #7351c60c;animation:guide-wave .7s ease-out}
+.guide-avatar .ui-icon{width:32px;height:32px;stroke-width:1.5}.guide-panel header>div{flex:1}.guide-panel header strong{display:block;font-size:14px;font-weight:600}.guide-panel header>div>span{display:block;color:#81738f;font-size:11px;margin-top:2px}
+.guide-close{display:grid;place-items:center;width:36px;height:36px;border:0;background:transparent;border-radius:9px;color:#81738f;cursor:pointer}.guide-close:hover{background:#eee6fa}
+.guide-copy{padding:20px 22px}.guide-progress{font-size:10px;letter-spacing:.8px;text-transform:uppercase;color:#967cb6;margin:0 0 8px}.guide-copy h3{font-size:19px;line-height:1.35;letter-spacing:-.3px;font-weight:500;margin:0 0 11px}.guide-explanation{font-size:13px;line-height:1.8;color:#71647f;margin:0}
+.guide-panel footer{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:0 20px 20px}.guide-panel footer button{display:flex;align-items:center;gap:8px;min-height:40px;padding:9px 13px;border-radius:10px;font:500 12px Manrope,sans-serif;cursor:pointer}.guide-previous{border:1px solid var(--guide-line);background:#fff;color:#71647f}.guide-previous:disabled{opacity:.4;cursor:default}.guide-next{border:1px solid var(--guide-violet);background:var(--guide-violet);color:#fff}.guide-panel footer .ui-icon{width:14px;height:14px}
+.guide-highlight{position:fixed;z-index:115;pointer-events:none;border:2px solid #9872e5;border-radius:14px;box-shadow:0 0 0 5px #b79be51c;transition:top .16s ease,left .16s ease,width .16s ease,height .16s ease}
+.section-guide button:focus-visible,.guide-copy h3:focus-visible{outline:2px solid #9975da;outline-offset:4px}
+@keyframes guide-arrive{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}@keyframes guide-wave{0%,100%{transform:rotate(0)}25%{transform:rotate(-7deg)}65%{transform:rotate(6deg)}}
+@media(prefers-reduced-motion:reduce){.section-guide *{animation:none!important;transition:none!important}.guide-launcher:hover{transform:none}}
+
+/* Trato's own mascot is a brand asset. Functional controls retain Lucide icons. */
+.guide-launcher{min-height:72px;padding:3px 20px 3px 5px;border-radius:24px;gap:4px}
+.guide-launcher>span:first-child{width:74px;height:68px;background:none;border-radius:0;overflow:visible}
+.guide-mascot{display:block;width:96px;height:96px;max-width:none;object-fit:contain;pointer-events:none;user-select:none}
+.guide-launcher .guide-mascot{transform:translateY(-7px);filter:drop-shadow(0 4px 4px #6c489c18)}
+.guide-panel{bottom:112px}.guide-avatar{flex-basis:64px;height:64px;background:none;border:0;border-radius:0;box-shadow:none;overflow:visible}
+.guide-avatar .guide-mascot{width:86px;height:86px;filter:drop-shadow(0 3px 3px #6c489c12)}

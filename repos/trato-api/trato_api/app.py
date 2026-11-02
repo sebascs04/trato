@@ -17,6 +17,7 @@ from .business_routes import build_business_router
 from .thread_routes import build_thread_router
 from .agent_tools import build_agent_tools_router
 from .ai_routes import build_ai_router
+from .project_assistant import build_project_assistant_router
 from .vector_routes import build_vector_router
 from .vector_jobs import build_vector_job_router
 from .reputation_vector import build_public_vector_router
@@ -145,6 +146,7 @@ def create_app(settings=None, services=None, repository_factory=None, *, gmail_s
     app.include_router(build_thread_router(settings))
     app.include_router(build_agent_tools_router(settings))
     app.include_router(build_ai_router(settings,require_user,repository_factory))
+    app.include_router(build_project_assistant_router(settings,require_user,repository_factory))
     app.include_router(build_vector_router(settings,require_user,repository_factory))
     app.include_router(build_vector_job_router(settings))
     app.include_router(build_public_vector_router(settings,require_user,repository_factory))

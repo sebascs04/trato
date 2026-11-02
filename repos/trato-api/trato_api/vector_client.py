@@ -58,6 +58,18 @@ class ProcessorVectorClient:
             raise ApiError('VECTOR_RESULT_INVALID', 502)
         return rows
 
+    def write_summary(self,owner,record):
+        result=self.request('summary-index',{'owner_id':owner,'record':record})
+        if result!={'objects':1,'embedding_identity':PROFILE_ID}:raise ApiError('VECTOR_INDEX_INCOMPLETE',502)
+        return result
+
+    def search_summaries(self,owner,client_id,project_id,files,query,limit):
+        result=self.request('summary-search',{'owner_id':owner,'client_id':client_id,'project_id':project_id,
+            'files':files,'query':query,'limit':limit})
+        rows=result.get('matches')
+        if not isinstance(rows,list) or len(rows)>limit:raise ApiError('VECTOR_RESULT_INVALID',502)
+        return rows
+
     def write_public(self,profile,records):
         result=self.request('public-index',{'profile_id':profile,'records':records})
         if result!={'objects':len(records),'embedding_identity':PROFILE_ID}:

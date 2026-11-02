@@ -315,6 +315,12 @@ def build_file_processing_router(settings,require_user,repository_factory=None,s
         from .model_preferences import ModelPreferences
         repo=(repository_factory or Repository)(settings,request.headers.get('authorization',''))
         language=request.headers.get('accept-language','es')
+        raw=await read_bytes(request,1000)
+        if raw:
+            try:options=json.loads(raw)
+            except (ValueError,TypeError):raise ApiError('INVALID_OUTPUT_LANGUAGE',422) from None
+            if not isinstance(options,dict) or set(options)!={'output_language'} or options['output_language'] not in ('es','en'):raise ApiError('INVALID_OUTPUT_LANGUAGE',422)
+            language=options['output_language']
         result=await run_in_threadpool(enqueue_processing,repo,service.jobs,user,uuid(project_id),uuid(file_id),
             ModelPreferences().configuration()[1],uuid(request.headers.get('idempotency-key','')),language)
         return JSONResponse({'data':result},status_code=202,headers={'Cache-Control':'no-store'})

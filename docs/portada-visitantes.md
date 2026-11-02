@@ -1,6 +1,6 @@
 # Portada para visitantes
 
-28/10/2026. Sebastian pidió sustituir la pantalla repetida de acceso sin sesión por una presentación elegante inspirada en Polpharma,71Three,StillHere yPotadot, con una escena continua al hacer scroll. Después pidió que la historia explicara el problema con porcentajes sustentados y destacara IA yPayPal, junto a la solución y el impacto buscado. Esta autorización corresponde a la portada local; no autoriza PR, merge, despliegue, envíos ni nuevas operaciones financieras.
+28/10/2026. el responsable del proyecto pidió sustituir la pantalla repetida de acceso sin sesión por una presentación elegante inspirada en Polpharma,71Three,StillHere yPotadot, con una escena continua al hacer scroll. Después pidió que la historia explicara el problema con porcentajes sustentados y destacara IA yPayPal, junto a la solución y el impacto buscado. Esta autorización corresponde a la portada local; no autoriza PR, merge, despliegue, envíos ni nuevas operaciones financieras.
 
 ## Experiencia
 
@@ -32,7 +32,7 @@ Pruebas: suite58browser (57aprobadas; fallo de localizador ambiguo al haber dos 
 
 ## Refinamiento de movimiento y acceso ·28/10/2026
 
-Sebastian pidió ampliar la dirección más allá de su favorita. Se retomaron las notas de Polpharma (encuadres), 71Three (jerarquía y entradas), Still Here (continuidad espacial) y Potadot (motivo continuo), sin copiar recursos. La escena CSS conserva el documento como protagonista: cámara interpolada entre centros de capítulos, desplazamiento suave con ratón, separación de hojas, cláusula resaltada, partículas orbitales, marcador de etapa y entrada gradual de secciones. PayPal toma el primer plano en la última etapa. No se añade motor3D ni dependencia. Pausa y preferencia de movimiento reducido detienen los efectos; el contenido continúa accesible.
+el responsable del proyecto pidió ampliar la dirección más allá de su favorita. Se retomaron las notas de Polpharma (encuadres), 71Three (jerarquía y entradas), Still Here (continuidad espacial) y Potadot (motivo continuo), sin copiar recursos. La escena CSS conserva el documento como protagonista: cámara interpolada entre centros de capítulos, desplazamiento suave con ratón, separación de hojas, cláusula resaltada, partículas orbitales, marcador de etapa y entrada gradual de secciones. PayPal toma el primer plano en la última etapa. No se añade motor3D ni dependencia. Pausa y preferencia de movimiento reducido detienen los efectos; el contenido continúa accesible.
 
 Entrar y crear cuenta ahora abren modos independientes con un único envío principal, contraseña con autocomplete correspondiente y enlace para alternar conservando solamente el correo. Se elimina la mutación cosmética del formulario desde la portada. Perfil y rutas de sesión conservan su comportamiento.
 
@@ -45,3 +45,22 @@ Se añade antes de las herramientas una conversación ilustrada con tres tempera
 La alternancia cada7,5segundos solo se programa mientras la sección es visible, la portada está abierta y el movimiento está habilitado. La pausa de la escena y la del documento comparten estado y etiquetas accesibles; movimiento reducido comienza pausado. La selección manual permanece disponible incluso en pausa. Al ocultar la portada se elimina el temporizador.
 
 Verificación:10pruebas Chromium aprobadas, incluidas selección de temperamento ES/EN, alternancia y pausa con reloj controlado. Composición revisada en.local/browser-tests/visitor-practice.png. npm run check:1202claves ES/EN. Solo visitor-landing.mjs/css, catálogos y pruebas; sin cambios al Ensayo privado ni al proveedor.
+
+
+## Portada compacta con recorridos horizontales, 2 de noviembre de 2026
+
+el responsable del proyecto pidió reducir la bajada de la portada y mostrar cada problema y su solución en horizontal. Este bloque trata solo de diseño y usabilidad. La discusión de puntuaciones, Innovación y Presentación queda aparte por indicación expresa suya.
+
+Referencias revisadas de nuevo:
+
+- NNGroup, Progressive Disclosure: https://www.nngroup.com/articles/progressive-disclosure/
+- NNGroup, Auto-Forwarding Carousels: https://www.nngroup.com/articles/auto-forwarding/
+- W3C APG, Tabs Pattern: https://www.w3.org/WAI/ARIA/apg/patterns/tabs/
+
+Aplicación propia: tres situaciones visibles para elegir, una secuencia de cuatro pasos en horizontal por situación, detalles breves del paso seleccionado y controles manuales. No se cambia de problema automáticamente ni se intercepta la rueda para desplazar la página en horizontal. Los tres capítulos verticales anteriores se retiran de esta portada. La escena 3D se conserva, con poses ligadas a los pasos del caso de cambios y movimiento de ratón; no necesita recorrer capítulos altos para cambiar de encuadre.
+
+Los porcentajes y su fuente siguen presentes y contextualizados. Los casos son ejemplos ilustrativos, no testimonios inventados. La conversación ilustrada existente se puede desplegar bajo demanda. Las secciones inferiores de herramientas y registro se compactan. La mascota del usuario aparece en la bienvenida con el nombre TeTrato; ese nombre también se muestra en la guía privada.
+
+Pestañas con aria-selected, aria-controls, tabulación y flechas/Home/End, foco conservado tras actualizar pasos y respeto a pausa y movimiento reducido. ES/EN sin rayas largas visibles. Verificación mediante contratos de código y sintaxis; no se ejecutaron pruebas visuales de navegador en esta etapa. Las pruebas históricas de scroll y cámara de la portada anterior no acreditan esta revisión.
+
+Archivos: visitor-landing.mjs/css, claves landing.flow* y landing.mascotWelcome ES/EN, guide.name. Tests de contrato tests/landing-flows.test.cjs. Cambios solo locales, sin publicación Git ni despliegue.

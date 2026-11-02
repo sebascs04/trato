@@ -20,9 +20,10 @@ def values(path):
     return result
 
 
-def update(path, changes):
+def update(path, changes, *, allowed_changes=frozenset()):
     old = values(path) if path.exists() else {}
-    if any(old.get(key) and old[key] != value for key, value in changes.items()):
+    if any(old.get(key) and old[key] != value and key not in allowed_changes
+           for key, value in changes.items()):
         raise ValueError('Existing configuration differs; review it explicitly before replacing it')
     lines = path.read_text().splitlines() if path.exists() else []
     seen = set()
@@ -64,8 +65,9 @@ def main():
             store.validate(client)
     update(ROOT / 'repos/trato-file-processor/.env', {
         'WEAVIATE_URL': private['WEAVIATE_URL'], 'WEAVIATE_API_KEY': private['WEAVIATE_API_KEY'],
-        'TRATO_VECTOR_SEARCH_ENABLED': 'true'})
-    update(ROOT / 'repos/trato-api/.env', {'TRATO_VECTOR_SEARCH_ENABLED': 'true'})
+        'TRATO_VECTOR_SEARCH_ENABLED': 'true'}, allowed_changes={'TRATO_VECTOR_SEARCH_ENABLED'})
+    update(ROOT / 'repos/trato-api/.env', {'TRATO_VECTOR_SEARCH_ENABLED': 'true'},
+           allowed_changes={'TRATO_VECTOR_SEARCH_ENABLED'})
     print('Processor configured; API authorization enabled; embedding profile ' + PROFILE_ID)
     print('No documents indexed and no model inference executed. Restart only Trato services to load configuration.')
 

@@ -1,9 +1,9 @@
-// Carga una fixture JSON normalizada. Una carga fallida se muestra; no se inventan datos.
+// Load explicit rehearsal scenarios; never use them as studio business data.
 async function bootTrato() {
   try {
-    const {localizeStaticDocument,installLanguagePreference}=await import('/i18n.mjs');
+    const {localizeStaticDocument,installLanguagePreference,uiText}=await import('/i18n.mjs');
     localizeStaticDocument(document);
-    await new Promise((resolve,reject)=>{const script=document.createElement('script');script.src='/payment-panel.js';script.onload=resolve;script.onerror=()=>reject(new Error('No se pudo cargar la interfaz de pagos.'));document.head.append(script);});
+    document.title=uiText('app.title');
     const response = await fetch('/data/demo.json', { cache: 'no-store' });
     if (!response.ok) throw new Error(`No se pudieron cargar los datos (${response.status}).`);
     const data = await response.json();
@@ -34,9 +34,11 @@ async function bootTrato() {
       installGmailConnection(window.TratoCloud);
       const {installSandboxCheckout} = await import('/sandbox-checkout.mjs');
       installSandboxCheckout(window.TratoCloud);
+      const {installProjectAssistant}=await import('/project-assistant.mjs');
+      installProjectAssistant(window.TratoCloud);
+      const {installSectionGuide}=await import('/section-guide.mjs');
+      installSectionGuide(window.TratoCloud);
     } catch {throw new Error('No se pudo abrir tu espacio. Recarga para volver a intentar.');}
-    try { window.TRATO_SAVED_STATE = await window.TratoStore.load(); }
-    catch { window.TRATO_STORAGE_WARNING = true; }
     const script = document.createElement('script');
     script.src = '/app.js';
     script.onerror = () => showBootError('No se pudo cargar la aplicación. Recarga la página.');
@@ -44,6 +46,7 @@ async function bootTrato() {
   } catch (error) { showBootError(error.message); }
 }
 function showBootError(message) {
+  document.body.setAttribute('aria-busy', 'false');
   document.querySelector('#boot-status')?.setAttribute('hidden', '');
   const notice = document.createElement('div');
   notice.className = 'data-error';

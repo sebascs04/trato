@@ -15,9 +15,9 @@ export class ConnectedWorkspace {
     this.clientId=''; this.projectId=''; this.tab='acuerdo'; this.comparison=null; this.requestId=''; this.epoch=0; this.busy=false; this.loading=false; this.directoryLoading=false; this.message='';
     this.historyView='history';this.projectMapGeneration=0;this.resourceOpen={files:false,history:false};this.historyGeneration=0;this.historyLoaded=false;this.historyPending=null;
     this.projectsLoaded=false;this.projectsLoading=false;this.projectClientsLoaded=new Set();this.projectsPending=new Map();
-    this.base=location.origin; this.demoMode=new URLSearchParams(location.search || '').get('demo')==='1';
+    this.base=location.origin;
   }
-  get handlesView() {return !this.demoMode || this.active;}
+  get handlesView() {return true;}
   $(selector) {return this.document.querySelector(selector);}
   navigationKey() {
     return this.navigationOwner&&this.session?.key?`${this.session.key}:navigation:${this.navigationOwner}`:null;
@@ -29,7 +29,7 @@ export class ConnectedWorkspace {
     try {
       const value=JSON.parse(this.storage.getItem(this.navigationKey())||'null');
       const id=value=>typeof value==='string'&&/^[a-zA-Z0-9-]{1,80}$/.test(value);
-      if(value?.version!==1||!['acuerdo','plan','solicitudes','devoluciones','documentos','historial','gestion','comparar'].includes(value.tab))return null;
+      if(value?.version!==1||!['acuerdo','plan','solicitudes','devoluciones','documentos','historial','gestion','comparar','asistente'].includes(value.tab))return null;
       if([value.clientId,value.projectId,value.requestId,value.revisionId].some(value=>value!==''&&!id(value)))return null;
       return {...value,historyView:value.historyView==='map'?'map':'history'};
     } catch {return null;}
@@ -42,7 +42,7 @@ export class ConnectedWorkspace {
     const requestId=projectId&&this.documents.some(d=>d.id===this.requestId&&d.kind==='email_request')?this.requestId:'';
     const details=this.proposalDetails?.proposal?.request_document_id===requestId?this.proposalDetails:null;
     const revisionId=this.tab==='gestion'&&requestId?(details?.revision?.id||this.proposalRetryRevision||''):'';
-    const tab=['acuerdo','plan','solicitudes','devoluciones','documentos','historial','gestion','comparar'].includes(this.tab)?this.tab:'acuerdo';
+    const tab=['acuerdo','plan','solicitudes','devoluciones','documentos','historial','gestion','comparar','asistente'].includes(this.tab)?this.tab:'acuerdo';
     try {this.storage.setItem(this.navigationKey(),JSON.stringify({version:1,clientId,projectId,tab,requestId,revisionId,historyView:this.historyView==='map'?'map':'history'}));} catch { /* Navigation storage is optional; business operations are unaffected. */ }
   }
   async restoreProjectNavigation(nav) {
@@ -98,9 +98,6 @@ export class ConnectedWorkspace {
         this.projectId=event.target.value; this.tab='acuerdo'; this.comparison=null; this.requestId=''; this.documents=[]; this.events=[]; this.projectActivity=[]; this.notify(); this.run(()=>this.loadProject());
       }
     });
-    this.badgeHTML=this.$('.top-actions .demo-pill').innerHTML;
-    this.footerText=this.$('.footer span:last-child').textContent;
-    this.emptyText=this.$('#empty').textContent;
     this.notify(); this.restore();
   }
   async restore() {
@@ -416,8 +413,8 @@ export class ConnectedWorkspace {
     panel.innerHTML=`<section class="workspace-panel cloud-refunds" aria-label="${uiText("Devoluciones del proyecto")}"><header class="cloud-refund-heading"><span class="cloud-refund-symbol" aria-hidden="true">${uiIcon('undo-2')}</span><div><span class="eyebrow">${uiText("DEVOLUCIONES")}</span><h3>${uiText("Revisar dinero que ya se pagó")}</h3><p>${uiText("Cuando el cliente pide recuperar todo o parte de un pago, revisa el acuerdo, el trabajo realizado y el importe que corresponde proponer.")}</p></div></header><div class="cloud-refund-context"><strong>${uiText("Una devolución parte de un pago recibido.")}</strong><p>${uiText("Si el cliente pide más trabajo o una nueva fecha, corresponde a Cambios. Si pide dinero de vuelta, corresponde a Devoluciones. Una cancelación puede requerir revisar el cierre antes de decidir si hay dinero que devolver.")}</p></div><div class="cloud-refund-trial"><button type="button" class="button" data-cloud-action="refund-preview">${uiText("Probar flujo de devolución")} ${uiIcon('arrow-right')}</button></div></section>`;
   }
   projectNavigation(tab) {
-    const selected=['solicitudes','comparar','gestion'].includes(tab)?'solicitudes':['plan','devoluciones','documentos','historial'].includes(tab)?tab:'acuerdo';
-    const sections=[['acuerdo','file-text',uiText("Proyecto"),uiText("Acuerdo y fuentes iniciales")],['plan','wallet',uiText('projectStart.plan'),uiText('projectStart.planNavigation')],['solicitudes','git-compare-arrows',uiText("Cambios"),uiText("Alcance, precio o plazo")],['devoluciones','undo-2',uiText("Devoluciones"),uiText("Dinero de un pago recibido")],['documentos','file-text',uiText("Documentos"),uiText("Archivos por pedido")],['historial','history',uiText("Historial del proyecto"),uiText("Historial y mapa")]];
+    const selected=['solicitudes','comparar','gestion'].includes(tab)?'solicitudes':['plan','devoluciones','documentos','historial','asistente'].includes(tab)?tab:'acuerdo';
+    const sections=[['acuerdo','folder-open',uiText("Proyecto"),uiText("Acuerdo y fuentes iniciales")],['asistente','messages-square',uiText('projectAssistant.nav'),uiText('projectAssistant.navigation')],['plan','wallet',uiText('projectStart.plan'),uiText('projectStart.planNavigation')],['solicitudes','git-compare-arrows',uiText("Cambios"),uiText("Alcance, precio o plazo")],['devoluciones','undo-2',uiText("Devoluciones"),uiText("Dinero de un pago recibido")],['documentos','file-text',uiText("Documentos"),uiText("Archivos por pedido")],['historial','history',uiText("Historial del proyecto"),uiText("Historial y mapa")]];
     return `<nav class="cloud-project-navigation" aria-label="${uiText("Secciones del proyecto")}">${sections.map(([id,icon,title,description])=>`<button type="button" data-cloud-action="tab" data-cloud-tab="${id}" aria-label="${title}: ${description}" ${selected===id?'aria-current="page"':''}>${uiIcon(icon)}<span><strong>${title}</strong><small>${description}</small></span></button>`).join('')}</nav>`;
   }
   async reviewChange(id) {
@@ -486,7 +483,8 @@ export class ConnectedWorkspace {
     workspace.innerHTML=toolbar+`<div class="cloud-project-picker" ${projects.length<2?'hidden':''}><label class="field" for="cloud-picker">${uiText("Proyecto")}</label><select id="cloud-picker" class="context-box" data-cloud-project>${projects.map(p=>`<option value="${p.id}" ${p.id===this.projectId?'selected':''}>${escape(p.name)}</option>`).join('')}</select></div><div class="client-banner"><span class="client-avatar">${escape((client?.name || '').slice(0,2).toUpperCase())}</span><div><span class="eyebrow">${uiText("PROYECTO")}</span><h2>${escape(project.name)}</h2><p>${escape(client.name)}</p></div><button type="button" class="cloud-icon-button cloud-delete-project" data-cloud-action="project-delete" data-cloud-id="${escape(project.id)}" aria-label="${uiText('projectStart.deleteProject')} ${escape(project.name)}" title="${uiText('projectStart.deleteProject')}">${uiIcon('trash-2')}</button></div>${this.projectNavigation(tab)}<p class="cloud-notice" role="status" ${this.message?'':'hidden'}>${escape(this.message)}</p><div id="client-panel"></div>`;
     const panel=workspace.querySelector('#client-panel');
     if(this.loading) {panel.innerHTML=`<section class="workspace-panel">${this.renderSkeleton('project',uiText("Cargando información del proyecto…"))}</section>`; return;}
-    if(tab==='plan') this.renderProjectPlan(panel);
+    if(tab==='asistente') this.renderProjectAssistant(panel);
+    else if(tab==='plan') this.renderProjectPlan(panel);
     else if(tab==='gestion') this.renderChangeManagement(panel);
     else if(tab==='comparar') this.renderChangeReview(panel);
     else if(tab==='revision') this.renderReview(panel);
@@ -578,16 +576,9 @@ export class ConnectedWorkspace {
     panel.innerHTML=`<div class="knowledge-layout document-library"><div class="workspace-panel"><div class="library-header"><div><span class="eyebrow">${uiText("BASE DE CONOCIMIENTO")}</span><h3>${uiText("Documentos del proyecto")}</h3></div></div><div class="cloud-library-meta"><span>${this.documents.length} ${this.documents.length===1?uiText("archivo"):uiText("archivos")}</span><span>${uiText("Por pedido · actividad más reciente primero")}</span></div><div class="cloud-doc-groups">${content || ("<p class=\"cloud-section-note\">"+uiText("Los archivos que añadas al proyecto aparecerán aquí.")+"</p>")}</div></div></div>`;
   }
 
-  renderRows(view) {
-    const rows=this.active && view==='inicio'?this.projects:[];
-    this.$('#project-rows').innerHTML=rows.map(p=>`<tr><td><div class="project-cell"><div><strong>${escape(p.name)}</strong><small>${escape(this.clients.find(c=>c.id===p.client_id)?.name)}</small></div></div></td><td>${uiText("Proyecto")}</td><td>${uiText("Por definir")}</td><td><span class="badge review">${uiText("Guardado")}</span></td><td><button class="row-button" data-cloud-action="project-open" data-cloud-id="${p.id}" aria-label="${uiText("Abrir proyecto")}">↗</button></td></tr>`).join('');
-    this.$('#table-title').textContent=view==='inicio'?uiText("Proyectos de tu espacio"):uiText("Solicitudes de tu espacio");
-    this.$('#empty').hidden=rows.length>0; this.$('#empty').textContent=view==='inicio'?uiText("Crea tu primer proyecto desde Clientes."):uiText("Consulta los pedidos y sus documentos desde el proyecto, en Clientes.");
-  }
   syncChrome() {
     if(!this.profile) return;
     const active=this.active, connected=this.handlesView;
-    this.document.documentElement.classList.remove('trato-starting');
     if(!this.clientButton) {
       const title=this.$('#page-title'), row=this.document.createElement('div'); row.className='cloud-title-row';
       title.before(row); row.append(title);
@@ -606,21 +597,14 @@ export class ConnectedWorkspace {
     else if(active && workspaceView) {this.$('#page-title').textContent=this.project()?.name || (this.clientId?this.clients.find(c=>c.id===this.clientId)?.name:uiText("Clientes"));this.$('#page-description').textContent=this.project()?uiText("Tu información inicial y los nuevos pedidos, en el mismo espacio."):this.clientId?uiText("Los proyectos y acuerdos de este cliente."):uiText("Cada cliente tiene sus proyectos. Elige uno para entrar a su espacio de trabajo.");}
     this.profile.textContent=active?(this.session.session.user.email || this.profileInitials).slice(0,2).toUpperCase():this.profileInitials;
     this.profile.setAttribute('aria-label',active?uiText("Mi perfil · sesión iniciada"):uiText("Mi perfil · iniciar sesión")); this.profile.title=active?uiText("Tu perfil"):uiText("Iniciar sesión");
-    this.$('.top-actions .demo-pill').innerHTML=active?("<i></i>"+uiText("Espacio conectado")):connected?`<i></i>${this.state==='loading'?uiText("Conectando…"):uiText("Tu espacio")}`:this.badgeHTML;
-    for(const selector of ['#general-assistant-toggle','#tour','#reset','.change-page-intro']) this.$(selector).hidden=connected;
-    if(connected) {
-      if(active&&(this.location.hash==='#inicio'||!this.location.hash)){this.$('.activity').hidden=true;this.$('#client-workspace').hidden=false;}
-      for(const selector of ['.stats','#hero','#flow-section','#assistant-entry','#general-assistant']) this.$(selector).hidden=true;
-      this.document.querySelectorAll('[data-view] .count').forEach(node=>{node.textContent='0';});
-      if(!active) {
-        this.$('.activity').hidden=true;
-        this.$('#client-workspace').hidden=false; this.renderWorkspace(this.$('#client-workspace'));
-        this.$('#page-title').textContent=uiText("Tu espacio en Trato");
-        this.$('#page-description').textContent=uiText("Tus clientes, proyectos y acuerdos en un solo lugar.");
-      }
-    } else this.$('#empty').textContent=this.emptyText;
-    this.$('.footer span:last-child').textContent=connected?uiText("Tu estudio · Clientes, proyectos y acuerdos"):this.footerText;
+    this.$('.top-actions .demo-pill').innerHTML=`<i></i>${uiText(active?"Espacio conectado":this.state==='loading'?"Conectando…":"Tu espacio")}`;
+    if(!active){
+      this.$('#page-title').textContent=uiText("Tu espacio en Trato");
+      this.$('#page-description').textContent=uiText("Tus clientes, proyectos y acuerdos en un solo lugar.");
+    }
+    this.$('.footer span:last-child').textContent=uiText("Tu estudio · Clientes, proyectos y acuerdos");
   }
 }
 
 export const createConnectedWorkspace = options => new ConnectedWorkspace(options);
+

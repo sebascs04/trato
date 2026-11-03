@@ -257,7 +257,7 @@ body.cloud-design{--bg:#faf9fc;--paper:#fff;--surface:#fff;--surface-soft:#f7f5f
 .cloud-design .cloud-project-event{display:grid;grid-template-columns:33px minmax(0,1fr) auto;align-items:center;gap:12px;padding:16px 0;border-bottom:1px solid var(--line)}
 .cloud-design .cloud-project-event:last-child{border-bottom:0}
 .cloud-design .cloud-project-event-icon{display:grid;place-items:center;width:33px;height:33px;background:var(--surface-soft);border:1px solid var(--line);border-radius:9px;color:var(--purple)}
-.cloud-design .cloud-project-event[data-activity-kind="payment_completed"] .cloud-project-event-icon{background:#edf7f0;border-color:#d7ebdd;color:#35764c}
+.cloud-design .cloud-project-event[data-activity-kind="payment_completed"] .cloud-project-event-icon,.cloud-design .cloud-project-event[data-activity-kind="refund_completed"] .cloud-project-event-icon{background:#edf7f0;border-color:#d7ebdd;color:#35764c}
 .cloud-design .cloud-project-event strong{display:block;font-size:13px;font-weight:500;line-height:1.6;overflow-wrap:anywhere}
 .cloud-design .cloud-project-event-context{display:block;color:var(--muted);font-size:11px;margin-top:3px;overflow-wrap:anywhere}
 .cloud-design .cloud-project-event time{font-size:11px;color:var(--muted);text-align:right;line-height:1.6}

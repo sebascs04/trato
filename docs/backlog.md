@@ -2,6 +2,10 @@
 
 Actualizado: 31 de octubre de 2026. Se incorpora el cierre del flujo de renegociación validado localmente por el usuario; las demás prioridades conservan el estado de la revisión del 26 de octubre. Este documento no activa servicios, gasto, modelos, correos ni operaciones financieras. Las asignaciones se acuerdan entre los integrantes humanos; no se presume que alguien ya tomó una tarea.
 
+## Cierre de devoluciones — 3 de noviembre de 2026
+
+TRATO-13, TRATO-14, TRATO-15 y TRATO-16: **implementados y validados en el alcance Sandbox aprobado, sin IA**. Dos recorridos manuales confirmados (cierre global parcial e individual total de adenda) y prueba conectada de entrega/deduplicación de eventos genuinos completados. Los apartados siguientes conservan el historial de tandas; sus pendientes históricos se resuelven en [el acta de cierre](cierre-validacion-devoluciones.md). La IA, un checkout inicial integrado y el uso Live no forman parte de este cierre. No se autoriza PR ni merge por publicar esta rama.
+
 ## Objetivo de la entrega
 
 Completar un recorrido real: acuerdo y fuentes → pedido del cliente → análisis con IA y citas → revisión humana → adenda versionada → aceptación registrada → cobro PayPal Sandbox confirmado por backend.
@@ -59,7 +63,21 @@ Todos los pendientes siguientes están **Por hacer** al publicar. Antes de empez
 | TRATO-08 | Preparar alojamiento y configuración de la demo | Servicios definidos | URLs, orígenes OAuth/CORS y callbacks son accesibles al evaluador; el enlace de pago no depende de localhost. Se documentan secretos y procesos requeridos sin publicarlos ni contratar planes no autorizados. |
 | TRATO-09 | Preparar entrega de hackathon | TRATO-07 y 08 | README reproducible, descripción fiel, cuentas/instrucciones de evaluación y video que muestra el mismo comportamiento del código; revisar duración, idioma, elegibilidad y plazo contra bases vigentes. |
 
+Tanda 6, 2 de noviembre de 2026: conciliación, inbox de webhook verificado, registro canónico sin duplicados, recuperación explícita de intentos y aplicación de dinero externo implementados localmente para TRATO-15; historial único ES/EN ampliado para TRATO-16. Validaciones principales aprobadas; repetición adicional final y límites documentados en [validación de tanda 6](tanda-6-devoluciones-validacion.md). TRATO-13 a 16 conservan el cierre conectado pendiente de tanda 7, con interfaz financiera, migraciones y recorrido Sandbox propios.
+
+Tanda 7 — frontend, 2 de noviembre de 2026: interfaz financiera de TRATO-16 implementada y validada localmente con 4 pruebas de lógica y 7 casos de Chromium, incluidos ES/EN, móvil y recuperación tras recarga. No se usó PayPal conectado ni dinero real. Falta la aceptación integral de TRATO-13 a 16; ver [validación del frontend](tanda-7-frontend-validacion.md).
+
+Actualización del 3 de noviembre de 2026: migraciones aplicadas y dos recorridos manuales confirmados contra PayPal Sandbox: cierre global de USD 18 (inicial + adenda) e individual total de adenda de USD 120. El segundo conserva el proyecto sin cerrar y la adenda pagada bloqueada. La interfaz pasó a un asistente de seis etapas tras feedback del usuario. No hubo dinero real. La entrega/deduplicación completa de webhooks y las variantes no recorridas manualmente siguen documentadas como límites; no se afirma cobertura integral de todas ellas. Evidencia: [acta de preparación y recorridos](preparacion-prueba-integral-devoluciones.md).
+
 ## P1 — recuperación, relaciones y devoluciones
+
+Avance local de devoluciones, 1 de noviembre de 2026: TRATO-13 en curso en `codex/devoluciones-reales`. Tandas 1 y 2 implementan contrato, cálculo revisable, persistencia y API de borradores; migración compartida pendiente de coordinar. No hay todavía devolución financiera conectada ni interfaz nueva. TRATO-14 a 16 siguen pendientes de sus tandas. Evidencia y límites: [validación de tanda 2](tanda-2-devoluciones-validacion.md). La incorporación de IA será un requerimiento posterior separado.
+
+Tanda 3: interfaz de expedientes y borradores implementada, como avance parcial de TRATO-16. Pruebas de código/API/SQL y 18 casos únicos de Chromium aprobados localmente. No marcar TRATO-13 ni TRATO-16 como Hecho; falta despliegue coordinado y validación conectada del recorrido. Detalle: [validación de tanda 3](tanda-3-devoluciones-validacion.md).
+
+Tanda 4, 2 de noviembre de 2026: implementación local de TRATO-14 y avance de TRATO-13/16 con devolución individual o cierre multipago, PDF inmutable, revisión, Gmail explícito y aceptación documental. No se marca como entrega conectada: las migraciones compartidas y el envío real siguen pendientes. TRATO-15 corresponde a tandas 5–6 y la prueba financiera integral a tanda 7. Evidencia: [validación de tanda 4](tanda-4-devoluciones-validacion.md).
+
+Tanda 5: backend financiero de TRATO-15 implementado y validado localmente, con autorización separada, reservas, ejecución por captura y conservación de éxitos parciales. API, SQL, concurrencia y 17 escenarios con proveedor doble aprobados. Continúa en curso: faltan despliegue coordinado, recuperación/webhooks de tanda 6 e interfaz/prueba Sandbox integral de tanda 7. Evidencia: [validación de tanda 5](tanda-5-devoluciones-validacion.md).
 
 | ID | Tarea | Dependencia | Terminado cuando |
 | --- | --- | --- | --- |

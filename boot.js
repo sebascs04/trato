@@ -30,6 +30,8 @@ async function bootTrato() {
       installVisitorLanding(window.TratoCloud);
       const {installProposalWorkspace} = await import('/proposal-workspace.mjs');
       installProposalWorkspace(window.TratoCloud);
+      const {installRefundWorkspace} = await import('/refund-workspace.mjs');
+      installRefundWorkspace(window.TratoCloud);
       const {installGmailConnection} = await import('/gmail-connection.mjs');
       installGmailConnection(window.TratoCloud);
       const {installSandboxCheckout} = await import('/sandbox-checkout.mjs');

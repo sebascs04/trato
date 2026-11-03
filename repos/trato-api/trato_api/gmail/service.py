@@ -8,7 +8,7 @@ import re
 import secrets
 import threading
 import time
-from urllib.parse import urlencode, urlparse
+from urllib.parse import urlencode, urlparse, parse_qs
 
 import httpx
 from paypal.email import build_payment_email, build_proposal_email, valid_email, EmailDeliveryError
@@ -51,7 +51,12 @@ class GoogleTransport:
     def __call__(self,method,url,**kwargs):
         thread_read=bool(re.fullmatch(r'https://gmail\.googleapis\.com/gmail/v1/users/me/threads/[A-Za-z0-9_-]{1,200}\?format=full',url))
         attachment_read=bool(re.fullmatch(r'https://gmail\.googleapis\.com/gmail/v1/users/me/messages/[A-Za-z0-9_-]{1,256}/attachments/[A-Za-z0-9_-]{1,2048}',url))
-        if url not in (TOKEN_URL,USERINFO_URL,SEND_URL,REVOKE_URL) and not (method=='GET' and (thread_read or attachment_read)):
+        message_read=bool(re.fullmatch(r'https://gmail\.googleapis\.com/gmail/v1/users/me/messages/[A-Za-z0-9_-]{1,256}\?format=full',url))
+        parsed=urlparse(url);query=parse_qs(parsed.query)
+        refund_search=(parsed.scheme=='https' and parsed.netloc=='gmail.googleapis.com' and parsed.path=='/gmail/v1/users/me/messages'
+            and set(query)=={'q','maxResults'} and query['maxResults']==['2'] and len(query['q'])==1
+            and bool(re.fullmatch(r'in:sent rfc822msgid:<trato-refund-[a-f0-9-]{36}@(?:[A-Za-z0-9-]+\.)+[A-Za-z0-9-]+>',query['q'][0])))
+        if url not in (TOKEN_URL,USERINFO_URL,SEND_URL,REVOKE_URL) and not (method=='GET' and (thread_read or attachment_read or message_read or refund_search)):
             raise GmailError('INVALID_GOOGLE_ENDPOINT')
         try:
             with httpx.Client(timeout=20,follow_redirects=False,transport=self.transport) as client:
@@ -71,7 +76,15 @@ class GoogleTransport:
 
 def reply_text(body):
     """Remove a trailing quoted conversation for display; retain original evidence."""
+    # Display-only normalization of escaped mail exports. Original evidence is intact.
+    body = re.sub(r'\\(?=\r?\n|$)', '', body)
+    body = re.sub(r'\\([<>])', r'\1', body)
     lines = body.splitlines()
+    for index in range(1,len(lines)):
+        for size in range(1,min(6,len(lines)-index)+1):
+            header=' '.join(line.strip() for line in lines[index:index+size])
+            if re.fullmatch(r'(?:On\s+.+\s+wrote:|El\s+.+\s+escribi[oó]:)',header,re.IGNORECASE) and any(line.strip() for line in lines[:index]):
+                return '\n'.join(lines[:index]).strip()
     end = len(lines)
     while end and not lines[end - 1].strip():
         end -= 1
@@ -89,6 +102,52 @@ def reply_text(body):
             start = index
             break
     return '\n'.join(lines[:start]).strip()
+
+
+def display_reply(body, message):
+    """Derive display text from preserved MIME; never alter acceptance evidence."""
+    from html.parser import HTMLParser
+    class ReplyHTML(HTMLParser):
+        def __init__(self):
+            super().__init__(convert_charrefs=True);self.frames=[];self.text=[];self.quoted=False
+        def hidden(self):return any(skip for _,skip in self.frames)
+        def handle_starttag(self,tag,attrs):
+            values=dict(attrs);classes=set(values.get('class','').split())
+            quote=tag=='blockquote' or bool(classes & {'gmail_quote','gmail_attr','yahoo_quoted','moz-cite-prefix'})
+            self.quoted=self.quoted or quote
+            if len(self.frames)>250:raise ValueError('HTML nesting limit')
+            if tag in ('br','hr'):
+                if not self.hidden():self.text.append('\n')
+                return
+            if tag in ('img','input','meta','link','wbr','source'):return
+            if tag in ('div','p','li') and not self.hidden():self.text.append('\n')
+            self.frames.append((tag,quote or tag in ('script','style','head')))
+        def handle_startendtag(self,tag,attrs):
+            self.handle_starttag(tag,attrs);self.handle_endtag(tag)
+        def handle_endtag(self,tag):
+            for i in range(len(self.frames)-1,-1,-1):
+                if self.frames[i][0]==tag:
+                    self.frames=self.frames[:i];break
+            if tag in ('div','p','li') and not self.hidden():self.text.append('\n')
+        def handle_data(self,data):
+            if not self.hidden():self.text.append(data)
+    def parts(part,depth=0):
+        if depth>20 or not isinstance(part,dict):return
+        if part.get('mimeType','').lower()=='text/html' and not part.get('filename'):
+            encoded=part.get('body',{}).get('data','')
+            if isinstance(encoded,str) and len(encoded)<=180000:
+                try:
+                    raw=base64.urlsafe_b64decode(encoded+'='*((-len(encoded))%4)).decode('utf-8',errors='replace')
+                    parser=ReplyHTML();parser.feed(raw);parser.close()
+                    text='\n'.join(line.rstrip() for line in ''.join(parser.text).splitlines()).strip()
+                    if parser.quoted and text:yield text
+                except (ValueError,TypeError):pass
+        for child in part.get('parts',[]) or []:yield from parts(child,depth+1)
+    text=next(parts(message.get('payload',{}) if isinstance(message,dict) else {}),None)
+    if text is not None:return {'reply_text':reply_text(text),'reply_needs_review':False}
+    text=reply_text(body)
+    uncertain=text==body.strip() and bool(re.search(r'(?im)^(?:>\s*|On .+wrote:|El .+escribi[oó]:|[- ]*(?:Original Message|Mensaje original)[- ]*)',body))
+    return {'reply_text':text,'reply_needs_review':uncertain}
 
 
 class GmailConnectionService:
@@ -177,11 +236,17 @@ class GmailConnectionService:
         return {'configured':True,'connected':False,'email':None,'revoked':revoked}
 
     def send(self,user,item,notification_id,*,proposal=False,expected_sender=None):
+        return self._send_built(user,item,notification_id,build_proposal_email if proposal else build_payment_email,expected_sender)
+
+    def send_refund(self,user,item,notification_id,*,expected_sender=None):
+        from ..refunds.mail import build_settlement_email
+        return self._send_built(user,item,notification_id,build_settlement_email,expected_sender)
+
+    def _send_built(self,user,item,notification_id,builder,expected_sender):
         try:
             with self.lock:
                 connection=self.credentials(user)
                 if expected_sender is not None and connection['email']!=expected_sender:raise GmailError('GMAIL_SENDER_CHANGED',409)
-                builder=build_proposal_email if proposal else build_payment_email
                 message=builder(connection['email'],item,notification_id)
                 raw=base64.urlsafe_b64encode(message.as_bytes()).decode()
                 status,result=self.transport('POST',SEND_URL,headers={'Authorization':'Bearer '+connection['access_token']},json={'raw':raw})
@@ -199,6 +264,25 @@ class GmailConnectionService:
         headers=message.get('payload',{}).get('headers',[])
         if not isinstance(headers,list):return ''
         return next((str(h.get('value','')) for h in headers if isinstance(h,dict) and str(h.get('name','')).lower()==name.lower()),'')
+
+    def find_refund_sent(self,user,delivery_id):
+        from uuid import UUID
+        try:delivery_id=str(UUID(delivery_id))
+        except (ValueError,TypeError):raise GmailError('INVALID_GMAIL_MESSAGE',422) from None
+        connection=self.credentials(user)
+        if READ_SCOPE not in connection.get('scope','').split():raise GmailError('GMAIL_READ_PERMISSION_REQUIRED',409)
+        headers={'Authorization':'Bearer '+connection['access_token']}
+        url=ATTACHMENTS_URL+'?'+urlencode({'q':f"in:sent rfc822msgid:<trato-refund-{delivery_id}@{connection['email'].rsplit('@',1)[1]}>",'maxResults':'2'})
+        status,result=self.transport('GET',url,headers=headers)
+        if status!=200 or not isinstance(result,dict):raise GmailError('GMAIL_READ_FAILED',503)
+        messages=result.get('messages',[])
+        if not isinstance(messages,list) or len(messages)>1:raise GmailError('REFUND_DELIVERY_AMBIGUOUS',409)
+        if not messages:return None
+        message_id=messages[0].get('id')
+        if not isinstance(message_id,str) or not re.fullmatch('[A-Za-z0-9_-]{1,256}',message_id):raise GmailError('INVALID_GMAIL_MESSAGE',502)
+        status,message=self.transport('GET',ATTACHMENTS_URL+'/'+message_id+'?format=full',headers=headers)
+        if status!=200 or not isinstance(message,dict) or message.get('id')!=message_id:raise GmailError('GMAIL_READ_FAILED',503)
+        return message
 
     def read_thread(self,user,thread_id):
         if not isinstance(thread_id,str) or not 1<=len(thread_id)<=200 or not thread_id.replace('-','').replace('_','').isalnum():

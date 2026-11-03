@@ -295,8 +295,8 @@ export class ConnectedWorkspace {
           await this.request(`/api/v1/projects/${id}/documents?${new URLSearchParams(metadata)}`,{method:'POST',body:file,headers:{'Content-Type':mime,'Idempotency-Key':this.uploadCommand.key}});
         } catch(error) {await this.loadProject(); throw error;}
         if(epoch!==this.epoch || id!==this.projectId) return;
-        this.uploadCommand=null; this.comparison=null; this.tab=this.planUploadProject===id?'plan':metadata.kind==='initial_agreement'?'acuerdo':'solicitudes';this.planUploadProject=null; this.modal.close(); await this.loadProject();
-        this.message=metadata.kind==='initial_agreement'?uiText("Archivo guardado."):uiText("Pedido guardado."); this.notify();
+        this.uploadCommand=null; this.comparison=null; this.tab=this.planUploadProject===id?'plan':metadata.kind==='initial_agreement'?'acuerdo':metadata.kind==='reference'?'documentos':'solicitudes';this.planUploadProject=null; this.modal.close(); await this.loadProject();
+        this.message=metadata.kind!=='email_request'?uiText("Archivo guardado."):uiText("Pedido guardado."); this.notify();
       }
     });
   }
@@ -381,6 +381,10 @@ export class ConnectedWorkspace {
   }
   openSource(purpose) {
     if(this.loading || !this.project()) return;
+    if(purpose==='reference'){
+      this.show(uiText('refund.addReference'),`<p>${uiText('refund.referenceHelp')}</p><form data-cloud-form="upload"><input type="hidden" name="kind" value="reference"><label class="field">${uiText('refund.referenceTitle')}<input name="title" class="context-box" required maxlength="200"></label><label class="field">${uiText('refund.referenceFile')}<input name="file" class="context-box" type="file" accept=".pdf" required></label><p>${uiText("Máximo 10 MB.")}</p><button type="submit" class="button">${uiText('refund.addReference')}</button></form>`);
+      return;
+    }
     const initial=purpose!=='request';
     if(!initial&&this.requestStatus?.can_register!==true){this.message=this.requestStatus?.can_register===false?uiText("Termina o cierra el pedido abierto de este proyecto antes de registrar otro."):uiText("Estamos comprobando los pedidos del proyecto. Vuelve a intentar en unos momentos.");this.notify();return;}
     if(!initial && !this.initialSources().some(doc=>this.sourceReady(doc))) {this.tab='acuerdo'; this.notify(); return;}
@@ -522,37 +526,52 @@ export class ConnectedWorkspace {
     })();
   }
   activityLabel(event) {
-    if(uiLocale()==='es-PE')return event.title;
     switch(event.kind){
       case 'request_registered':return uiText('history.request');
       case 'adenda_sent':return uiText('history.adenda',{version:event.revision_no});
       case 'acceptance_recorded':return uiText('history.acceptance',{version:event.revision_no});
       case 'payment_requested':return uiText('history.paymentRequested');
       case 'payment_completed':return uiText('history.paid',{amount:new Intl.NumberFormat(uiLocale(),{style:'currency',currency:event.currency}).format(event.amount_minor/100)});
-      case 'request_closed':return uiText('history.closed');
+      case 'request_closed':return uiText(event.reason==='rejected'?'history.closedRejected':event.reason==='withdrawn'?'history.closedWithdrawn':'history.closed');
+      case 'refund_requested':return uiText('history.refundRequested');
+      case 'refund_proposal_sent':return uiText('history.refundSent',{version:event.revision_no});
+      case 'refund_feedback_reviewed':return uiText('history.refundFeedback',{version:event.revision_no});
+      case 'refund_acceptance_recorded':return uiText('history.refundAccepted',{version:event.revision_no});
+      case 'refund_financial_authorized':return uiText('history.refundAuthorized');
+      case 'refund_completed':return uiText('history.refundCompleted',{amount:new Intl.NumberFormat(uiLocale(),{style:'currency',currency:event.currency}).format(event.amount_minor/100)});
+      case 'refund_closed':return uiText('history.refundClosed');
       default:throw Error('Unsupported project activity: '+event.kind);
     }
   }
   renderHistory(panel) {
-    const icons={request_registered:'file-text',adenda_sent:'send',acceptance_recorded:'file-text',payment_requested:'mail',payment_completed:'credit-card',request_closed:'x'};
+    const icons={request_registered:'file-text',adenda_sent:'send',acceptance_recorded:'file-text',payment_requested:'mail',payment_completed:'credit-card',request_closed:'x',refund_requested:'undo-2',refund_proposal_sent:'send',refund_feedback_reviewed:'file-text',refund_acceptance_recorded:'file-text',refund_financial_authorized:'credit-card',refund_completed:'credit-card',refund_closed:'check'};
     const activity=[...this.projectActivity].sort((a,b)=>new Date(b.created_at)-new Date(a.created_at));
     const groups=new Map();
     for(const event of activity){
-      if(!groups.has(event.request_document_id))groups.set(event.request_document_id,{title:event.request_title,events:[]});
-      groups.get(event.request_document_id).events.push(event);
+      const kind=event.group_kind??'change',id=event.group_id??event.request_document_id??event.id;
+      const key=kind+':'+id;
+      if(!groups.has(key))groups.set(key,{kind,id,title:event.group_title??event.request_title??uiText('history.externalRefund'),events:[]});
+      groups.get(key).events.push(event);
     }
-    const content=[...groups.values()].map((group,index)=>`<details class="cloud-history-request" ${index===0?'open':''}><summary><span class="cloud-history-chevron" aria-hidden="true">${uiIcon('chevron-right')}</span><span class="cloud-history-request-title">${escape(group.title)}<small>${group.events.length} ${group.events.length===1?uiText("movimiento"):uiText("movimientos")}</small></span><time datetime="${escape(group.events[0].created_at)}">${escape(date(group.events[0].created_at))}</time></summary><ol class="cloud-project-timeline">${group.events.map(event=>`<li class="cloud-project-event" data-activity-kind="${escape(event.kind)}"><span class="cloud-project-event-icon" aria-hidden="true">${uiIcon(icons[event.kind])}</span><div><strong>${escape(this.activityLabel(event))}</strong></div><time datetime="${escape(event.created_at)}">${escape(date(event.created_at))}</time></li>`).join('')}</ol></details>`).join('');
-    panel.innerHTML=`<div class="workspace-panel cloud-project-activity"><div class="cloud-activity-heading"><span>${uiText("Movimientos por pedido")}</span><span>${uiText("Más recientes primero")}</span></div>${content?`<div class="cloud-history-groups">${content}</div>`:("<p class=\"cloud-notice\">"+uiText("Los pedidos, envíos, aceptaciones y pagos aparecerán aquí.")+"</p>")}</div>`;
+    const content=[...groups.values()].map((group,index)=>`<details class="cloud-history-request" data-activity-group-kind="${escape(group.kind)}" data-activity-group-id="${escape(group.id)}" ${index===0?'open':''}><summary><span class="cloud-history-chevron" aria-hidden="true">${uiIcon('chevron-right')}</span><span class="cloud-history-request-title">${escape(group.title)}<small>${uiText(group.kind==='refund'?'history.refundGroup':'history.changeGroup')} · ${group.events.length} ${group.events.length===1?uiText("movimiento"):uiText("movimientos")}</small></span><time datetime="${escape(group.events[0].created_at)}">${escape(date(group.events[0].created_at))}</time></summary><ol class="cloud-project-timeline">${group.events.map(event=>`<li class="cloud-project-event" data-activity-kind="${escape(event.kind)}"><span class="cloud-project-event-icon" aria-hidden="true">${uiIcon(icons[event.kind])}</span><div><strong>${escape(this.activityLabel(event))}</strong></div><time datetime="${escape(event.created_at)}">${escape(date(event.created_at))}</time></li>`).join('')}</ol></details>`).join('');
+    panel.innerHTML=`<div class="workspace-panel cloud-project-activity"><div class="cloud-activity-heading"><span>${uiText('history.heading')}</span><span>${uiText("Más recientes primero")}</span></div>${content?`<div class="cloud-history-groups">${content}</div>`:("<p class=\"cloud-notice\">"+uiText('history.empty')+"</p>")}</div>`;
   }
 
 
   renderDocuments(panel) {
     const newest=(a,b)=>new Date(b.created_at)-new Date(a.created_at);
     const requests=new Map(this.documents.filter(doc=>doc.kind==='email_request').map(doc=>[doc.id,{kind:'request',id:doc.id,title:doc.title,docs:[{...doc,documentRole:uiText("Pedido del cliente")}]}]));
-    const initial=[],other=[],unlinked=[];
+    const initial=[],other=[],unlinked=[],refundGroups=new Map();
     for(const doc of this.documents){
       if(doc.kind==='email_request')continue;
       if(doc.kind==='initial_agreement'){initial.push(doc);continue;}
+      if(doc.refund_links?.length){
+        for(const link of doc.refund_links){
+          if(!refundGroups.has(link.settlement_id))refundGroups.set(link.settlement_id,{kind:'refund',id:link.settlement_id,title:uiText('refundDoc.closureDocuments'),docs:[]});
+          refundGroups.get(link.settlement_id).docs.push({...doc,documentRole:uiText(`refundDoc.role.${link.role}`)+' · v'+link.version_no});
+        }
+        if(!doc.request_links?.length)continue;
+      }
       const links=doc.request_links || [];
       if(!links.length){(doc.kind==='addendum'?unlinked:other).push(doc);continue;}
       for(const link of links){
@@ -565,7 +584,7 @@ export class ConnectedWorkspace {
         else group.docs.push({...doc,documentRole});
       }
     }
-    const sections=[...requests.values()].map(group=>({...group,docs:group.docs.sort(newest)}));
+    const sections=[...requests.values(),...refundGroups.values()].map(group=>({...group,docs:group.docs.sort(newest)}));
     sections.sort((a,b)=>newest(a.docs[0],b.docs[0]));
     if(initial.length)sections.push({kind:'initial_agreement',title:uiText("Acuerdo inicial"),docs:initial.sort(newest)});
     if(other.length)sections.push({kind:'reference',title:uiText("Otros documentos del proyecto"),docs:other.sort(newest)});
@@ -575,7 +594,7 @@ export class ConnectedWorkspace {
       return `<div class="cloud-document-row"><button type="button" class="document-button" data-cloud-action="text" data-cloud-id="${escape(doc.id)}" title="${uiText("Ver")} ${escape(doc.title)}"><span class="cloud-document-file-icon" aria-hidden="true">${uiIcon('file-text')}</span><span class="cloud-document-file"><strong>${escape(doc.title)}</strong><small>${doc.documentRole?escape(doc.documentRole)+' · ':''}${doc.mime_type==='application/pdf'?'PDF':'Word'} · ${escape(date(doc.created_at))}</small>${extraction?.status!=='ready'?`<span class="cloud-document-read-status" data-document-status>${extraction?.status==='error'?uiText("Lectura pendiente"):uiText("Pendiente de lectura")}</span>`:''}</span></button><div class="cloud-document-actions"><button class="cloud-icon-button" data-cloud-action="download" data-cloud-id="${escape(doc.id)}" aria-label="${uiText("Descargar original")} ${escape(doc.title)}" title="${uiText("Descargar original")}">${uiIcon('download')}</button>${extraction?.status!=='ready'?`<button class="cloud-icon-button" data-cloud-action="retry" data-cloud-id="${escape(doc.id)}" aria-label="${uiText("Reintentar lectura de")} ${escape(doc.title)}" title="${uiText("Reintentar lectura")}">${uiIcon('refresh-cw')}</button>`:''}</div></div>`;
     };
     const content=sections.map(({kind,id,title,docs},index)=>`<details class="cloud-document-group" data-document-kind="${kind}" ${id?`data-document-request="${escape(id)}"`:''} ${index===0?'open':''}><summary><span class="cloud-document-chevron" aria-hidden="true">${uiIcon('chevron-right')}</span><span>${kind==='request'?'Pedido · ':''}${escape(title)}</span><span class="cloud-document-count">${docs.length} ${docs.length===1?uiText("archivo"):uiText("archivos")}</span></summary><div class="document-list">${docs.map(row).join('')}</div></details>`).join('');
-    panel.innerHTML=`<div class="knowledge-layout document-library"><div class="workspace-panel"><div class="library-header"><div><span class="eyebrow">${uiText("BASE DE CONOCIMIENTO")}</span><h3>${uiText("Documentos del proyecto")}</h3></div></div><div class="cloud-library-meta"><span>${this.documents.length} ${this.documents.length===1?uiText("archivo"):uiText("archivos")}</span><span>${uiText("Por pedido · actividad más reciente primero")}</span></div><div class="cloud-doc-groups">${content || ("<p class=\"cloud-section-note\">"+uiText("Los archivos que añadas al proyecto aparecerán aquí.")+"</p>")}</div></div></div>`;
+    panel.innerHTML=`<div class="knowledge-layout document-library"><div class="workspace-panel"><div class="library-header"><div><span class="eyebrow">${uiText("BASE DE CONOCIMIENTO")}</span><h3>${uiText("Documentos del proyecto")}</h3></div><button type="button" class="button secondary" data-cloud-action="upload" data-cloud-purpose="reference">${uiText("refund.addReference")}</button></div><div class="cloud-library-meta"><span>${this.documents.length} ${this.documents.length===1?uiText("archivo"):uiText("archivos")}</span><span>${uiText("Por pedido · actividad más reciente primero")}</span></div><div class="cloud-doc-groups">${content || ("<p class=\"cloud-section-note\">"+uiText("Los archivos que añadas al proyecto aparecerán aquí.")+"</p>")}</div></div></div>`;
   }
 
   renderRows(view) {

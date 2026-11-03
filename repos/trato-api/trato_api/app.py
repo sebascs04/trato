@@ -21,6 +21,11 @@ from .rehearsal_routes import build_rehearsal_router
 from .graph_routes import build_graph_router
 from .reputation_routes import build_reputation_router
 from .proposals.routes import build_proposal_router
+from .refunds.routes import build_refund_router
+from .refunds.workflow import RefundWorkflow
+from .refunds.financial import RefundFinance
+from .refunds.webhook import build_refund_webhook_router
+from .refunds.financial_routes import build_refund_financial_router
 from .proposals.workflow import ProposalWorkflow
 from .gmail.service import GmailSettings, GmailConnectionService
 from .gmail.routes import build_gmail_router
@@ -117,7 +122,7 @@ def require_user(request: Request):
     return services.authenticate(request.headers.get('authorization', ''))
 
 
-def create_app(settings=None, services=None, repository_factory=None, *, gmail_service=None, sandbox_test_service=None, proposal_repository_factory=None, graph_reader=None, rehearsal_service=None):
+def create_app(settings=None, services=None, repository_factory=None, *, gmail_service=None, sandbox_test_service=None, proposal_repository_factory=None, graph_reader=None, rehearsal_service=None, refund_repository_factory=None):
     settings = settings or Settings.from_env()
     services = services or Services(settings)
     app = FastAPI(title='Trato API', version='0.1.0')
@@ -144,6 +149,10 @@ def create_app(settings=None, services=None, repository_factory=None, *, gmail_s
     app.include_router(build_graph_router(settings,require_user,repository_factory,graph_reader))
     app.include_router(build_reputation_router(settings,require_user,repository_factory))
     app.include_router(build_proposal_router(settings, require_user, proposal_repository_factory, ProposalWorkflow(settings,gmail_service)))
+    app.include_router(build_refund_router(settings, require_user, refund_repository_factory, RefundWorkflow(settings,gmail_service)))
+    refund_finance=RefundFinance(settings)
+    app.include_router(build_refund_financial_router(settings,require_user,refund_repository_factory,refund_finance))
+    app.include_router(build_refund_webhook_router(refund_finance))
 
     @app.exception_handler(ApiError)
     async def error_handler(request, error):

@@ -1,6 +1,9 @@
 # Herramientas de archivos para agentes: arquitectura acordada
 
-Decisión explícita de el equipo, 28/10/2026. Implementación de herramientas iniciada el 29/10/2026 en el lote compartido `feature/rehearsal-source-tools`, desde main del PR #3. Las rutas y funciones descritas en «Implementación» existen en código local; no implican que las cinco guías estén incorporadas ni que Ensayos esté conectado al evaluador.
+Actualización vigente del 3 de noviembre: el responsable del proyecto autorizó recuperar la biblioteca mediante Weaviate y herramientas internas en dos nodos. El texto posterior sobre lectura completa obligatoria describe el diseño anterior; queda sustituido por [ensayos-busqueda-vectorial.md](ensayos-busqueda-vectorial.md). La autorización de fuentes y verificación literal continúan.
+
+
+Decisión explícita del responsable del proyecto, 28/10/2026. Implementación de herramientas iniciada el 29/10/2026 en el lote compartido `feature/rehearsal-source-tools`, desde main del PR #3. Las rutas y funciones descritas en «Implementación» existen en código local; no implican que las cinco guías estén incorporadas ni que Ensayos esté conectado al evaluador.
 
 ## Decisión para Trato
 
@@ -61,7 +64,7 @@ En esta implementación el backend resuelve archivos JSON de texto extraído en 
 
 Ambas formas recorren backend → procesador → backend → worker. Las fuentes obligatorias de un evaluador deben obtenerse antes de permitir la evaluación; dejar una herramienta disponible no prueba que el agente la haya usado.
 
-## Definiciones para el equipo
+## Definiciones paral equipo
 
 | Concepto | Qué significa en Trato |
 | --- | --- |
@@ -82,13 +85,13 @@ Con las llamadas internas elegidas, nosotros definimos esos contratos y endpoint
 
 ## Simplicidad documental
 
-Para las guías de Ensayos, el equipo pidió no añadir una gestión de versiones nueva como requisito inicial. Trabajar con los archivos seleccionados, sus IDs y los localizadores existentes. Esta simplificación no elimina el historial contractual de adendas ya construido ni convierte subir un archivo en aceptación.
+Para las guías de Ensayos, el responsable del proyecto pidió no añadir una gestión de versiones nueva como requisito inicial. Trabajar con los archivos seleccionados, sus IDs y los localizadores existentes. Esta simplificación no elimina el historial contractual de adendas ya construido ni convierte subir un archivo en aceptación.
 
 ## Diferencias actuales que requieren coordinación
 
 - La ingesta conectada del worker obtiene el original del backend y después invoca directamente al procesador. Adaptarla al nuevo circuito es trabajo pendiente, no realizado por escribir esta decisión.
-- El evaluador final de Ensayos se ejecuta en el worker con lectura obligatoria de las cinco guías. La ruta local anterior de la API no admite evaluar sin ellas. El personaje de práctica sigue siendo un guion elegido explícitamente.
-- `search_text_file_id` está implementada para la biblioteca administrada de guías, sin MCP, y el evaluador final la ejecuta antes de inferir. Todavía no habilita documentos privados de proyectos.
+- El adaptador local de Ensayos está provisionalmente en la API. Llevar la ejecución del agente al diagrama del worker forma parte de la integración pendiente.
+- `search_text_file_id` está implementada para la biblioteca administrada de guías, sin MCP. Todavía no habilita documentos de proyectos ni está invocada por el adaptador provisional de Ensayos.
 - El compañero humano conserva el recorrido contractual y devoluciones. No modificar sus handlers, contratos o ingesta en paralelo sin acordar el bloque exacto.
 
 ## Cierre esperado de la futura implementación

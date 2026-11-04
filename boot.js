@@ -20,6 +20,8 @@ async function bootTrato() {
       const {createConnectedWorkspace} = await import('/connected-workspace.mjs');
       window.TratoCloud = createConnectedWorkspace();
       installLanguagePreference(window.TratoCloud);
+      const {installProjectGrid}=await import('/project-grid.mjs');
+      installProjectGrid(window.TratoCloud);
       const {installPracticeWorkspace}=await import('/practice-workspace.mjs');
       installPracticeWorkspace(window.TratoCloud);
       const {installReputationWorkspace}=await import('/reputation-workspace.mjs');
@@ -38,8 +40,8 @@ async function bootTrato() {
       installSandboxCheckout(window.TratoCloud);
       const {installProjectAssistant}=await import('/project-assistant.mjs');
       installProjectAssistant(window.TratoCloud);
-      const {installSectionGuide}=await import('/section-guide.mjs');
-      installSectionGuide(window.TratoCloud);
+      const {installDemoWorkspace}=await import('/demo-workspace.mjs');
+      installDemoWorkspace(window.TratoCloud);
     } catch {throw new Error('No se pudo abrir tu espacio. Recarga para volver a intentar.');}
     const script = document.createElement('script');
     script.src = '/app.js';

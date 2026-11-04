@@ -9,6 +9,13 @@ import {browserOriginAllowed} from './web-origin.mjs';
 const localPorts = JSON.parse(readFileSync(new URL('./local-ports.json', import.meta.url), 'utf8'));
 const port = Number(process.env.PORT || localPorts.web);
 const assets = new Map([
+  ['/project-grid.mjs',['project-grid.mjs','text/javascript; charset=utf-8']],
+  ['/project-grid-locale-keys.mjs',['project-grid-locale-keys.mjs','text/javascript; charset=utf-8']],
+  ['/project-grid.css',['project-grid.css','text/css; charset=utf-8']],
+  ['/assets/vendor/project-grid-vendor.mjs',['assets/vendor/project-grid-vendor.mjs','text/javascript; charset=utf-8']],
+  ['/demo-workspace.mjs',['demo-workspace.mjs','text/javascript; charset=utf-8']],
+  ['/demo-workspace.css',['demo-workspace.css','text/css; charset=utf-8']],
+  ['/practice-comparison.mjs',['practice-comparison.mjs','text/javascript; charset=utf-8']],
   ['/project-assistant.mjs',['project-assistant.mjs','text/javascript; charset=utf-8']],
   ['/project-assistant.css',['project-assistant.css','text/css; charset=utf-8']],
   ['/assets/mascot/trato-guide.png',['assets/mascot/trato-guide.png','image/png']],

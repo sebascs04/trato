@@ -65,6 +65,12 @@ class BackendToolClient:
     def execute(self, call):
         return self.request('POST', '/internal/agent-tools/execute', json=call)
 
+    def reference_catalog(self):
+        return self.request('GET','/internal/reference-tools/catalog')
+
+    def reference_execute(self,call):
+        return self.request('POST','/internal/reference-tools/execute',json=call,timeout=120)
+
 
 class ToolRuntime:
     def __init__(self, client, catalog, *, enabled_tools):

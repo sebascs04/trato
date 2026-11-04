@@ -1,5 +1,6 @@
 """Fixed-endpoint OAuth authorization code + PKCE, and Gmail send transport."""
 import base64
+from email import policy
 from dataclasses import dataclass, field
 import hashlib
 import math
@@ -248,7 +249,8 @@ class GmailConnectionService:
                 connection=self.credentials(user)
                 if expected_sender is not None and connection['email']!=expected_sender:raise GmailError('GMAIL_SENDER_CHANGED',409)
                 message=builder(connection['email'],item,notification_id)
-                raw=base64.urlsafe_b64encode(message.as_bytes()).decode()
+                # Keep indivisible Message-ID tokens intact and serialize RFC mail with CRLF.
+                raw=base64.urlsafe_b64encode(message.as_bytes(policy=policy.SMTP.clone(max_line_length=998))).decode()
                 status,result=self.transport('POST',SEND_URL,headers={'Authorization':'Bearer '+connection['access_token']},json={'raw':raw})
             if status!=200:
                 if status in (401,403):raise GmailError('GMAIL_SEND_NOT_AUTHORIZED',409)

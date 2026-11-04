@@ -1,5 +1,5 @@
 import {AIJobClient} from './ai-jobs.mjs';
-import {renderAIActivity} from './ai-activity.mjs';
+import {renderAIActivity,submitChatOnEnter,chatScrollPosition,restoreChatScroll} from './ai-activity.mjs';
 import {uiText,uiLanguage} from './i18n.mjs';
 import {icon} from './icons.mjs';
 const text=key=>uiText(['projectAssistant',key].join('.'));
@@ -13,13 +13,13 @@ export function validateProjectAnswer(value,projectId){
  return value;
 }
 export function installProjectAssistant(cloud){
- let context=null;
+ let context=null,sourceTimer=null;
  const current=state=>context===state&&cloud.active&&cloud.navigationOwner===state.owner&&cloud.projectId===state.project;
  const visible=state=>current(state)&&cloud.tab==='asistente';
  function paint(state){if(visible(state))cloud.notify();}
  function persist(state){cloud.storage.setItem(state.key,JSON.stringify({version:1,ids:state.ids}));}
  async function loadSources(state){
-  state.sourceLoading=true;
+  if(state.sourceLoadingInFlight)return;state.sourceLoadingInFlight=true;state.sourceLoading=true;
   try{
    const files=[];let offset=0;
    do{
@@ -31,12 +31,13 @@ export function installProjectAssistant(cloud){
    }while(offset!==null);
    state.sourceFiles=files;state.sourceError='';
   }catch(error){if(current(state))state.sourceError=error.code||'AI_REQUEST_FAILED';}
-  finally{if(current(state)){state.sourceLoading=false;paint(state);}}
+  finally{if(current(state)){state.sourceLoading=false;state.sourceLoadingInFlight=false;paint(state);clearTimeout(sourceTimer);if(visible(state)&&!state.sourceError&&state.sourceFiles.some(f=>f.summary_status!=='ready'))sourceTimer=setTimeout(()=>{if(visible(state))loadSources(state);},8000);}}
  }
  function sourcePanel(state){
+  if(!state.sourceOpen)return '';
   const processing=state.processingJob?.state;
   const busy=processing&&['queued','running'].includes(processing.status);
-  return `<details class="project-assistant-preparation" ${state.sourceFiles.some(f=>f.summary_status!=='ready')?'open':''}><summary>${text('projectDocuments')}</summary><p>${text('prepareHelp')}</p>${state.sourceLoading?`<p role="status">${text('loadingSources')}</p>`:state.sourceError?`<p class="cloud-error" role="alert">${messageError(state.sourceError)}</p>`:state.sourceFiles.length?state.sourceFiles.map(file=>`<div class="project-assistant-file"><span><strong>${esc(file.title)}</strong><small>${text(file.summary_status==='ready'?'documentReady':file.status==='source_pending'?'documentReading':'documentPending')}</small></span>${file.summary_status==='ready'?icon('circle-check'):`<button type="button" class="button secondary" data-assistant-action="process" data-document-id="${esc(file.id)}" ${state.preparing||file.status==='source_pending'?'disabled':''}>${text('prepare')}</button>`}</div>`).join(''):`<p>${text('noSources')}</p>`}${busy?renderAIActivity({label:text('preparing'),hint:text('prepareWait')}):''}${processing&&['failed','unavailable'].includes(processing.status)?`<p class="cloud-error" role="alert">${messageError(processing.error)}</p>`:''}${state.sourceNotice?`<p role="status">${text(state.sourceNotice)}</p>`:''}<button type="button" class="text-button" data-assistant-action="refresh-sources" ${state.sourceLoading?'disabled':''}>${text('refreshSources')}</button></details>`;
+  return `<section class="project-assistant-preparation" role="dialog" aria-label="${text('projectDocuments')}"><header><h4>${text('projectDocuments')}</h4><button type="button" class="text-button" data-assistant-action="close-sources" aria-label="${text('closeDocuments')}" title="${text('closeDocuments')}">${icon('x')}</button></header><p>${text('prepareHelp')}</p>${state.sourceLoading?`<p role="status">${text('loadingSources')}</p>`:state.sourceError?`<p class="cloud-error" role="alert">${messageError(state.sourceError)}</p>`:state.sourceFiles.length?state.sourceFiles.map(file=>`<div class="project-assistant-file"><span><strong>${esc(file.title)}</strong><small>${text(file.summary_status==='ready'?'documentReady':file.status==='source_pending'?'documentReading':'documentPending')}</small></span>${file.summary_status==='ready'?icon('circle-check'):`<button type="button" class="button secondary" data-assistant-action="process" data-document-id="${esc(file.id)}" ${state.preparing||file.status==='source_pending'?'disabled':''}>${text('prepare')}</button>`}</div>`).join(''):`<p>${text('noSources')}</p>`}${busy?renderAIActivity({label:text('preparing'),hint:text('prepareWait')}):''}${processing&&['failed','unavailable'].includes(processing.status)?`<p class="cloud-error" role="alert">${messageError(processing.error)}</p>`:''}${state.sourceNotice?`<p role="status">${text(state.sourceNotice)}</p>`:''}${state.sourceError?`<button type="button" class="text-button" data-assistant-action="refresh-sources">${text('retrySources')}</button>`:''}</section>`;
  }
  async function prepare(state,fileId){
   if(state.preparing)return;
@@ -73,7 +74,7 @@ export function installProjectAssistant(cloud){
   if(context&&context.project===cloud.projectId&&context.owner===cloud.navigationOwner)return context;
   context?.job.dispose();context?.processingJob?.dispose();
   const owner=cloud.navigationOwner,project=cloud.projectId;
-  const state={owner,project,key:`${cloud.session.key}:project-assistant:${owner}:${project}`,draft:'',ids:[],entries:[],loading:false,historyError:'',sourceFiles:[],sourceLoading:true,sourceError:'',sourceNotice:'',preparing:'',processingId:'',processingJob:null};
+  const state={owner,project,key:`${cloud.session.key}:project-assistant:${owner}:${project}`,draft:'',ids:[],entries:[],loading:false,historyError:'',sourceFiles:[],sourceOpen:false,sourceLoading:true,sourceError:'',sourceNotice:'',preparing:'',processingId:'',processingJob:null};
   const stored=cloud.storage.getItem(state.key);
   if(stored!==null){const record=JSON.parse(stored);if(record.version!==1||!Array.isArray(record.ids)||record.ids.length>12||record.ids.some(id=>typeof id!=='string'||!/^[a-f0-9-]{36}$/.test(id)))throw Error('AI_JOB_INVALID');state.ids=record.ids;}
   context=state;
@@ -106,10 +107,11 @@ export function installProjectAssistant(cloud){
    const source=value.sources.find(s=>s.source_id===citation.source_id);
    return `<article class="project-assistant-source"><span>${text(source.source_kind==='summary'?'summarySource':'originalSource')}</span><button type="button" data-assistant-action="source" data-document-id="${esc(source.file_id)}">${icon('file-text')}${esc(source.title)}${icon('arrow-up-right')}</button><blockquote>${esc(citation.quote)}</blockquote>${source.locator?`<small>${text(source.locator.kind==='page'?'page':'paragraph')} ${esc(source.locator[source.locator.kind])}</small>`:''}</article>`;
   }).join('');
-  panel.innerHTML=`<section class="workspace-panel project-assistant" aria-label="${text('title')}"><header><div><span class="eyebrow">${text('eyebrow')}</span><h3>${text('title')}</h3><p>${text('intro')}</p></div><button type="button" class="text-button" data-assistant-action="clear" ${pending?'disabled':''}>${icon('refresh-cw')}${text('newConversation')}</button></header><div class="project-assistant-log" role="log" aria-live="polite">${state.loading?`<p role="status">${text('loadingHistory')}</p>`:state.entries.map(entry=>`<article class="project-assistant-exchange"><p class="project-assistant-question"><strong>${text('you')}</strong>${esc(entry.result.question)}</p><div class="project-assistant-answer"><strong>${icon('sparkles')}${text('answer')}</strong><p>${esc(entry.result.answer)}</p>${entry.result.missing_information.length?`<ul>${entry.result.missing_information.map(info=>`<li>${esc(info)}</li>`).join('')}</ul>`:''}${entry.result.citations.length?`<details><summary>${text('sources')}</summary><div class="project-assistant-sources">${citations(entry.result)}</div></details>`:''}</div></article>`).join('')||`<div class="project-assistant-empty">${icon('messages-square')}<h4>${text('emptyTitle')}</h4><p>${text('emptyCopy')}</p></div>`}</div>${sourcePanel(state)}${pending?renderAIActivity({label:text(job.status==='queued'?'queued':'thinking'),hint:text('waitHint')}):''}${failed?`<p class="cloud-error" role="alert">${messageError(job.error)}</p><button type="button" class="button secondary" data-assistant-action="retry">${text(job.uncertain?'retrySubmission':'retry')}</button>`:''}${state.historyError?`<p class="cloud-error" role="alert">${messageError(state.historyError)}</p>`:''}<form data-project-question><label class="field" for="project-assistant-question">${text('questionLabel')}</label><textarea class="context-box" id="project-assistant-question" name="question" rows="3" maxlength="4000" required ${pending||state.loading||state.historyError?'disabled':''} placeholder="${text('placeholder')}">${esc(state.draft)}</textarea><div class="project-assistant-compose"><small>${text('scopeNote')}</small><button type="submit" class="button" ${pending||state.loading||state.historyError?'disabled':''}>${text('ask')}${icon('send')}</button></div></form></section>`;
+  panel.innerHTML=`<section class="workspace-panel project-assistant" aria-label="${text('title')}"><header><div><span class="eyebrow">${text('eyebrow')}</span><h3>${text('title')}</h3><p>${text('intro')}</p></div><button type="button" class="text-button" data-assistant-action="clear" ${pending?'disabled':''}>${icon('refresh-cw')}${text('newConversation')}</button></header><div class="project-assistant-log" role="log" aria-live="polite">${state.loading?`<p role="status">${text('loadingHistory')}</p>`:state.entries.map(entry=>`<article class="project-assistant-exchange"><p class="project-assistant-question"><strong>${text('you')}</strong>${esc(entry.result.question)}</p><div class="project-assistant-answer"><strong><img class="project-assistant-avatar" src="/assets/mascot/trato-guide.png" alt="" width="38" height="38">${text('answer')}</strong><p>${esc(entry.result.answer)}</p>${entry.result.missing_information.length?`<ul>${entry.result.missing_information.map(info=>`<li>${esc(info)}</li>`).join('')}</ul>`:''}${entry.result.citations.length?`<details><summary>${text('sources')}</summary><div class="project-assistant-sources">${citations(entry.result)}</div></details>`:''}</div></article>`).join('')||`<div class="project-assistant-empty">${icon('messages-square')}<h4>${text('emptyTitle')}</h4><p>${text('emptyCopy')}</p></div>`}</div>${pending?renderAIActivity({label:text(job.status==='queued'?'queued':'thinking'),hint:text('waitHint')}):''}${failed?`<p class="cloud-error" role="alert">${messageError(job.error)}</p><button type="button" class="button secondary" data-assistant-action="retry">${text(job.uncertain?'retrySubmission':'retry')}</button>`:''}${state.historyError?`<p class="cloud-error" role="alert">${messageError(state.historyError)}</p>`:''}<form data-project-question><label class="field" for="project-assistant-question">${text('questionLabel')}</label><textarea class="context-box" id="project-assistant-question" name="question" rows="3" maxlength="4000" required ${pending||state.loading||state.historyError?'disabled':''} placeholder="${text('placeholder')}">${esc(state.draft)}</textarea><div class="project-assistant-document-tools"><button type="button" class="text-button" data-assistant-action="open-sources" aria-haspopup="dialog" aria-expanded="${state.sourceOpen}">${icon('file-text')}${text('projectDocuments')}</button>${sourcePanel(state)}</div><div class="project-assistant-compose"><small>${text('scopeNote')}</small><button type="submit" class="button" ${pending||state.loading||state.historyError?'disabled':''}>${text('ask')}${icon('send')}</button></div></form></section>`;
+  restoreChatScroll(panel.querySelector('.project-assistant-log'),state.chatScroll);
  };
  async function ask(state,question){
-  state.draft=question;
+  state.chatScroll=null;state.draft=question;
   await state.job.start('/api/v1/ai/project-questions',{project_id:state.project,question,output_language:uiLanguage(),history_ids:state.ids.slice(-6)});
  }
  const submit=event=>{
@@ -121,6 +123,8 @@ export function installProjectAssistant(cloud){
  const click=event=>{
   const button=event.target.closest('[data-assistant-action]');if(!button||!context||!visible(context))return;
   const state=context,action=button.dataset.assistantAction;
+  if(action==='open-sources'){state.sourceOpen=!state.sourceOpen;if(state.sourceOpen)loadSources(state);paint(state);if(state.sourceOpen)cloud.document.querySelector('[data-assistant-action=close-sources]')?.focus();}
+  if(action==='close-sources'){state.sourceOpen=false;paint(state);cloud.document.querySelector('[data-assistant-action=open-sources]')?.focus();}
   if(action==='refresh-sources')loadSources(state);
   if(action==='process')prepare(state,button.dataset.documentId);
   if(action==='source')cloud.run(()=>cloud.previewDocument(button.dataset.documentId));
@@ -132,6 +136,10 @@ export function installProjectAssistant(cloud){
  };
  const original=cloud.syncChrome.bind(cloud);
  cloud.syncChrome=function(){original();if(context&&(!cloud.active||cloud.navigationOwner!==context.owner||cloud.projectId!==context.project)){context.job.dispose();context.processingJob?.dispose();context=null;}};
+ const scroll=event=>{if(event.target.matches?.('.project-assistant-log')&&context&&visible(context))context.chatScroll=chatScrollPosition(event.target);};
+ cloud.document.addEventListener('scroll',scroll,true);
+ const keydown=event=>{if(context&&visible(context))submitChatOnEnter(event,'#project-assistant-question');if(event.key==='Escape'&&context?.sourceOpen){context.sourceOpen=false;paint(context);cloud.document.querySelector('[data-assistant-action=open-sources]')?.focus();}};
+ cloud.document.addEventListener('keydown',keydown);
  cloud.document.addEventListener('submit',submit);cloud.document.addEventListener('input',input);cloud.document.addEventListener('click',click);
- return ()=>{context?.job.dispose();context?.processingJob?.dispose();cloud.document.removeEventListener('submit',submit);cloud.document.removeEventListener('input',input);cloud.document.removeEventListener('click',click);};
+ return ()=>{cloud.document.removeEventListener('scroll',scroll,true);clearTimeout(sourceTimer);cloud.document.removeEventListener('keydown',keydown);context?.job.dispose();context?.processingJob?.dispose();cloud.document.removeEventListener('submit',submit);cloud.document.removeEventListener('input',input);cloud.document.removeEventListener('click',click);};
 }

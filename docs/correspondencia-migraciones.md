@@ -60,3 +60,8 @@ La migracion `20261101154326_ai_initial_project_plans.sql` coincide con la versi
 ## Procesamiento de archivos y proyeccion comunitaria
 
 `20261101212324_file_processing_and_public_vector_sources.sql` coincide con la version remota `20261101212324`. El nombre local se ajusto a la version real registrada al aplicar el SQL; no aplicar tambien la version inicial de preparacion. Incluye opciones/artefactos con RLS y RPC server-only de outbox, fuentes y recibos de reputacion. La prueba `supabase/tests/file_processing_and_public_vectors.sql` se ejecuto bajo rollback: aislamiento, permisos, retirada y rechazo de escrituras obsoletas.
+
+
+## Uso de antecedentes en planes confirmados
+
+La migracion `20261103170835_reputation_plan_usage.sql` coincide con la version remota `20261103170835`, nombre `reputation_plan_usage`. El archivo inicial generado por CLI se renombro para conservar esa correspondencia antes de publicarlo. Incluye dos tablas privadas con RLS cerrado y funciones con permisos limitados. La prueba `supabase/tests/reputation_plan_usage.sql` se ejecuto con fixtures sinteticos bajo rollback, sin dejar cuentas, planes ni votos de prueba. No ejecutar esta migracion otra vez en trato-dev. No hay backfill automatico ni nuevas credenciales/env.

@@ -2,19 +2,19 @@
 
 ## Ramas y publicación
 
-Preferencia de el responsable del proyecto, 27/10/2026:
+Preferencia del responsable del proyecto, 27/10/2026:
 
 - La rama principal es `main`. Todo cambio debe prepararse en una rama de trabajo separada, publicarse en esa rama y después integrarse mediante un pull request y merge a `main`.
 - No crear commits directamente sobre `main` ni actualizarla directamente para publicar cambios. Esta regla también aplica a publicaciones mediante el conector de GitHub cuando la raíz local no tenga un checkout Git operativo.
 - Coordinar las publicaciones entre chats para evitar pisar cambios. Verificar los cambios y las pruebas antes del merge; no interpretar esta regla como una orden de publicar o fusionar trabajo pendiente.
-- Aclaración explícita de el responsable del proyecto: no crear ni abrir un pull request hasta que él lo solicite expresamente. Trabajar en una rama, pedir cambios o autorizar un push no autoriza crear un PR.
-- Aceptar o fusionar un PR requiere autorización explícita de el responsable del proyecto para ese PR. Autorizar su creación no autoriza su aceptación ni su merge; los chats solo realizan esas acciones en su nombre cuando él lo indique.
+- Aclaración explícita del responsable del proyecto: no crear ni abrir un pull request hasta que él lo solicite expresamente. Trabajar en una rama, pedir cambios o autorizar un push no autoriza crear un PR.
+- Aceptar o fusionar un PR requiere autorización explícita del responsable del proyecto para ese PR. Autorizar su creación no autoriza su aceptación ni su merge; los chats solo realizan esas acciones en su nombre cuando él lo indique.
 
 ### Rama compartida y push conjunto
 
-Preferencia explícita de el responsable del proyecto, 28/10/2026:
+Preferencia explícita del responsable del proyecto, 28/10/2026:
 
-- el equipo y el equipo trabajan siempre sobre la misma rama de trabajo acordada para cada lote, creada desde `main` actualizado. No preparar ramas independientes por chat salvo nueva instrucción expresa de el responsable del proyecto.
+- el equipo y el equipo trabajan siempre sobre la misma rama de trabajo acordada para cada lote, creada desde `main` actualizado. No preparar ramas independientes por chat salvo nueva instrucción expresa del responsable del proyecto.
 - Mantener el reparto de tareas y las reservas de archivos aunque la rama sea compartida; coordinar antes de editar archivos comunes.
 - Nombrar un único responsable de publicación por lote. Ese responsable reúne los cambios terminados de ambos chats, revisa el snapshot y las pruebas, y realiza un solo push conjunto cuando el responsable del proyecto lo autorice. El otro chat no publica en paralelo.
 - No subir secretos, archivos privados ni trabajo ajeno pendiente por interpretar «todos los cambios» como una copia indiscriminada del workspace.
@@ -38,7 +38,7 @@ Preferencia explícita de el responsable del proyecto, 28/10/2026:
 
 ## Sin fallbacks sin autorización
 
-Preferencia explícita de el responsable del proyecto, 25 de octubre de 2026:
+Preferencia explícita del responsable del proyecto, 25 de octubre de 2026:
 
 - No implementar ni activar fallbacks sin autorización explícita del usuario para esa alternativa concreta.
 - Si una integración, proveedor, modelo o paso falla, mostrar el fallo y conservar el estado correcto. el responsable del proyecto prefiere un error visible a un plan B que no autorizó.
@@ -57,7 +57,7 @@ Esta instrucción se aplica a todas las partes del proyecto y a los chats que co
 
 ## Historial de adendas y revisiones
 
-- Aclaración de el responsable del proyecto, 26/10/2026: un borrador aún no enviado se puede editar conservando su número de versión. Guardar instantáneas internas de sus cambios sin sobrescribir PDFs anteriores ni presentarlas como nuevas versiones para el cliente.
+- Aclaración del responsable del proyecto, 26/10/2026: un borrador aún no enviado se puede editar conservando su número de versión. Guardar instantáneas internas de sus cambios sin sobrescribir PDFs anteriores ni presentarlas como nuevas versiones para el cliente.
 - Una nueva versión para el cliente nace de ajustes solicitados por él después de recibir la anterior, con respaldo de su respuesta. Las versiones enviadas permanecen inmutables.
 - Cada revisión conserva su alcance, precio, plazo, condiciones, PDF exacto, referencias a fuentes y eventos de envío, aceptación y pago que le correspondan.
 - Una revisión nueva requiere su propio envío y aceptación; no hereda la autorización de una versión anterior.
@@ -71,7 +71,7 @@ Esta instrucción se aplica a todas las partes del proyecto y a los chats que co
 
 ## Conexiones de grafos
 
-- Regla de el responsable del proyecto: cada flecha tiene un punto de salida y un punto de entrada exclusivos en sus nodos. Ninguna conexión puede compartir puerto con otra, aunque una entre y otra salga o conecten el mismo par de nodos.
+- Regla del responsable del proyecto: cada flecha tiene un punto de salida y un punto de entrada exclusivos en sus nodos. Ninguna conexión puede compartir puerto con otra, aunque una entre y otra salga o conecten el mismo par de nodos.
 - Separar también los tramos cercanos a las tarjetas para que las flechas no se fusionen visualmente en una única entrada/salida. Aplicar esta regla a todos los grafos, conservando la dirección y las relaciones reales.
 - Los verbos de las relaciones deben tener espacio libre alrededor: ninguna línea ni punta de flecha puede atravesar su etiqueta. Calcular su colocación contra todas las conexiones del mapa, además de tarjetas y otras etiquetas, y reservar un margen visible alrededor del texto.
 
@@ -84,14 +84,14 @@ Esta instrucción se aplica a todas las partes del proyecto y a los chats que co
 
 ## Un pedido abierto por proyecto
 
-- Regla de el responsable del proyecto, 26/10/2026: no registrar otro pedido mientras haya uno abierto en ese mismo proyecto. Otros proyectos del mismo cliente son independientes.
+- Regla del responsable del proyecto, 26/10/2026: no registrar otro pedido mientras haya uno abierto en ese mismo proyecto. Otros proyectos del mismo cliente son independientes.
 - El bloqueo comienza con el documento email_request, incluso antes de preparar la adenda. Reintentos de la misma subida conservan su idempotencia; fuentes adicionales y feedback del mismo pedido siguen permitidos.
 - Un pedido finalizado con pago verificado, uno aceptado sin adicional o un cierre explícito por rechazo/retiro libera el proyecto. No cerrar unilateralmente una aceptación registrada ni alterar cambios finalizados.
 - El backend y la base de datos deben imponer la regla bajo bloqueo del proyecto, no solo ocultar/deshabilitar el botón. Historial y documentos permanecen consultables.
 
 ## Idiomas de la interfaz
 
-Preferencia de el responsable del proyecto, 27/10/2026:
+Preferencia del responsable del proyecto, 27/10/2026:
 
 - Trato admite únicamente español (`es`) e inglés (`en`), seleccionables desde el perfil.
 - Todo texto nuevo o modificado de interfaz debe tener ambas traducciones en los catálogos de `locales/`, incluidos errores, estados, formularios, ayudas, títulos, etiquetas accesibles y tooltips.
@@ -104,7 +104,7 @@ Preferencia de el responsable del proyecto, 27/10/2026:
 
 ## Objetivo de entrega anticipada
 
-Preferencia de el responsable del proyecto, 31/10/2026:
+Preferencia del responsable del proyecto, 31/10/2026:
 
 - Objetivo interno: enviar el proyecto bastante completo el 4 de noviembre de 2026 para la revision anticipada del 5.
 - La revision requiere pulsar Submit project; guardar un borrador no basta. El envio temprano sigue siendo editable hasta el cierre final del 12 de noviembre, 12:00 Pacifico (15:00 Peru).
@@ -114,7 +114,7 @@ Preferencia de el responsable del proyecto, 31/10/2026:
 
 - El perfil permite elegir modelo solo a probadores autorizados por el backend mediante identidad confirmada; nunca autorizar con user_metadata, datos de formulario ni ocultacion de frontend.
 - La preferencia se guarda por usuario y se fija en cada trabajo antes de encolarlo. El worker valida su propia lista permitida; no reemplazar un modelo fallido o retirado.
-- Alcance conectado: Ensayos, Reputacion y planificacion inicial. Los agentes de cambios/devoluciones siguen siendo responsabilidad separada de el responsable de cambios y devoluciones. Consultar docs/modelos-gemini.md.
+- Alcance conectado: Ensayos, Reputacion y planificacion inicial. Los agentes de cambios/devoluciones siguen siendo responsabilidad separada del responsable de cambios y devoluciones. Consultar docs/modelos-gemini.md.
 - Credenciales y correos de probadores permanecen en configuracion privada; no publicarlos en el repo.
 
 ## Contratos de agentes y espera de IA
@@ -141,15 +141,31 @@ Preferencia de el responsable del proyecto, 31/10/2026:
 - El worker orquesta. El backend autoriza propietario/cliente/proyecto, determina IDs/generaciones y valida fuentes/resultados. El file processor ejecuta tanto guardado/embeddings como busqueda en Weaviate. No poner el SDK ni las credenciales de Weaviate en API, worker o frontend.
 - Recorrido de herramientas: worker → backend → file processor → Weaviate y vuelta. Un documento o prompt no puede seleccionar tenant ni ampliar permisos.
 - Una coleccion compartida; tenants `projects_private` y `reputation_public`; tercer tenant libre. No crear un tenant por usuario/cliente/proyecto. Toda consulta privada impone owner/client/project y fuentes vigentes, aunque comparta tenant con otros usuarios.
-- Las cinco guias de Ensayos siguen siendo obligatorias y se leen completas fuera de Weaviate. La recuperacion vectorial no sustituye ese control.
+- Actualización expresa del responsable del proyecto, 3 de noviembre: Ensayos usa recuperación vectorial de la biblioteca administrada en references_shared. La disponibilidad y versión de las fuentes se autorizan mediante manifiesto; el agente consulta pasajes y contexto con herramientas. El modelo ya no recibe obligatoriamente el texto completo de todas las guías. Ver docs/ensayos-busqueda-vectorial.md.
 - Comunicar nuevos parametros de entorno y dependencias a el responsable de cambios y devoluciones antes de publicar; `.env.example` y docs/configuracion-vectorial-colaboradores.md deben acompanarlos. No subir claves ni biblioteca privada. Crear un tenant no acredita su flujo de indexacion conectado.
 
 
 ## Sin compras ni activacion de recursos facturables
 
-Instruccion explicita de el responsable del proyecto, 1 de noviembre de 2026:
+Instruccion explicita del responsable del proyecto, 1 de noviembre de 2026:
 
 - No realizar compras, contratar planes/suscripciones/dominios ni activar recursos que puedan generar cargos. No interpretar los creditos promocionales ni una indicacion general de continuar el despliegue como autorizacion para esas acciones.
 - Aclaracion posterior del mismo dia: el responsable del proyecto acepta usar servicios que consuman los creditos, pero antes de cada activacion facturable se debe explicar el recurso, su configuracion, costo estimado y efecto sobre los creditos, y esperar su aprobacion concreta. Una consulta sobre opciones o una indicacion general de continuar no equivale a aprobar el recurso.
-- Autorizacion posterior expresa de el responsable del proyecto, 1 de noviembre: permite configurar el resto del despliegue previsto (Artifact Registry, Compute Engine y Cloud Run, region Iowa, configuracion revisada) siempre que el consumo sea elegible para los creditos de Google. No convertir la cuenta de prueba a pago ni contratar servicios externos; verificar saldo, vencimiento y cobertura antes de ampliar recursos. Las cifras son estimaciones de consumo, no reservas ni limites automaticos. Esta autorizacion de infraestructura no autoriza push, PR o merge de codigo.
+- Autorizacion posterior expresa del responsable del proyecto, 1 de noviembre: permite configurar el resto del despliegue previsto (Artifact Registry, Compute Engine y Cloud Run, region Iowa, configuracion revisada) siempre que el consumo sea elegible para los creditos de Google. No convertir la cuenta de prueba a pago ni contratar servicios externos; verificar saldo, vencimiento y cobertura antes de ampliar recursos. Las cifras son estimaciones de consumo, no reservas ni limites automaticos. Esta autorizacion de infraestructura no autoriza push, PR o merge de codigo.
 - Alojamiento previsto en Google Cloud. Conservar Supabase, Neo4j y Weaviate existentes; no migrarlos ni contratar alternativas por asumir que todo debe estar en Google.
+
+## Textos de producto y presentación
+
+Preferencia del responsable del proyecto, 3 de noviembre de 2026:
+
+- Centrar los textos en lo que aporta Trato y en las acciones del usuario. Evitar bloques genéricos de «límites del análisis», advertencias repetitivas y frases promocionales que describan lo que el producto no hace.
+- Mantener los errores reales y los estados de operación visibles, sin inventar resultados ni prometer resultados que el sistema no haya verificado. Conservar la validación de los contratos de agentes aunque determinados campos no se presenten en la interfaz.
+- En la espera de IA mostrar solo la mascota, sin órbitas ni símbolos detrás de ella.
+
+## Selección de evidencia en Ensayos
+
+el responsable del proyecto, 3 de noviembre de 2026:
+
+- El agente decide qué pasajes de las fuentes autorizadas respaldan cada hallazgo. No imponer presupuestos artificiales de palabras por cita o documento ni una cantidad fija de citas por hallazgo.
+- Conservar JSON validado, referencias existentes y comprobación literal contra los originales. No inventar, completar ni truncar las citas para simular evidencia.
+- el responsable del proyecto autorizó después conectar la biblioteca a Weaviate y sustituir el nodo de lectura completa por dos nodos: investigación mediante herramientas y evaluación con evidencia recuperada. Mantener separados los tenants y comprobar citas literales contra los originales. No usar lectura completa como fallback ante un error de búsqueda.

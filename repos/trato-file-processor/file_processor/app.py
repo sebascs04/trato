@@ -12,6 +12,7 @@ from .source_text import search_text_file_id, MAX_BUNDLE_BYTES
 from .chunking_routes import build_chunking_router
 from .vector_routes import build_vector_router
 from .prepared_text import build_prepared_router
+from .reference_vectors import build_reference_router
 from pydantic import ValidationError
 import json
 
@@ -22,6 +23,7 @@ def create_app(token=None):
     app.include_router(build_chunking_router(service_token))
     app.include_router(build_vector_router(service_token))
     app.include_router(build_prepared_router(service_token))
+    app.include_router(build_reference_router(service_token))
 
     @app.get('/health')
     def health():

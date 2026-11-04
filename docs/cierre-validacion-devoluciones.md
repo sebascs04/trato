@@ -15,8 +15,8 @@ Los casos se ejecutaron desde la aplicación por el usuario, con revisión de pr
 
 Se registró un listener temporal dedicado con las cuatro suscripciones del adaptador, y se cargó su ID en la API. Se solicitaron mediante la API oficial de PayPal reenvíos de dos eventos ya existentes, dirigidos solo a este listener, sin crear capturas ni reembolsos:
 
-- `WH-3BK517468D4862700-0BF781347F4446646` — devolución del inicial de USD 6.
-- `WH-7UU73482FW3852432-02932901RY943312R` — devolución de la adenda de USD 12.
+- Evento Sandbox verificado (identificador conservado en evidencia privada) — devolución del inicial de USD 6.
+- Evento Sandbox verificado (identificador conservado en evidencia privada) — devolución de la adenda de USD 12.
 
 Primera ronda y repetición explícita: PayPal devolvió HTTP 202 en las cuatro solicitudes de reenvío. El túnel registró seis respuestas HTTP 200 al listener, incluidas entregas adicionales del proveedor. El código del endpoint verifica la firma con PayPal antes de registrar el evento.
 

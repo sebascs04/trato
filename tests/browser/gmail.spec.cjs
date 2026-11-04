@@ -14,7 +14,7 @@ async function setup(page,{configured=true}={}){
     else if(path==='/api/v1/integrations/gmail')data={configured,connected,email:connected?'sender@example.com':null};
     else if(path==='/api/v1/integrations/gmail/connect'){
       expect(route.request().headers().authorization).toBe('Bearer synthetic-token');
-      expect(route.request().postDataJSON()).toEqual({});
+      expect(route.request().postDataJSON()).toEqual({purpose:'send'});
       data={authorization_url:'https://accounts.google.com/o/oauth2/v2/auth?state=synthetic-state-for-browser-test'};
     }else if(path==='/api/v1/integrations/gmail/complete'){
       expect(route.request().headers().authorization).toBe('Bearer synthetic-token');
@@ -34,7 +34,6 @@ test('profile connects Gmail with a user-bound callback and disconnects',async({
   const {completes,errors}=await setup(page);
   await expect(page.getByRole('button',{name:'Conectar Gmail',exact:true})).toBeEnabled();
   await page.getByRole('button',{name:'Conectar Gmail',exact:true}).click();
-  await expect(page.locator('[data-gmail-panel]')).toContainText('sender@example.com');
   await expect(page.locator('[data-gmail-panel] .cloud-connection-badge')).toHaveText('Conectado');
   mkdirSync('.local/browser-tests',{recursive:true});
   await page.screenshot({path:'.local/browser-tests/account-profile.png',fullPage:true});

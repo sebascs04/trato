@@ -6,6 +6,10 @@ Actualizado: 31 de octubre de 2026. Se incorpora el cierre del flujo de renegoci
 
 TRATO-13, TRATO-14, TRATO-15 y TRATO-16: **implementados y validados en el alcance Sandbox aprobado, sin IA**. Dos recorridos manuales confirmados (cierre global parcial e individual total de adenda) y prueba conectada de entrega/deduplicación de eventos genuinos completados. Los apartados siguientes conservan el historial de tandas; sus pendientes históricos se resuelven en [el acta de cierre](cierre-validacion-devoluciones.md). La IA, un checkout inicial integrado y el uso Live no forman parte de este cierre. No se autoriza PR ni merge por publicar esta rama.
 
+## Nuevo lote: IA en expedientes — 3 de noviembre de 2026
+
+Requerimiento ampliado: asistentes para cambios, precios con antecedentes, renegociaciones y devoluciones; trazabilidad documental en Neo4j e interfaz conversacional con actividad real. Ver [backlog por tandas](backlog-ia-expedientes.md) y [plan de tanda 1](tanda-1-ia-expedientes-plan.md). Estado: análisis y planificación; pendiente de validación del usuario antes de implementar. Cada tanda exige pruebas de código, integración real en la app y validación antes de continuar.
+
 ## Objetivo de la entrega
 
 Completar un recorrido real: acuerdo y fuentes → pedido del cliente → análisis con IA y citas → revisión humana → adenda versionada → aceptación registrada → cobro PayPal Sandbox confirmado por backend.

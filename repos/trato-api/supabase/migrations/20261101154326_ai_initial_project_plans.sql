@@ -82,3 +82,4 @@ end $$;
 revoke all on function public.create_planned_project(uuid,uuid,text,jsonb) from public,anon;
 grant execute on function public.create_planned_project(uuid,uuid,text,jsonb) to authenticated;
 commit;
+;

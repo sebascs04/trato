@@ -1,0 +1,36 @@
+{
+  "schema_version": 1,
+  "workflow": "rehearsal_feedback",
+  "sources": [
+    {
+      "key": "active_listening",
+      "file_id": "67b4d9c0-06c6-4618-add6-510d44fed79e",
+      "filename": "67b4d9c0-06c6-4618-add6-510d44fed79e.json",
+      "sha256": "3188c2838aef94171170ba99f10ba346bbd333462c3125c829c021bf1ce2048e"
+    },
+    {
+      "key": "principled_negotiation",
+      "file_id": "50af7ace-1593-458d-ad6f-7c6a9c3359e6",
+      "filename": "50af7ace-1593-458d-ad6f-7c6a9c3359e6.json",
+      "sha256": "73d86116df1b6399e82b178dbbcd7889d26462a87ac98a40759ab30b76b51620"
+    },
+    {
+      "key": "difficult_conversations",
+      "file_id": "55586fea-4c62-4c82-bab1-b8e482eddaf9",
+      "filename": "55586fea-4c62-4c82-bab1-b8e482eddaf9.json",
+      "sha256": "21ee9e8163ea6081a435d0807364995ceb7d824f5d6c8173f95147ad30e8bfac"
+    },
+    {
+      "key": "commitments",
+      "file_id": "0762236c-e52c-4f67-816f-5ef5ff1274f2",
+      "filename": "0762236c-e52c-4f67-816f-5ef5ff1274f2.json",
+      "sha256": "2857bab4bf4330e253203334a866223da6e6c9ad072393a818096319e6490ec6"
+    },
+    {
+      "key": "micro_skills",
+      "file_id": "83f9eebf-9b83-4b56-9c09-ce005fe3aaa5",
+      "filename": "83f9eebf-9b83-4b56-9c09-ce005fe3aaa5.json",
+      "sha256": "82f3a2be3897f1a88772209a5127c0419db63c0fa3c8b6c0bc854c187b9a4495"
+    }
+  ]
+}

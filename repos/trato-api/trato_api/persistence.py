@@ -94,16 +94,29 @@ class Repository:
         if client_id is not None:params['client_id']='eq.'+uuid(client_id)
         return self.rows('projects',params)
 
-    def create_project(self, client_id, name):
+    def create_project(self, client_id, name, creation_key=None):
         client_id = uuid(client_id)
-        # Return the same 404 whether a client is absent or owned by another user.
         if not self.rows('clients', {'select': 'id', 'id': 'eq.' + client_id}):
             raise ApiError('CLIENT_NOT_FOUND', 404)
-        return self.call('POST', '/rest/v1/projects', json={'client_id': client_id, 'name': name},
-                         headers={'Prefer': 'return=representation'})[0]
+        body = {'client_id': client_id, 'name': name}
+        if creation_key is not None:
+            body['id'] = uuid(creation_key)
+        try:
+            return self.call('POST', '/rest/v1/projects', json=body,
+                             headers={'Prefer': 'return=representation'})[0]
+        except ApiError as error:
+            if creation_key is None or error.status != 409:
+                raise
+            # Retry of the same explicit creation command, scoped by the user's
+            # JWT/RLS. Never overwrite a different project or another owner's row.
+            existing = self.project(creation_key)
+            if existing['client_id'] != client_id or existing['name'] != name:
+                raise ApiError('PROJECT_CREATION_CONFLICT', 409) from None
+            return existing
 
     def project(self, project_id):
-        rows = self.rows('projects', {'select': 'id,client_id,name,status', 'id': 'eq.' + uuid(project_id)})
+        rows = self.rows('projects', {'select': 'id,owner_id,client_id,name,status', 'id': 'eq.' + uuid(project_id),
+                                     'deleted_at': 'is.null'})
         if not rows:
             raise ApiError('PROJECT_NOT_FOUND', 404)
         return rows[0]

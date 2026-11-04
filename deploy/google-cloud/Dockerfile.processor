@@ -1,0 +1,11 @@
+FROM python:3.12-slim
+ENV PYTHONUNBUFFERED=1 PYTHONDONTWRITEBYTECODE=1
+RUN apt-get update && apt-get install -y --no-install-recommends poppler-utils && rm -rf /var/lib/apt/lists/*
+WORKDIR /app
+COPY repos/trato-file-processor/requirements.lock.txt ./
+RUN pip install --no-cache-dir -r requirements.lock.txt
+COPY repos/trato-file-processor/file_processor ./file_processor
+RUN useradd --uid 10001 --create-home processor
+USER processor
+EXPOSE 8101
+CMD ["uvicorn", "file_processor.app:app", "--host", "0.0.0.0", "--port", "8101", "--limit-concurrency", "8"]

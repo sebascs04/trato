@@ -1,0 +1,10 @@
+FROM python:3.12-slim
+ENV PYTHONUNBUFFERED=1 PYTHONDONTWRITEBYTECODE=1 LANGSMITH_TRACING=false LANGCHAIN_TRACING_V2=false
+WORKDIR /app
+COPY repos/trato-worker/requirements.lock.txt ./
+RUN pip install --no-cache-dir -r requirements.lock.txt
+COPY repos/trato-worker/trato_worker ./trato_worker
+COPY repos/trato-worker/prompts ./prompts
+RUN useradd --uid 10001 --create-home worker
+USER worker
+CMD ["python", "-m", "trato_worker.ai_jobs"]

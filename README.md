@@ -13,12 +13,12 @@ Esta publicación reúne el frontend y los servicios necesarios para compartir y
 - Cobros PayPal Sandbox y confirmación de pago en backend. Un cambio pagado queda sólo para consulta.
 - Historial único por proyecto y carga bajo demanda. Tipografía Manrope e iconos Lucide locales.
 - Recorrido de devolución simulado con revisiones, cálculos y fuentes oficiales PayPal. No ejecuta reembolsos reales ni sandbox.
-- Mapa visual de ejemplo. Neo4j y Weaviate están previstos, todavía sin conexión.
-- Adaptadores y contratos Gemini preparados; el análisis de cambios/devoluciones que usa fixtures es explícitamente simulado. No se activa un proveedor ni se cambia a otro si falla.
+- Grafo privado por proyecto con Neo4j y búsqueda autorizada en Weaviate mediante el file processor. Requieren credenciales/configuración del entorno.
+- Ensayos, evaluación con cinco fuentes y planificación inicial con Gemini por cola/worker y JSON validado. La validación completa desde la interfaz sigue pendiente; los recorridos explícitamente simulados de cambios/devoluciones son independientes. No se cambia de proveedor si falla.
 
 ## Empezar
 
-Requiere Node.js 18+, Python 3.12 y, para la ingesta conectada, Redis propio. Poppler es necesario para la lectura PDF del prototipo anterior. Los puertos están en `local-ports.json`.
+Requiere Node.js 18+, Python 3.12 y, para la ingesta conectada, Redis propio. Poppler (`pdftotext`) es necesario para la extracción PDF del procesador actual. Los puertos están en `local-ports.json`.
 
 ```bash
 git clone https://github.com/sebascs04/trato.git
@@ -42,7 +42,7 @@ Interfaz oficial: http://localhost:5173/#clientes. Sin configuración, muestra e
 | --- | --- |
 | Raíz: `index.html`, `connected-workspace.mjs`, `proposal-workspace.mjs` | Producto web, navegación y operaciones de usuario |
 | `repos/trato-api` | Autenticación, reglas de negocio, persistencia, Gmail y PayPal |
-| `repos/trato-file-processor` | Validación y extracción de documentos |
+| `repos/trato-file-processor` | Validación, extracción, fragmentación y operaciones Weaviate |
 | `repos/trato-worker` | Grafos, contratos de modelos y ejecución de trabajos |
 | `repos/trato-web` | Herramienta técnica opcional |
 | `scripts` | Arranque local, configuración privada e iconos |
@@ -65,7 +65,9 @@ Las pruebas de navegador requieren el servidor local y bibliotecas de Chromium. 
 
 ## Documentación
 
-- [Colaboradores y configuración](docs/colaboradores.md)
+- [Instalación paso a paso y accesos para colaboradores](docs/colaboradores.md)
+- [Auditoría y límites de instalación](docs/auditoria-instalacion-colaboradores.md)
+- [Accesos que prepara el equipo](docs/accesos-colaboradores.md)
 - [Ingesta conectada](docs/ingesta-conectada.md)
 - [Arquitectura de IA](docs/arquitectura-ia-trato.md)
 - [Flujo de cambios simulado](docs/worker-flujo-cambios.md)

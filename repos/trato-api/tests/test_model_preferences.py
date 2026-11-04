@@ -25,6 +25,7 @@ class ModelPreferenceTests(unittest.TestCase):
         self.preferences.save(self.request(),'a','gemini-3.5-flash-lite')
         self.assertEqual(self.preferences.selected('a'),'gemini-3.5-flash-lite')
         self.assertEqual(self.preferences.selected('b'),'gemini-3.8-flash')
+        self.assertEqual(self.preferences.for_request(self.request('other@example.com'),'a'),'gemini-3.8-flash')
     def test_other_user_cannot_select_even_with_forged_owner_or_model(self):
         for request in [self.request('other@example.com'),self.request(id='b'),SimpleNamespace(state=SimpleNamespace())]:
             with self.assertRaises(ApiError) as error:self.preferences.save(request,'a','gemini-3.5-flash-lite')

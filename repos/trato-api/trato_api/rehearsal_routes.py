@@ -41,7 +41,7 @@ def build_rehearsal_router(require_user,service=None,jobs=None):
         job_id=uuid(request.headers.get('Idempotency-Key',''))
         data['case']=case_sources(data['scenario'])
         if __import__('os').getenv('TRATO_DEFAULT_MODEL'):
-            data['model_id']=await run_in_threadpool(ModelPreferences().selected,owner_id)
+            data['model_id']=await run_in_threadpool(ModelPreferences().for_request,request,owner_id)
         result=await run_in_threadpool(jobs.enqueue,owner_id,job_id,data)
         return JSONResponse({'data':result},status_code=202,headers={'Cache-Control':'no-store'})
     @router.post('/replies')
@@ -54,7 +54,7 @@ def build_rehearsal_router(require_user,service=None,jobs=None):
             raise ApiError('INVALID_REHEARSAL',422)
         data['case']=case_sources(data['scenario'])
         if __import__('os').getenv('TRATO_DEFAULT_MODEL'):
-            data['model_id']=await run_in_threadpool(ModelPreferences().selected,owner_id)
+            data['model_id']=await run_in_threadpool(ModelPreferences().for_request,request,owner_id)
         job_id=uuid(request.headers.get('Idempotency-Key',''))
         result=await run_in_threadpool(jobs.enqueue,owner_id,job_id,data)
         return JSONResponse({'data':result},status_code=202,headers={'Cache-Control':'no-store'})

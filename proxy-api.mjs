@@ -1,5 +1,6 @@
 import http from 'node:http';
 import https from 'node:https';
+import {browserOriginAllowed} from './web-origin.mjs';
 import {readFileSync} from 'node:fs';
 
 const localPorts = JSON.parse(readFileSync(new URL('./local-ports.json', import.meta.url), 'utf8'));
@@ -12,12 +13,17 @@ export function proxyApiRequest(req, res, base = process.env.TRATO_API_URL || `h
     res.end(JSON.stringify({error:{code:'API_NOT_CONFIGURED'}})); return;
   }
   const url = new URL(req.url, 'http://localhost');
-  if (req.headers.origin && req.headers.origin !== `http://${req.headers.host}`) {
+  if (!browserOriginAllowed(req)) {
     res.writeHead(403); res.end(); return;
   }
   const headers = {};
-  for (const name of ['authorization','content-type','content-length','idempotency-key']) {
+  for (const name of ['authorization','content-type','content-length','idempotency-key','accept-language']) {
     if (req.headers[name]) headers[name] = req.headers[name];
+  }
+  if(url.pathname==='/api/v1/webhooks/paypal'){
+    for(const name of ['paypal-auth-algo','paypal-cert-url','paypal-transmission-id','paypal-transmission-sig','paypal-transmission-time']){
+      if(req.headers[name])headers[name]=req.headers[name];
+    }
   }
   const request = (upstream.protocol === 'https:' ? https : http).request({
     protocol:upstream.protocol, hostname:upstream.hostname, port:upstream.port,

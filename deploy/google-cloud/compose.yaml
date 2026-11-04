@@ -1,0 +1,113 @@
+name: trato
+x-defaults: &defaults
+  restart: unless-stopped
+  init: true
+  networks: [trato]
+  logging:
+    driver: json-file
+    options: {max-size: "10m", max-file: "3"}
+  security_opt: ["no-new-privileges:true"]
+x-api: &api
+  <<: *defaults
+  image: trato-api:local
+  build: {context: ../.., dockerfile: deploy/google-cloud/Dockerfile.api}
+  env_file:
+    - path: ${TRATO_PRIVATE_DIR:?Set the absolute private deployment directory}/api.env
+      format: raw
+  environment: &api-environment
+    FILE_PROCESSOR_URL: http://processor:8101
+    TRATO_REDIS_URL: redis://redis:6379/0
+    GMAIL_VAULT_PATH: /var/lib/trato/gmail/vault.sqlite3
+    PAYPAL_TEST_STORE: /var/lib/trato/paypal/sandbox.sqlite3
+    TRATO_REHEARSAL_SOURCE_MANIFEST: /app/resources/rehearsal-sources/manifest.json
+  volumes:
+    - gmail:/var/lib/trato/gmail
+    - paypal:/var/lib/trato/paypal
+x-worker: &worker
+  <<: *defaults
+  image: trato-worker:local
+  build: {context: ../.., dockerfile: deploy/google-cloud/Dockerfile.worker}
+  env_file:
+    - path: ${TRATO_PRIVATE_DIR}/worker.env
+      format: raw
+  environment:
+    TRATO_API_URL: http://api:8100
+    FILE_PROCESSOR_URL: http://processor:8101
+    TRATO_REDIS_URL: redis://redis:6379/0
+    TRATO_GOOGLE_CREDENTIALS_FILE: /run/secrets/google-cloud-worker.json
+    LANGSMITH_TRACING: "false"
+    LANGCHAIN_TRACING_V2: "false"
+  secrets:
+    - source: gemini_credentials
+      target: google-cloud-worker.json
+  depends_on:
+    api: {condition: service_healthy}
+    redis: {condition: service_healthy}
+services:
+  redis:
+    <<: *defaults
+    image: redis:7.4-bookworm
+    command: [redis-server, --appendonly, "yes", --appendfsync, everysec, --maxmemory, 384mb, --maxmemory-policy, noeviction]
+    volumes: ["redis:/data"]
+    mem_limit: 512m
+    healthcheck:
+      test: [CMD, redis-cli, ping]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+  processor:
+    <<: *defaults
+    image: trato-processor:local
+    build: {context: ../.., dockerfile: deploy/google-cloud/Dockerfile.processor}
+    env_file:
+      - path: ${TRATO_PRIVATE_DIR}/processor.env
+        format: raw
+    mem_limit: 1g
+    healthcheck:
+      test: [CMD, python, -c, "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8101/health',timeout=3)"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+  api:
+    <<: *api
+    # Bind to the VM's private IP for Direct VPC egress. Never use 0.0.0.0 here.
+    ports: ["${TRATO_API_BIND_IP:?Set the VM private IPv4}:8100:8100"]
+    mem_limit: 1g
+    depends_on:
+      processor: {condition: service_healthy}
+      redis: {condition: service_healthy}
+    healthcheck:
+      test: [CMD, python, -c, "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8100/health',timeout=3)"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+  backend-pump:
+    <<: *api
+    command: [python, -m, trato_api.thread_runner, --mode, connected]
+    mem_limit: 512m
+    depends_on:
+      api: {condition: service_healthy}
+      redis: {condition: service_healthy}
+  ingestion-worker:
+    <<: *worker
+    command: [python, -m, trato_worker.run, --mode, connected]
+    mem_limit: 768m
+  ai-worker:
+    <<: *worker
+    command: [python, -m, trato_worker.ai_jobs]
+    mem_limit: 1g
+  rehearsal-worker:
+    <<: *worker
+    command: [python, -m, trato_worker.rehearsal_jobs]
+    mem_limit: 1g
+networks:
+  trato: {}
+volumes:
+  redis: {}
+  gmail: {}
+  paypal: {}
+secrets:
+  gemini_credentials:
+    file: ${TRATO_PRIVATE_DIR}/google-cloud-worker.json

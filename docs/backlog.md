@@ -6,6 +6,43 @@ Actualizado: 31 de octubre de 2026. Se incorpora el cierre del flujo de renegoci
 
 TRATO-13, TRATO-14, TRATO-15 y TRATO-16: **implementados y validados en el alcance Sandbox aprobado, sin IA**. Dos recorridos manuales confirmados (cierre global parcial e individual total de adenda) y prueba conectada de entrega/deduplicación de eventos genuinos completados. Los apartados siguientes conservan el historial de tandas; sus pendientes históricos se resuelven en [el acta de cierre](cierre-validacion-devoluciones.md). La IA, un checkout inicial integrado y el uso Live no forman parte de este cierre. No se autoriza PR ni merge por publicar esta rama.
 
+## Hallazgos de pruebas de devoluciones — 3 de noviembre de 2026
+
+Dos tareas nuevas reportadas por el usuario durante sus pruebas. Estado: **Por hacer**, sin responsable asignado. Son pendientes del producto; el cierre Sandbox de TRATO-13 a 16 no acredita que estas capacidades estén resueltas.
+
+### TRATO-18 — Materializar el cierre del proyecto en Trato
+
+**Contexto:** el flujo de devoluciones permite preparar una devolución por cierre de proyecto, pero ese cierre no se refleja de forma efectiva en el proyecto. El usuario no puede reconocer claramente que terminó ni qué acciones siguen disponibles. Finalizar una devolución individual de adenda tampoco debe confundirse con cerrar todo el proyecto.
+
+**Alcance:** definir y persistir el estado de cierre del proyecto, su motivo, fecha y expediente de respaldo; mostrarlo en el listado, detalle e historial. Acordar el hito de negocio que materializa el cierre y las acciones que quedan bloqueadas o permitidas. Separar el cierre del proyecto del estado técnico del reembolso y conservar la consulta del historial, documentos y pagos.
+
+**Criterios de aceptación:**
+
+- Un cierre confirmado se reconoce en el listado y detalle, permanece después de recargar y registra el evento una sola vez.
+- Las restricciones acordadas se aplican tanto en la interfaz como en el backend; una petición HTTP directa no puede abrir operaciones incompatibles con un proyecto cerrado.
+- Preparar o enviar una propuesta de cierre no cierra el proyecto por sí solo. Un reembolso pendiente, fallido o incierto no se presenta como devolución confirmada; se define explícitamente cómo afecta al cierre y cómo continuar su seguimiento.
+- Una devolución individual de adenda conserva el proyecto abierto cuando no existe un cierre global acordado. Los cambios pagados y las revisiones enviadas mantienen su inmutabilidad.
+- Estados, mensajes, ayudas y acciones tienen traducciones ES/EN. Se verifican cierre global, devolución individual, reintentos y permisos.
+
+**Prioridad propuesta:** P0 para completar el recorrido de cierre. **Dependencias:** TRATO-13 a 16 y definición del ciclo de vida del proyecto. No implementar reapertura automática ni cerrar unilateralmente aceptaciones registradas.
+
+### TRATO-19 — Cobrar el pago inicial del proyecto
+
+**Contexto:** actualmente se pueden cobrar adendas, pero el usuario no encuentra un recorrido para solicitar y cobrar el pago inicial del proyecto. Registrar un pago inicial externo para una devolución no equivale a disponer de un checkout inicial integrado.
+
+**Alcance:** incorporar una acción de cobro inicial asociada al proyecto y a las condiciones revisadas del acuerdo, con importe y moneda explícitos, checkout PayPal Sandbox y seguimiento persistente. Mantener ese pago separado de los adicionales de adendas y disponible como origen de una devolución cuando corresponda.
+
+**Criterios de aceptación:**
+
+- Desde el proyecto se puede revisar el importe inicial, su moneda y condiciones, y solicitar explícitamente el cobro; no se crea una adenda ficticia para cobrarlo.
+- El backend valida propietario, proyecto e importe, y conserva la relación entre solicitud de cobro, orden, captura y pago inicial. Reintentos y concurrencia no duplican el cobro ni el registro del pago.
+- Solo una confirmación verificada por backend acredita el pago. Volver de PayPal, abrir el enlace o enviar un correo no lo confirma; cancelar o abandonar el checkout conserva el estado de negocio pendiente.
+- El proyecto muestra pendiente/pagado y el historial correspondiente, conserva los identificadores financieros para conciliación y permite recuperar el seguimiento después de recargar.
+- El pago inicial confirmado puede consultarse y seleccionarse en devoluciones según su saldo disponible, sin duplicar pagos externos ya registrados ni modificar adendas pagadas.
+- Interfaz y errores tienen traducciones ES/EN. Se verifica en Sandbox el recorrido inicial completo y los casos de reintento, cancelación y resultado incierto; no se habilita Live como parte de esta tarea.
+
+**Prioridad propuesta:** P0 para completar el recorrido de cobro del proyecto. **Dependencias:** condiciones iniciales revisadas, integración PayPal existente y coordinación con TRATO-13 a 16 y TRATO-18.
+
 ## Objetivo de la entrega
 
 Completar un recorrido real: acuerdo y fuentes → pedido del cliente → análisis con IA y citas → revisión humana → adenda versionada → aceptación registrada → cobro PayPal Sandbox confirmado por backend.

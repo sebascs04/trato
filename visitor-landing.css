@@ -102,3 +102,164 @@
 @media(prefers-reduced-motion:reduce){.land-story-step{animation:none!important}.land-story-track:after{transition:none!important}}
 
 .land-paused .land-story-step{animation:none!important}
+
+/* Narrated timeline: CSS motion, no additional animation runtime. */
+.land-story-detail{display:flex;align-items:center;gap:22px;min-height:145px;padding:18px 24px;overflow:visible}
+.land-story-detail>.land-story-mascot{width:112px;height:112px;object-fit:contain;flex:none;filter:drop-shadow(0 8px 12px #77509018);animation:land-guide-float 4s ease-in-out infinite}
+.land-story-speech{flex:1;min-width:0;animation:land-guide-speak .5s ease-out both}
+.land-story-speech>strong{display:block;font-size:15px;font-weight:500;color:#785192;margin:5px 0 7px}
+.land-story-speech>p{margin:0;line-height:1.8}
+.land-story-step{position:relative;overflow:hidden;transition:background .6s,border-color .6s,box-shadow .6s,transform .6s}
+.land-story-step.is-selected{transform:translateY(-4px);box-shadow:0 12px 30px #8254a211}
+.land-story-step.is-selected:after{content:"";position:absolute;bottom:0;left:0;height:3px;width:100%;background:#b18acb;transform-origin:left;animation:land-step-time 7s linear both}
+.land-paused .land-story-step:after,.land-paused .land-story-mascot{animation-play-state:paused}
+.land-story-controls{flex:none;display:flex;gap:8px}
+@keyframes land-step-time{from{transform:scaleX(0)}to{transform:scaleX(1)}}
+@keyframes land-guide-float{0%,100%{transform:translateY(0) rotate(-2deg)}50%{transform:translateY(-5px) rotate(2deg)}}
+@keyframes land-guide-speak{from{opacity:0;transform:translateY(7px)}to{opacity:1;transform:translateY(0)}}
+@media(prefers-reduced-motion:reduce){.land-story-mascot,.land-story-speech,.land-story-step:after{animation:none!important}.land-story-step{transition:none!important}}
+
+/* TeTrato presents a problem, then narrates one illustrated scene at a time. */
+.land-narrative{display:grid;grid-template-columns:minmax(280px,.85fr) minmax(380px,1.15fr);gap:42px;align-items:center;min-height:430px;padding:26px 18px 12px}
+.land-narrator{display:flex;flex-direction:column;align-items:center;position:relative}
+.land-narrator-cloud{position:relative;width:100%;max-width:380px;padding:23px 26px;background:#fffdfd;border:1px solid #e5d8ed;border-radius:26px 26px 26px 7px;box-shadow:0 12px 34px #8156a20a;animation:land-cloud-in .6s ease both;z-index:1}
+.land-narrator-cloud:after{content:"";position:absolute;bottom:-10px;left:53%;width:18px;height:18px;transform:rotate(45deg);background:#fffdfd;border-right:1px solid #e5d8ed;border-bottom:1px solid #e5d8ed}
+.land-narrator-cloud>span{font-size:10px;color:#9c79b3;letter-spacing:.8px;text-transform:uppercase}
+.land-narrator-cloud>p{font-size:17px;line-height:1.7;color:#654578;margin:9px 0 0;font-weight:400;min-height:85px}
+.land-narrator>.land-story-mascot{width:218px;height:218px;object-fit:contain;margin-top:12px;filter:drop-shadow(0 16px 18px #79519612);animation:land-guide-float 4s ease-in-out infinite}
+.land-narrator-name{font-size:11px;color:#9874af;letter-spacing:.6px;margin-top:-9px}
+.land-narrative-scene{position:relative;min-height:360px;border:1px solid #e6dced;border-radius:25px;background:radial-gradient(ellipse at 60% 40%,#e8ddf36b,transparent 70%),#faf7fc;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:44px 32px 74px;isolation:isolate}
+.land-scene-label{position:absolute;top:18px;left:22px;font-size:9px;color:#a38ab2;letter-spacing:.5px}
+.land-scene-symbol{width:60px;height:60px;border-radius:19px;background:#e9dcf3;display:grid;place-items:center;color:#9565b4;margin-bottom:18px;box-shadow:0 0 0 11px #eee4f43d;animation:land-cloud-in .6s both}
+.land-scene-symbol>.ui-icon{width:27px;height:27px}
+.land-example-message{max-width:355px;background:#fff;border:1px solid #e4d7ec;border-radius:20px 20px 4px 20px;padding:22px 25px;box-shadow:0 18px 35px #75518b0b;animation:land-message-in .7s ease both}
+.land-example-message>.ui-icon{width:17px;color:#ae8ac3}
+.land-example-message>p{font-size:21px;line-height:1.6;color:#725183;margin:11px 0 0}
+.land-example-document{width:min(100%,350px);background:#fffdfd;border:1px solid #e5d8ed;border-radius:14px;padding:24px 27px;box-shadow:0 18px 40px #71508b0d;animation:land-message-in .6s ease both}
+.land-example-step{font-size:10px;color:#af94c0;letter-spacing:2px}
+.land-example-document>h3{font-size:21px;line-height:1.4;color:#79528e;margin:12px 0 8px;font-weight:400}
+.land-example-document>p{font-size:13px;line-height:1.8;color:#987da8;margin:0}
+.land-example-lines{display:grid;gap:7px;margin:19px 0}
+.land-example-lines>i{height:4px;border-radius:3px;background:#eee5f3;transform-origin:left;animation:land-line-reveal .7s ease both}
+.land-example-lines>i:nth-child(2){width:82%;animation-delay:.15s}.land-example-lines>i:nth-child(3){width:58%;animation-delay:.3s}
+.land-example-tag{display:flex;align-items:center;gap:8px;border-top:1px solid #f0e8f4;padding-top:12px;font-size:10px;color:#9b77b3}
+.land-example-tag>.ui-icon{width:15px;height:15px}
+.land-narrative-trail{display:flex;gap:10px;position:absolute;bottom:25px;left:25px}
+.land-narrative-trail>button{position:relative;overflow:hidden;border:1px solid #e2d4eb;background:#fff9;color:#b59ac5;border-radius:20px;height:29px;min-width:43px;padding:0 9px;font-size:10px}
+.land-narrative-trail>button.is-selected{border-color:#b38bcf;color:#8855a9;background:#eee1f7}
+.land-narrative-trail>button.is-selected:after{content:"";position:absolute;left:0;bottom:0;height:2px;width:100%;background:#b18acb;transform-origin:left;animation:land-step-time 7s linear both}
+.land-narrative-trail>button.is-past{color:#976daf;background:#f0e7f6}
+.land-narrative-scene>.land-story-controls{position:absolute;right:20px;bottom:24px}
+.land-paused .land-narrative-trail>button:after,.land-paused .land-narrator>.land-story-mascot{animation-play-state:paused}
+@keyframes land-cloud-in{from{opacity:0;transform:translateY(9px) scale(.97)}to{opacity:1;transform:translateY(0) scale(1)}}
+@keyframes land-message-in{from{opacity:0;transform:translateX(16px) rotate(2deg)}to{opacity:1;transform:translateX(0) rotate(0)}}
+@keyframes land-line-reveal{from{transform:scaleX(0)}to{transform:scaleX(1)}}
+@media(prefers-reduced-motion:reduce){.land-narrative *{animation:none!important;transition:none!important}}
+
+/* One native scroll story, no timer and no intercepted wheel input. */
+.land-journey{display:block;min-height:0;padding-top:38px;padding-bottom:42px}
+.land-hero-copy{max-width:900px;margin:0 auto}
+.land-stories{height:calc(100svh + 800px);position:relative;padding-top:0;padding-bottom:0}
+.land-story-sticky{position:sticky;top:28px;padding:18px 0;background:var(--land-bg,#faf8f5)}
+.land-story-sticky>header{display:flex;align-items:center;justify-content:space-between;gap:22px;margin-bottom:20px}
+.land-story-sticky>header h2{font-size:29px;font-weight:400;color:#735083;margin:8px 0}
+.land-story-sticky>header p{font-size:12px;color:#9d83ad;margin:0}
+.land-narrative{min-height:390px;padding-top:16px;padding-bottom:0;gap:32px}
+.land-narrator-cloud>p{font-size:16px;min-height:80px}
+.land-narrator>.land-story-mascot{width:190px;height:190px}
+.land-narrative-scene{min-height:330px}
+.land-narrative-trail>button.is-selected:after{animation:none;transform:scaleX(1)}
+.land-story-proof{margin-top:12px}
+@media(max-height:760px){.land-story-sticky{top:8px;padding:8px 0}.land-story-sticky>header{margin-bottom:12px}.land-narrative{min-height:330px}.land-narrator>.land-story-mascot{width:145px;height:145px}.land-narrator-cloud{padding:15px 20px}.land-narrative-scene{min-height:290px;padding-top:32px}.land-scene-symbol{height:42px;width:42px;margin-bottom:10px}.land-example-document{padding:16px 22px}}
+
+/* One reading axis: TeTrato introduces the scene rather than a parallel column. */
+.land-narrative{display:flex;flex-direction:column;gap:14px;max-width:850px;margin:0 auto;padding:12px 0;min-height:0}
+.land-narrator{width:100%;display:flex;flex-direction:row;align-items:center;justify-content:center;gap:20px;padding:0 20px}
+.land-narrator>.land-story-mascot{width:105px;height:105px;margin:0;order:-1;flex:none}
+.land-narrator-cloud{max-width:650px;padding:17px 23px;border-radius:20px 20px 20px 5px;box-shadow:none}
+.land-narrator-cloud:after{left:-9px;bottom:26px;transform:rotate(135deg)}
+.land-narrator-cloud>p{font-size:17px;min-height:0;margin:7px 0 0;line-height:1.65}
+.land-narrative-scene{width:100%;min-height:255px;padding:34px 35px 64px;box-sizing:border-box;background:radial-gradient(ellipse at 50% 45%,#eee4f560,transparent 70%);border:0;border-radius:20px}
+.land-narrative-scene>.land-scene-label{top:7px;left:28px}
+.land-scene-symbol{position:absolute;left:calc(50% - 225px);top:65px;width:48px;height:48px;margin:0;transform:rotate(-7deg)}
+.land-example-document{max-width:390px;width:100%;padding:19px 25px}
+.land-example-document>h3{font-size:20px;margin:8px 0}
+.land-example-lines{margin:13px 0;gap:6px}
+.land-example-tag{font-size:10px;padding-top:9px}
+.land-example-message>p{font-size:19px;margin-top:6px}
+.land-example-message{margin:20px 0;padding:18px 24px}
+.land-story-proof{margin-top:5px}
+@media(max-height:760px){.land-narrator>.land-story-mascot{width:85px;height:85px}.land-narrator-cloud>p{font-size:15px}.land-narrative-scene{min-height:220px;padding-top:25px;padding-bottom:55px}.land-example-document{padding:14px 22px}.land-example-lines{margin:10px 0}}
+
+/* Improve desktop landing readability. */
+.land-hero-copy>p{font-size:17px;line-height:1.8}
+.land-research article>p,.land-research>p{font-size:13px;line-height:1.75}
+.land-story-tabs>button{font-size:14px}
+.land-story-sticky>header p{font-size:15px;line-height:1.7}
+.land-narrator-cloud>p{font-size:19px;line-height:1.7}
+.land-narrator-cloud>span,.land-scene-label{font-size:11px}
+.land-example-document>h3{font-size:23px}
+.land-example-tag,.land-story-proof{font-size:12px}
+.land-tool-grid article>p,.land-section-heading>p,.land-practice-copy>p{font-size:15px;line-height:1.8}
+.land-practice-conversation article>p{font-size:14px;line-height:1.8}
+@media(max-height:760px){.land-narrator-cloud>p{font-size:17px}}
+
+/* Keep each scene legible and avoid the floating placeholder-card treatment. */
+.land-narrative{gap:5px;max-width:800px;padding:8px 0}
+.land-narrator{gap:16px;padding:0}
+.land-narrator>.land-story-mascot{width:120px;height:120px}
+.land-narrator-cloud{flex:1;border-radius:20px;padding:18px 22px}
+.land-narrator-cloud>span{display:none}
+.land-narrator-cloud>p{margin:0;font-size:18px}
+.land-narrative-scene{min-height:205px;padding:15px 28px 60px;background:none;display:grid;grid-template-columns:48px minmax(0,1fr);column-gap:14px;align-items:center;max-width:610px;margin:0 auto}
+.land-scene-symbol{position:static;transform:none;width:46px;height:46px;margin:0;box-shadow:none;border-radius:14px}
+.land-example-document{width:100%;max-width:none;box-sizing:border-box;padding:19px 23px;border-radius:17px;box-shadow:0 8px 25px #79519608}
+.land-example-document>h3{margin:7px 0 14px;font-size:21px}
+.land-example-message{max-width:none;margin:0;padding:17px 22px;box-sizing:border-box}
+.land-example-message>.ui-icon{display:none}
+.land-example-message>p{margin:0;font-size:19px}
+.land-narrative-trail{left:90px;bottom:15px}
+.land-narrative-scene>.land-story-controls{right:28px;bottom:14px}
+.land-story-proof{margin-top:0}
+@media(max-height:760px){.land-narrator>.land-story-mascot{width:88px;height:88px}.land-narrator-cloud>p{font-size:16px}.land-narrative-scene{min-height:180px;padding-top:10px;padding-bottom:50px}.land-example-document{padding:13px 20px}.land-example-document>h3{font-size:19px;margin-bottom:10px}}
+
+/* Balance the opening with existing evidence rather than an empty visual column. */
+.land-journey{padding-top:48px;padding-bottom:46px;max-width:1420px}
+.land-hero-copy{display:grid;grid-template-columns:minmax(0,1.2fr) minmax(280px,.8fr);column-gap:72px;row-gap:20px;max-width:1120px;width:100%;margin:0 auto}
+.land-hero-copy>.land-eyebrow{grid-column:1;grid-row:1;margin:0}
+.land-hero-copy>h1{grid-column:1;grid-row:2;margin:0;font-size:clamp(48px,4.6vw,68px);line-height:1.1}
+.land-hero-copy>p{grid-column:1;grid-row:3;width:auto;max-width:590px;margin:0;font-size:17px;line-height:1.8}
+.land-hero-copy>.land-integration-line{grid-column:1;grid-row:4;margin:0}
+.land-hero-copy>.land-research{grid-column:2;grid-row:2/5;align-self:center;width:100%;max-width:none;margin:0;padding:26px 0 25px 30px;border-top:0;border-left:1px solid #e3d7eb;box-sizing:border-box}
+.land-research>div{gap:20px;flex-wrap:wrap}
+.land-research article>strong{font-size:38px}
+.land-research article>p{font-size:13px;max-width:150px;line-height:1.6}
+.land-research>p{font-size:12px;line-height:1.8;margin-bottom:0}
+@media(max-width:1000px){.land-hero-copy{column-gap:35px;grid-template-columns:minmax(0,1.1fr) minmax(250px,.9fr)}.land-hero-copy>.land-research{padding-left:24px}.land-hero-copy>h1{font-size:49px}}
+@media(max-width:760px){.land-hero-copy{display:block}.land-hero-copy>h1{font-size:45px;margin:20px 0}.land-hero-copy>.land-integration-line{margin-top:20px}.land-hero-copy>.land-research{border-left:0;border-top:1px solid #e3d7eb;margin-top:25px;padding:20px 0}.land-journey{padding-top:25px;padding-bottom:22px}}
+
+/* Put the measured problem ahead of decorative content. */
+.land-hero-copy{grid-template-columns:minmax(0,1.05fr) minmax(320px,.95fr);column-gap:65px}
+.land-hero-copy>.land-research{padding:15px 0 15px 38px}
+.land-research>div{display:grid;grid-template-columns:1fr;gap:24px;margin-top:20px}
+.land-research article{display:flex;align-items:center;gap:20px}
+.land-research article>strong{font-size:clamp(54px,5.8vw,86px);line-height:1;letter-spacing:-3px;color:#8963ad;font-weight:400;min-width:195px}
+.land-research article>p{font-size:15px;line-height:1.65;max-width:150px;margin:0;color:#927da2}
+.land-research>span{font-size:10px;line-height:1.7;letter-spacing:.6px}
+.land-research>p{margin-top:23px;font-size:11px;line-height:1.8}
+@media(max-width:1000px){.land-hero-copy{column-gap:30px}.land-hero-copy>.land-research{padding-left:25px}.land-research article{display:block}.land-research article>strong{font-size:65px;min-width:0}.land-research article>p{margin-top:8px;max-width:none}}
+@media(max-width:760px){.land-hero-copy>.land-research{padding:23px 0}.land-research>div{grid-template-columns:1fr 1fr}.land-research article>strong{font-size:55px;letter-spacing:-2px}}
+
+/* Match the page surface and release the guided scroll after its first passage. */
+.land-story-sticky{background:transparent}
+.land-stories{overflow-anchor:none}
+.land-stories.land-story-completed{height:auto}
+.land-story-completed>.land-story-sticky{position:relative;top:auto}
+
+/* Compact automatic sequence: two tabs occupy the complete row. */
+.land-stories{height:auto;padding-bottom:25px}
+.land-story-sticky{position:relative;top:auto;padding:18px 0;background:transparent}
+.land-story-tabs{display:grid;grid-template-columns:repeat(2,minmax(0,1fr))}
+.land-story-tabs>button{width:100%;box-sizing:border-box}
+.land-narrative-trail>button.is-selected:after{animation:land-step-time 2.5s linear both}
+.land-paused .land-narrative-trail>button.is-selected:after{animation-play-state:paused}

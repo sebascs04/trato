@@ -64,9 +64,9 @@ export function installProjectPlanning(cloud){
  }
  async function loadSavedPlan(){
   const generation=++savedPlanGeneration,id=project().id,scope=currentKey;savedPlanStatus='loading';renderSaved();
-  try{const value=await cloud.request(`/api/v1/ai/projects/${encodeURIComponent(id)}/plan`);if(scope!==currentKey||generation!==savedPlanGeneration||!visible())return;savedPlan=value;savedPlanStatus='ready';}
-  catch(error){if(scope!==currentKey||generation!==savedPlanGeneration||!visible())return;savedPlanStatus=error.code==='AI_PLAN_NOT_FOUND'?'none':'failed';}
-  renderSaved();
+  try{const value=await cloud.request(`/api/v1/ai/projects/${encodeURIComponent(id)}/plan`);if(scope!==currentKey||generation!==savedPlanGeneration)return;savedPlan=value;savedPlanStatus='ready';}
+  catch(error){if(scope!==currentKey||generation!==savedPlanGeneration)return;savedPlanStatus=error.code==='AI_PLAN_NOT_FOUND'?'none':'failed';}
+  if(visible())renderSaved();
  }
  cloud.renderProjectPlan=function(panel){if(wizard)return;root=panel;if(currentKey!==key()){planAI?.dispose();planAI=null;currentKey=key();cloud.planLookupCompleted=false;resetContext();savedPlan=null;loadSavedPlan();return;}renderSaved();};
 

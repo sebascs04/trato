@@ -39,7 +39,7 @@ export function guideScope(cloud){
 export function installSectionGuide(cloud){
  const doc=cloud.document,win=doc.defaultView;
  const root=doc.createElement('div');root.className='section-guide';root.hidden=true;
- root.innerHTML=`<div class="guide-highlight" hidden aria-hidden="true"></div><section class="guide-panel" id="trato-section-guide" role="region" aria-labelledby="guide-step-title" hidden><header><span class="guide-avatar" aria-hidden="true"><img class="guide-mascot" src="/assets/mascot/trato-guide.png" alt="" width="96" height="96" decoding="async"></span><div><strong>${uiText('guide.name')}</strong><span>${uiText('guide.section')}</span></div><button type="button" class="guide-close" data-guide-close aria-label="${uiText('guide.close')}" title="${uiText('guide.close')}">${icon('x')}</button></header><div class="guide-copy" aria-live="polite" aria-atomic="true"><p class="guide-progress"></p><h3 id="guide-step-title" tabindex="-1"></h3><p class="guide-explanation"></p></div><footer><button type="button" class="guide-previous" data-guide-previous>${icon('arrow-left')}${uiText('guide.previous')}</button><button type="button" class="guide-next" data-guide-next></button></footer></section><button type="button" class="guide-launcher" data-guide-open aria-controls="trato-section-guide" aria-expanded="false" aria-label="${uiText('guide.open')}" title="${uiText('guide.open')}"><span aria-hidden="true"><img class="guide-mascot" src="/assets/mascot/trato-guide.png" alt="" width="96" height="96" decoding="async"></span><span>${uiText('guide.short')}</span></button>`;
+ root.innerHTML=`<div class="guide-highlight" hidden aria-hidden="true"></div><section class="guide-panel" id="trato-section-guide" role="region" aria-labelledby="guide-step-title" hidden><header><span class="guide-avatar" aria-hidden="true"><img class="guide-mascot" src="/assets/mascot/trato-guide.png" alt="" width="96" height="96" decoding="async"></span><div><strong>${uiText('guide.name')}</strong><span>${uiText('guide.section')}</span></div><button type="button" class="guide-close" data-guide-close aria-label="${uiText('guide.close')}" title="${uiText('guide.close')}">${icon('x')}</button></header><div class="guide-copy" aria-live="polite" aria-atomic="true"><p class="guide-progress"></p><h3 id="guide-step-title" tabindex="-1"></h3><p class="guide-explanation"><span class="guide-lead"></span><span class="guide-support"></span></p></div><footer><button type="button" class="guide-previous" data-guide-previous>${icon('arrow-left')}${uiText('guide.previous')}</button><button type="button" class="guide-next" data-guide-next></button></footer></section><button type="button" class="guide-launcher" data-guide-open aria-controls="trato-section-guide" aria-expanded="false" aria-label="${uiText('guide.open')}" title="${uiText('guide.open')}"><span aria-hidden="true"><img class="guide-mascot" src="/assets/mascot/trato-guide.png" alt="" width="96" height="96" decoding="async"></span><span>${uiText('guide.short')}</span></button>`;
  doc.body.append(root);
  const launcher=root.querySelector('[data-guide-open]'),panel=root.querySelector('.guide-panel'),highlight=root.querySelector('.guide-highlight');
  let scope=null,steps=[],index=0,frame=0,returnFocus=null;
@@ -47,7 +47,7 @@ export function installSectionGuide(cloud){
  const targetFor=entry=>doc.querySelector(entry.selector);
  function close(restoreFocus=false){
   const wasOpen=!panel.hidden;panel.hidden=true;highlight.hidden=true;steps=[];index=0;
-  launcher.setAttribute('aria-expanded','false');
+  launcher.hidden=false;launcher.setAttribute('aria-expanded','false');
   if(frame){win.cancelAnimationFrame(frame);frame=0;}
   if(wasOpen&&restoreFocus&&!root.hidden){const focus=returnFocus?.isConnected?returnFocus:launcher;focus.focus();}
  }
@@ -65,7 +65,10 @@ export function installSectionGuide(cloud){
   const current=steps[index];if(!current)return;
   const text=field=>uiText(['guide',current.key,field].join('.'));
   root.querySelector('#guide-step-title').textContent=text('title');
-  root.querySelector('.guide-explanation').textContent=text('body');
+  const sentences=text('body').split(/(?<=[.!?])\s+/);
+  root.querySelector('.guide-lead').textContent=sentences.shift()||'';
+  const support=root.querySelector('.guide-support');support.textContent=sentences.join(' ');support.hidden=!support.textContent;
+
   const number=n=>new Intl.NumberFormat(uiLocale()).format(n);
   root.querySelector('.guide-progress').textContent=uiText('guide.progress',{current:number(index+1),total:number(steps.length)});
   root.querySelector('[data-guide-previous]').disabled=index===0;
@@ -89,7 +92,7 @@ export function installSectionGuide(cloud){
    if(!panel.hidden){close(true);return;}
    steps=sectionGuides[scope.kind].filter(entry=>visible(targetFor(entry)));
    if(!steps.length)return;
-   index=0;returnFocus=doc.activeElement;panel.hidden=false;launcher.setAttribute('aria-expanded','true');
+   index=0;returnFocus=doc.activeElement;panel.hidden=false;launcher.hidden=true;launcher.setAttribute('aria-expanded','true');
    showStep(true);root.querySelector('#guide-step-title').focus({preventScroll:true});return;
   }
   if(event.target.closest('[data-guide-previous]')){index=Math.max(0,index-1);showStep(true);}

@@ -209,7 +209,7 @@ test('missing guide returns an error without fabricated feedback and preserves t
  await page.locator('[data-practice-start]').click();
  for(let i=0;i<3;i++){await page.locator('#practice-response').fill(`Mi respuesta ${i}`);await page.locator('[data-practice-chat] button').click();}
  await page.locator('[data-practice-evaluate]').click();
- await expect(page.locator('.practice-evaluation [role=alert]')).toContainText('No se pudieron leer todas las fuentes');
+ await expect(page.locator('.practice-evaluation [role=alert]')).toContainText('No se pudieron consultar las fuentes');
  await expect(page.locator('.practice-evaluation-card')).toHaveCount(0);
  expect(c.writes.filter(path=>!path.startsWith('/api/v1/rehearsals/replies'))).toEqual(['/api/v1/rehearsals/evaluations']);
  await page.locator('[data-practice-step=conversation]').click();
@@ -225,7 +225,7 @@ test('reload retrieves the saved analysis without creating another evaluation',a
  expect(c.writes.filter(path=>!path.startsWith('/api/v1/rehearsals/replies'))).toEqual(['/api/v1/rehearsals/evaluations']);expect(c.errors).toEqual([]);
 });
 
-for(const lang of ['es','en'])test(`agent conversation continues beyond three replies and can be ended by the user (${lang})`,async({page})=>{
+for(const lang of ['es','en'])test(`agent conversation continues beyond three replies and exit requires confirmation (${lang})`,async({page})=>{
  const c=await setup(page,{lang,replyCloseAfter:8});await page.getByRole('link',{name:lang==='es'?'Ensayos':'Rehearsals',exact:true}).click();await page.locator('[data-practice-start]').click();
  for(let i=0;i<5;i++){
   await page.locator('#practice-response').fill(`Original user response ${i}`);await page.locator('[data-practice-chat] button').click();
@@ -233,7 +233,12 @@ for(const lang of ['es','en'])test(`agent conversation continues beyond three re
  }
  await expect(page.locator('[data-practice-chat]')).toHaveCount(1);expect(c.replyInputs.at(-1).messages).toHaveLength(10);
  expect(c.replyInputs.at(-1).messages[1].text).toBe('Original user response 0');
- await page.locator('[data-practice-end]').click();await expect(page.locator('[data-practice-step=analysis]')).toHaveAttribute('aria-current','step');
+ await expect(page.locator('[data-practice-end]')).toHaveCount(0);
+ await page.locator('[data-practice-finish]').click();await expect(page.locator('.practice-exit-dialog')).toBeVisible();
+ await page.locator('[data-practice-finish-cancel]').click();await expect(page.locator('[data-practice-chat]')).toHaveCount(1);
+ await page.locator('[data-practice-finish]').click();await page.locator('[data-practice-finish-confirm]').click();
+ await expect(page.locator('[data-practice-form]')).toHaveCount(1);await page.reload();await expect(page.locator('[data-practice-form]')).toHaveCount(1);
+ expect(c.writes.filter(path=>path==='/api/v1/rehearsals/evaluations')).toEqual([]);
  expect(c.errors).toEqual([]);
 });
 test('model reply failure stays visible with no scripted substitute',async({page})=>{

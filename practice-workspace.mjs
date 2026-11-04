@@ -1,6 +1,34 @@
-import {renderAIActivity} from './ai-activity.mjs';
+// Descriptive feedback comparison. No grading, provider call, or business action.
+const assessments=new Set(['strength','improvement','insufficient_evidence']);
+const ordered=value=>Array.isArray(value)?value.map(ordered):value&&typeof value==='object'?Object.fromEntries(Object.keys(value).sort().map(k=>[k,ordered(value[k])])):value;
+const canonicalContext=context=>JSON.stringify(ordered([context.scenario_id,context.output_language,context.persona,context.source_context,context.sources]));
+export function practiceAttempt(state){
+ const context=structuredClone(state.context),messages=structuredClone(state.messages),evaluation=structuredClone(state.evaluation);
+ if(!context||!['es','en'].includes(context.output_language)||!['scope','payment','refund'].includes(context.scenario_id)||!context.persona||!context.source_context||!context.sources)throw Error('Invalid practice context');
+ if(!Array.isArray(messages)||messages.length<2||messages.length>200||messages.some((m,i)=>m.role!==(i%2?'user':'client')||typeof m.text!=='string'||!m.text.trim()||m.text.length>4000))throw Error('Invalid practice messages');
+ if(!evaluation||typeof evaluation.summary!=='string'||typeof evaluation.model!=='string'||!evaluation.model||typeof evaluation.scope_id!=='string'||!evaluation.scope_id||!Array.isArray(evaluation.items))throw Error('Invalid practice evaluation');
+ const turns=messages.map((m,i)=>({...m,index:i})).filter(m=>m.role==='user');
+ if(evaluation.items.length!==turns.length||evaluation.items.some((item,i)=>item.message_index!==turns[i].index||!assessments.has(item.assessment)||typeof item.evidence_quote!=='string'||!item.evidence_quote||!turns[i].text.includes(item.evidence_quote)))throw Error('Invalid practice findings');
+ return {version:1,context,messages,evaluation};
+}
+export function repeatPracticeAttempt(state){
+ const previous=practiceAttempt(state);
+ return {context:structuredClone(previous.context),comparisonBaseline:previous,ended:false,view:'conversation',evaluationIndex:0,messages:[structuredClone(previous.messages[0])]};
+}
+export function comparePracticeAttempts(previous,current){
+ const before=practiceAttempt(previous),after=practiceAttempt(current);
+ const describe=value=>({total:value.evaluation.items.length,...Object.fromEntries([...assessments].map(a=>[a,value.evaluation.items.filter(i=>i.assessment===a).length]))});
+ const sameContext=canonicalContext(before.context)===canonicalContext(after.context);
+ const sameEvaluator=before.evaluation.model===after.evaluation.model&&before.evaluation.scope_id===after.evaluation.scope_id;
+ const openingMatch=sameContext&&before.messages[0].text===after.messages[0].text;
+ return {comparable:sameContext&&sameEvaluator,reason:!sameContext?'context':!sameEvaluator?'evaluator':null,before:describe(before),after:describe(after),
+  firstReply:openingMatch?{client:after.messages[0].text,before:before.messages[1].text,after:after.messages[1].text,
+    beforeAssessment:before.evaluation.items[0].assessment,afterAssessment:after.evaluation.items[0].assessment}:null};
+}
+
+import {renderAIActivity,submitChatOnEnter,chatScrollPosition,restoreChatScroll} from './ai-activity.mjs';
 import {icon} from './icons.mjs';
-import {uiText,uiLanguage} from './i18n.mjs';
+import {uiText,uiLanguage,uiLocale} from './i18n.mjs';
 const esc=value=>String(value??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const scenarios={scope:{request:'REQ-SP-001',label:'practice.scope'},payment:{request:'REQ-SP-002',label:'practice.payment'},refund:{request:'REQ-SP-003',label:'practice.refund'}};
 const traits=[['patience','practice.patience','practice.impatient','practice.patient'],['flexibility','practice.flexibility','practice.rigid','practice.flexible'],['price','practice.price','practice.low','practice.high']];
@@ -25,30 +53,93 @@ export function buildPracticeContext(settings,data,language=uiLanguage()){
   allowed_tools:[],affects_business_state:false};
 }
 function renderAIWait(label,hint){return renderAIActivity({label:uiText(label),hint:uiText(hint)});}
+export function practiceFinishRequiresConfirmation(state){
+ return Boolean(state&&!state.evaluation);
+}
+export function groupPracticeCitations(citations){
+ const groups=new Map();
+ for(const citation of citations){
+  const key=JSON.stringify([citation.file_id,citation.title,citation.author,citation.url]);
+  if(!groups.has(key))groups.set(key,{...citation,excerpts:[]});
+  const group=groups.get(key);
+  if(!group.excerpts.some(c=>c.quote===citation.quote&&JSON.stringify(c.locator)===JSON.stringify(citation.locator)))group.excerpts.push(citation);
+ }
+ return [...groups.values()];
+}
+function renderPracticeCitations(citations){
+ const links=groupPracticeCitations(citations).map((group,index)=>{
+  const href=typeof group.url==='string'&&group.url.startsWith('https://')?group.url:'';
+  return href?`<a href="${esc(href)}" target="_blank" rel="noopener noreferrer" aria-label="${esc(uiText('practice.originalDocument')+': '+group.title)}"><span class="practice-source-title"><span class="practice-source-number">${esc(uiText('practice.sourceNumber',{number:index+1}))}</span> ${esc(group.title)}</span>${icon('arrow-up-right')}</a>`:'';
+ }).join('');
+ return links?`<div class="practice-source-links">${links}</div>`:'';
+}
+
 function renderPracticeEvaluation(state){
  const data=state.evaluation,selected=state.evaluationIndex;
  if(!data){
   const pending=['queued','running'].includes(state.evaluationStatus),busy=state.evaluationSubmitting;
-  return `<section class="practice-evaluation" aria-label="${uiText('eval.title')}" aria-busy="${pending||busy}">${pending||busy?renderAIWait(pending&&state.evaluationStatus==='queued'?'practice.evalQueued':'practice.evalRunning','practice.analysisWaitHint'):`<p>${uiText('practice.evalReady')}</p>`}${state.evaluationError?`<p class="cloud-error" role="alert">${esc(state.evaluationError)}</p>`:''}${pending||busy?'':`<button class="button" type="button" data-practice-evaluate>${icon('sparkles')}${uiText(state.submissionUncertain?'practice.evalRetry':state.jobId&&state.evaluationStatus!=='failed'?'practice.evalCheck':'practice.evalStart')}</button>`}</section>`;
+  return `<section class="practice-evaluation practice-evaluation-ready" aria-label="${uiText('eval.title')}" aria-busy="${pending||busy}">${pending||busy?renderAIWait(pending&&state.evaluationStatus==='queued'?'practice.evalQueued':'practice.evalRunning','practice.analysisWaitHint'):`<p>${uiText('practice.evalReady')}</p>`}${state.evaluationError?`<p class="cloud-error" role="alert">${esc(state.evaluationError)}</p>`:''}${pending||busy?'':`<button class="button" type="button" data-practice-evaluate>${icon('sparkles')}${uiText(state.submissionUncertain?'practice.evalRetry':state.jobId&&state.evaluationStatus!=='failed'?'practice.evalCheck':'practice.evalStart')}</button>`}</section>`;
  }
- return `<section class="practice-evaluation" aria-label="${uiText('eval.title')}"><header><h3>${uiText('eval.title')}</h3><p>${esc(data.summary)}</p><small>${esc(uiText('practice.evalSourcesRead',{count:data.sources_read}))}</small>${Array.isArray(data.sources)?`<details class="practice-source-library"><summary>${uiText('practice.sourceLibrary')}</summary><ul>${data.sources.map(source=>`<li><strong>${esc(source.title)}</strong><span>${esc(source.author)}</span><small>${uiText(source.cited?'practice.sourceCited':'practice.sourceRead')}</small>${typeof source.url==='string'&&source.url.startsWith('https://')?`<a href="${esc(source.url)}" target="_blank" rel="noopener noreferrer">${uiText('practice.originalDocument')}${icon('arrow-up-right')}</a>`:''}</li>`).join('')}</ul></details>`:''}</header><nav class="practice-message-switcher" aria-label="${uiText('eval.messages')}">${data.items.map((_,i)=>`<button type="button" data-practice-evaluation="${i}" aria-pressed="${i===selected}">${uiText('eval.message',{number:i+1})}</button>`).join('')}</nav>${data.items.map((item,i)=>{const client=state.messages[item.message_index-1];return `<article class="practice-evaluation-card" ${i===selected?'':'hidden'}><h4>${uiText('eval.message',{number:i+1})}</h4><div class="practice-evaluation-exchange"><div><small>${uiText('eval.yourMessage')}</small><blockquote class="practice-evidence">${esc(item.evidence_quote)}</blockquote></div><div><small>${uiText('eval.clientMessage')}</small><p>${esc(client?.text)}</p></div></div><section class="practice-evaluation-finding"><span class="badge review">${uiText(`practice.evalAssessment.${item.assessment}`)}</span><strong>${uiText('eval.finding')}</strong><p>${esc(item.finding)}</p></section>${item.suggestion?`<section class="practice-evaluation-example"><strong>${uiText('eval.suggestedReply')}</strong><p>${esc(item.suggestion)}</p></section>`:''}<div class="practice-evaluation-reason"><strong>${uiText('practice.expertBasis')}</strong><p>${esc(item.why)}</p>${item.citations.map(c=>{const locator=c.locator.kind==='page'?uiText('practice.evalPage',{number:c.locator.page}):c.locator.kind==='paragraph'?uiText('practice.evalParagraph',{number:c.locator.paragraph}):c.locator.section;const href=typeof c.url==='string'&&c.url.startsWith('https://')?c.url:'';return `<section class="practice-source-citation"><header><span>${esc(uiText('practice.expertReference',{author:c.author}))}</span><strong>${esc(c.title)}</strong><small>${esc(locator)}</small></header><blockquote>${esc(c.quote)}</blockquote>${href?`<a href="${esc(href)}" target="_blank" rel="noopener noreferrer">${uiText('practice.originalDocument')}${icon('arrow-up-right')}</a>`:''}</section>`;}).join('')}</div></article>`;}).join('')}<div class="practice-message-pager"><button class="button secondary" data-practice-evaluation="previous" ${selected===0?'disabled':''}>${icon('arrow-left')}${uiText('eval.previous')}</button><span role="status">${uiText('eval.position',{number:selected+1,total:data.items.length})}</span><button class="button secondary" data-practice-evaluation="next" ${selected===data.items.length-1?'disabled':''}>${uiText('eval.nextMessage')}${icon('arrow-right')}</button></div><p class="practice-note">${uiText('eval.noScore')}</p></section>`;
+ return `<section class="practice-evaluation" aria-label="${uiText('eval.title')}"><header><h3>${uiText('eval.title')}</h3><p>${esc(data.summary)}</p></header><nav class="practice-message-switcher" aria-label="${uiText('eval.messages')}">${data.items.map((_,i)=>`<button type="button" data-practice-evaluation="${i}" aria-pressed="${i===selected}">${uiText('eval.message',{number:i+1})}</button>`).join('')}</nav>${data.items.map((item,i)=>{const client=state.messages[item.message_index-1];return `<article class="practice-evaluation-card" ${i===selected?'':'hidden'}><div class="practice-evaluation-exchange"><div class="practice-client-context"><small>${uiText('eval.clientMessage')}</small><p>${esc(client?.text)}</p></div><div class="practice-user-response"><small>${uiText('eval.yourMessage')}</small><blockquote class="practice-evidence">${esc(item.evidence_quote)}</blockquote></div></div><section class="practice-evaluation-finding"><span class="badge review">${uiText(`practice.evalAssessment.${item.assessment}`)}</span><strong>${uiText(item.assessment==='improvement'?'eval.improveHeading':'eval.finding')}</strong><p>${esc(item.finding)}</p></section>${item.suggestion?`<section class="practice-evaluation-example"><strong>${uiText('eval.suggestedReply')}</strong><p>${esc(item.suggestion)}</p></section>`:''}<details class="practice-evaluation-reason"><summary>${uiText('practice.expertBasis')}${icon('chevron-down')}</summary><p>${esc(item.why.replace(/\s*\(r\d+(?:,\s*r\d+)*\)/g,''))}</p>${renderPracticeCitations(item.citations)}</details></article>`;}).join('')}<div class="practice-message-pager"><button class="button secondary" data-practice-evaluation="previous" ${selected===0?'disabled':''}>${icon('arrow-left')}${uiText('eval.previous')}</button><span role="status">${uiText('eval.position',{number:selected+1,total:data.items.length})}</span><button class="button secondary" data-practice-evaluation="next" ${selected===data.items.length-1?'disabled':''}>${uiText('eval.nextMessage')}${icon('arrow-right')}</button></div></section>`;
+}
+export function renderPracticeComparisonDetail(state,kind){
+ const result=comparePracticeAttempts(state.comparisonBaseline,state);
+ if(kind==='help')return {title:uiText('practiceCompare.helpTitle'),html:`<div class="practice-comparison-help"><p>${uiText('practiceCompare.helpCounts')}</p><dl>${['strength','improvement','insufficient_evidence'].map(name=>`<div><dt>${uiText(`practice.evalAssessment.${name}`)}</dt><dd>${uiText(`practiceCompare.help.${name}`)}</dd></div>`).join('')}</dl><p class="practice-comparison-help-example">${uiText('practiceCompare.helpExample')}</p></div>`};
+ if(kind==='summaries')return {title:uiText('practiceCompare.summaries'),html:`<div class="practice-comparison-dialog-columns"><section><h3>${uiText('practiceCompare.before')}</h3><p>${esc(state.comparisonBaseline.evaluation.summary)}</p></section><section><h3>${uiText('practiceCompare.after')}</h3><p>${esc(state.evaluation.summary)}</p></section></div>`};
+ if(kind==='reply'&&result.firstReply)return {title:uiText('practiceCompare.sameQuestion'),html:`<p class="practice-comparison-question">${esc(result.firstReply.client)}</p><div class="practice-comparison-dialog-columns"><section><h3>${uiText('practiceCompare.before')}</h3><p>${esc(result.firstReply.before)}</p><span class="badge review">${esc(uiText(`practice.evalAssessment.${result.firstReply.beforeAssessment}`))}</span></section><section><h3>${uiText('practiceCompare.after')}</h3><p>${esc(result.firstReply.after)}</p><span class="badge review">${esc(uiText(`practice.evalAssessment.${result.firstReply.afterAssessment}`))}</span></section></div>`};
+ throw Error('Invalid practice comparison detail');
+}
+function renderPracticeComparison(state){
+ if(!state.comparisonBaseline)return '';
+ let result;
+ try{result=comparePracticeAttempts(state.comparisonBaseline,state);}catch{return `<p class="cloud-error" role="alert">${esc(uiText('practiceCompare.invalid'))}</p>`;}
+ const metricRows=['strength','improvement','insufficient_evidence'].map(a=>`<tr><th scope="row">${esc(uiText(`practice.evalAssessment.${a}`))}</th><td>${esc(uiText('practiceCompare.count',{count:new Intl.NumberFormat(uiLocale()).format(result.before[a]),total:new Intl.NumberFormat(uiLocale()).format(result.before.total)}))}</td><td>${esc(uiText('practiceCompare.count',{count:new Intl.NumberFormat(uiLocale()).format(result.after[a]),total:new Intl.NumberFormat(uiLocale()).format(result.after.total)}))}</td></tr>`).join('');
+ return `<section class="practice-comparison" aria-label="${esc(uiText('practiceCompare.title'))}"><header><div class="practice-comparison-title"><h3>${esc(uiText('practiceCompare.title'))}</h3><button type="button" class="text-button practice-comparison-info" data-practice-comparison-detail="help" aria-haspopup="dialog" aria-label="${uiText('practiceCompare.helpTitle')}" title="${uiText('practiceCompare.helpTitle')}">${icon('info')}</button></div><p>${esc(uiText('practiceCompare.description'))}</p></header>${!result.comparable?`<p class="practice-comparison-context" role="status">${esc(uiText(`practiceCompare.different.${result.reason}`))}</p>`:''}<table class="practice-comparison-metrics"><thead><tr><th scope="col"><span class="sr-only">${uiText('practiceCompare.findings')}</span></th><th scope="col">${uiText('practiceCompare.beforeShort')}</th><th scope="col">${uiText('practiceCompare.afterShort')}</th></tr></thead><tbody>${metricRows}</tbody></table><div class="practice-comparison-links">${result.firstReply?`<button type="button" class="text-button" data-practice-comparison-detail="reply" aria-haspopup="dialog">${esc(uiText('practiceCompare.sameQuestion'))}${icon('arrow-up-right')}</button>`:''}<button type="button" class="text-button" data-practice-comparison-detail="summaries" aria-haspopup="dialog">${esc(uiText('practiceCompare.summaries'))}${icon('arrow-up-right')}</button></div></section>`;
+
 }
 export function installPracticeWorkspace(cloud){
  window.addEventListener('hashchange',()=>{if(window.location.hash!=='#ensayos'&&cloud.active)cloud.scheduleIngestionPolling();});
- let owner='',settings,baseline='',error='',rehearsal=null,pollTimer=null,replyTimer=null;
+ let owner='',settings,baseline='',error='',rehearsal=null,pollTimer=null,replyTimer=null,finishDialog=null,comparisonDialog=null,comparisonReturn=null;
  const key=()=>{if(!cloud.navigationOwner||!cloud.session?.key)throw Error(uiText('practice.invalid'));return `${cloud.session.key}:practice:${cloud.navigationOwner}`;};
+ function closeComparisonDialog(){if(!comparisonDialog)return;const dialog=comparisonDialog;comparisonDialog=null;dialog.close();dialog.remove();if(comparisonReturn?.isConnected)comparisonReturn.focus({preventScroll:true});comparisonReturn=null;}
+ function openComparisonDialog(kind,trigger){
+  if(!rehearsal?.evaluation||!rehearsal.comparisonBaseline)return;
+  let content;try{content=renderPracticeComparisonDetail(rehearsal,kind);}catch{cloud.message=uiText('practiceCompare.invalid');cloud.notify();return;}
+  closeComparisonDialog();comparisonReturn=trigger;const dialog=cloud.document.createElement('dialog');comparisonDialog=dialog;dialog.className='practice-comparison-dialog';dialog.setAttribute('aria-labelledby','practice-comparison-dialog-title');
+  dialog.innerHTML=`<header><h2 id="practice-comparison-dialog-title">${esc(content.title)}</h2><button type="button" class="text-button" data-practice-comparison-close aria-label="${uiText('practiceCompare.close')}" title="${uiText('practiceCompare.close')}">${icon('x')}</button></header><div class="practice-comparison-dialog-body">${content.html}</div>`;
+  dialog.querySelector('[data-practice-comparison-close]').addEventListener('click',closeComparisonDialog);dialog.addEventListener('cancel',event=>{event.preventDefault();closeComparisonDialog();});cloud.document.body.append(dialog);dialog.showModal();dialog.querySelector('[data-practice-comparison-close]').focus();
+ }
+ function closeFinishDialog(){if(!finishDialog)return;const dialog=finishDialog;finishDialog=null;dialog.close();dialog.remove();cloud.document.querySelector('[data-practice-finish]')?.focus({preventScroll:true});}
+ function finishPractice(){
+  try{cloud.storage.setItem(key()+':closed','1');}catch{cloud.message=uiText('practice.storageError');cloud.notify();return;}
+  clearTimeout(pollTimer);clearTimeout(replyTimer);pollTimer=null;replyTimer=null;closeComparisonDialog();closeFinishDialog();rehearsal=null;cloud.practiceContext=null;cloud.notify();
+  cloud.document.querySelector('.practice-introduction')?.scrollIntoView({block:'start'});cloud.document.querySelector('#practice-case')?.focus({preventScroll:true});
+ }
+ function requestFinishPractice(){
+  if(!rehearsal)return;
+  if(!practiceFinishRequiresConfirmation(rehearsal)){finishPractice();return;}
+  if(finishDialog)return;
+  const dialog=cloud.document.createElement('dialog');finishDialog=dialog;dialog.className='practice-exit-dialog';dialog.setAttribute('aria-labelledby','practice-exit-title');dialog.setAttribute('aria-describedby','practice-exit-copy');
+  dialog.innerHTML=`<h2 id="practice-exit-title">${uiText('practice.finishTitle')}</h2><p id="practice-exit-copy">${uiText('practice.finishCopy')}</p><footer><button type="button" class="button secondary" data-practice-finish-cancel>${uiText('practice.keepPracticing')}</button><button type="button" class="button" data-practice-finish-confirm>${uiText('practice.finishSession')}</button></footer>`;
+  dialog.querySelector('[data-practice-finish-cancel]').addEventListener('click',closeFinishDialog);dialog.querySelector('[data-practice-finish-confirm]').addEventListener('click',finishPractice);dialog.addEventListener('cancel',event=>{event.preventDefault();closeFinishDialog();});
+  cloud.document.body.append(dialog);dialog.showModal();dialog.querySelector('[data-practice-finish-cancel]').focus();
+ }
+ const originalReset=cloud.reset.bind(cloud);cloud.reset=function(){closeComparisonDialog();closeFinishDialog();clearTimeout(pollTimer);clearTimeout(replyTimer);rehearsal=null;owner='';settings=null;return originalReset();};
+ window.addEventListener('hashchange',()=>{if(window.location.hash!=='#ensayos'){closeComparisonDialog();closeFinishDialog();}});
+
  function load(){
   if(owner===cloud.navigationOwner&&settings)return;
   owner=cloud.navigationOwner;baseline='';error='';rehearsal=null;
   const raw=cloud.storage.getItem(key());
   if(raw!==null){try{settings=validatePracticeSettings(JSON.parse(raw));baseline=JSON.stringify(settings);}catch{settings=null;error=uiText('practice.invalid');}}
   else {settings={version:1,scenario:'scope',persona:{patience:3,flexibility:3,price:3}};baseline=JSON.stringify(settings);}
+  if(cloud.storage.getItem(key()+':closed')==='1')return;
   const saved=cloud.storage.getItem(key()+':evaluation');
   if(saved!==null&&settings){
    try{
     const record=JSON.parse(saved),config=validatePracticeSettings(record.settings);
     if(record.version!==1||!/^[-0-9a-f]{36}$/.test(record.jobId)||!Array.isArray(record.messages)||record.messages.length<2||record.messages.some((m,i)=>m.role!==(i%2?'user':'client')||typeof m.text!=='string'||!m.text||m.text.length>4000))throw Error('Invalid saved evaluation');
-    rehearsal={context:buildPracticeContext(config,window.TRATO_DATA),ended:true,view:'analysis',evaluationIndex:0,messages:record.messages,jobId:record.jobId,evaluationPayload:record.payload,submissionUncertain:!record.submitted,evaluationStatus:'unavailable'};
+    rehearsal={context:buildPracticeContext(config,window.TRATO_DATA,record.payload?.output_language),ended:true,view:'analysis',evaluationIndex:0,messages:record.messages,jobId:record.jobId,evaluationPayload:record.payload,submissionUncertain:!record.submitted,evaluationStatus:'unavailable',comparisonBaseline:record.comparisonBaseline?practiceAttempt(record.comparisonBaseline):null};
     if(record.submitted)pollTimer=setTimeout(()=>pollEvaluation(rehearsal),0);
    }catch{settings=null;error=uiText('practice.invalid');}
   }
@@ -57,7 +148,7 @@ export function installPracticeWorkspace(cloud){
    if(savedDialogue!==null){try{
     const record=JSON.parse(savedDialogue),config=validatePracticeSettings(record.settings);
     if(record.version!==1||!['es','en'].includes(record.output_language)||!Array.isArray(record.messages)||record.messages.some((m,i)=>m.role!==(i%2?'user':'client')||typeof m.text!=='string'||!m.text))throw Error('Invalid dialogue');
-    rehearsal={context:buildPracticeContext(config,window.TRATO_DATA,record.output_language),ended:record.ended===true,view:record.ended?'analysis':'conversation',evaluationIndex:0,messages:record.messages,replyJobId:record.jobId,replyPayload:record.payload,replyStatus:record.jobId?'unavailable':'idle',replyUncertain:record.uncertain};
+    rehearsal={context:buildPracticeContext(config,window.TRATO_DATA,record.output_language),ended:record.ended===true,view:record.ended?'analysis':'conversation',evaluationIndex:0,messages:record.messages,replyJobId:record.jobId,replyPayload:record.payload,replyStatus:record.jobId?'unavailable':'idle',replyUncertain:record.uncertain,comparisonBaseline:record.comparisonBaseline?practiceAttempt(record.comparisonBaseline):null};
     if(record.jobId&&!record.uncertain&&!record.ended)replyTimer=setTimeout(()=>pollReply(rehearsal),0);
    }catch{settings=null;error=uiText('practice.invalid');}}
   }
@@ -85,16 +176,20 @@ export function installPracticeWorkspace(cloud){
  }
  function renderConversation(root){
   const {context,messages}=rehearsal,finished=rehearsal.ended,analysis=rehearsal.view==='analysis',replyBusy=rehearsal.replySubmitting||['queued','running'].includes(rehearsal.replyStatus);
-  root.innerHTML=`<section class="workspace-panel practice-conversation"><header class="practice-conversation-heading"><div><span class="eyebrow">${uiText('practice.simulation')}</span><h2 id="practice-conversation-title" tabindex="-1">${uiText(scenarios[context.scenario_id].label)}</h2><p>${uiText('practice.scriptHint')}</p></div><button class="text-button" data-practice-back>${uiText('practice.back')}</button></header><ol class="practice-stepper" aria-label="${uiText('practice.steps')}">${[['conversation','practice.stepConversation'],['analysis','eval.title']].map(([id,label],index)=>`<li><button type="button" data-practice-step="${id}" ${rehearsal.view===id?'aria-current="step"':''} ${id==='analysis'&&!finished?'disabled':''}><span>${index+1}</span><strong>${uiText(label)}</strong>${id==='conversation'&&finished?icon('check'):''}</button></li>`).join('')}</ol><div class="practice-stage-content">${analysis?`<section class="practice-finished"><h3 id="practice-finish" tabindex="-1">${uiText('practice.finished')}</h3>${renderPracticeEvaluation(rehearsal)}</section>`:`<div class="practice-chat" role="log" aria-label="${uiText('practice.conversation')}" aria-live="polite">${messages.map(message=>`<article class="practice-message ${message.role==='user'?'is-user':''}"><span class="practice-message-avatar" aria-hidden="true">${message.role==='user'?esc(cloud.profile.textContent.trim()):icon('user-round')}</span><div class="practice-message-bubble"><strong>${uiText(message.role==='user'?'practice.you':'practice.client')}</strong><p>${esc(message.text)}</p></div></article>`).join('')}</div>${replyBusy?renderAIWait('practice.replyThinking','practice.replyThinkingHint'):''}${rehearsal.replyError?`<div class="cloud-error" role="alert">${esc(rehearsal.replyError)}</div><button class="button secondary" data-practice-reply-retry>${uiText(rehearsal.replyUncertain||rehearsal.replyStatus==='failed'?'practice.replyRetry':'practice.replyCheck')}</button>`:''}${finished?`<p class="practice-note">${uiText('practice.finished')}</p>`:`<form data-practice-chat><div class="practice-chat-label"><label for="practice-response">${uiText('practice.reply')}</label><span>${uiText('practice.exchange',{number:messages.filter(m=>m.role==='user').length+1})}</span></div><textarea id="practice-response" name="response" rows="3" maxlength="4000" required ${replyBusy?'disabled':''} placeholder="${uiText('practice.replyPlaceholder')}"></textarea><button class="button" type="submit" ${replyBusy||rehearsal.replyError?'disabled':''}>${uiText('practice.respond')}${icon('arrow-right')}</button></form>${messages.some(m=>m.role==='user')?`<button type="button" class="text-button practice-end" data-practice-end ${replyBusy?'disabled':''}>${uiText('practice.endConversation')}${icon('arrow-right')}</button>`:''}`}`}</div>${finished?`<button class="button" data-practice-retry>${uiText('practice.retry')}</button>`:''}</section>`;
+  root.innerHTML=`<section class="workspace-panel practice-conversation ${analysis&&rehearsal.evaluation&&rehearsal.comparisonBaseline?'has-comparison':''}"><header class="practice-conversation-heading"><div><span class="eyebrow">${uiText('practice.simulation')}</span><h2 id="practice-conversation-title" tabindex="-1">${uiText(scenarios[context.scenario_id].label)}</h2><p>${uiText('practice.scriptHint')}</p></div><button type="button" class="button secondary practice-finish-action" data-practice-finish>${uiText('practice.finishSession')}</button></header><ol class="practice-stepper" aria-label="${uiText('practice.steps')}">${[['conversation','practice.stepConversation'],['analysis','eval.title']].map(([id,label],index)=>`<li><button type="button" data-practice-step="${id}" ${rehearsal.view===id?'aria-current="step"':''} ${id==='analysis'&&!finished?'disabled':''}><span>${index+1}</span><strong>${uiText(label)}</strong>${id==='conversation'&&finished?icon('check'):''}</button></li>`).join('')}</ol><div class="practice-stage-content">${analysis?`<section class="practice-finished"><p class="practice-finished-label" id="practice-finish" tabindex="-1">${icon('check')}${uiText('practice.finished')}</p><div class="practice-analysis-layout"><div class="practice-analysis-main">${renderPracticeEvaluation(rehearsal)}</div>${rehearsal.evaluation&&rehearsal.comparisonBaseline?`<aside class="practice-analysis-side">${renderPracticeComparison(rehearsal)}</aside>`:''}</div></section>`:`<div class="practice-chat" role="log" aria-label="${uiText('practice.conversation')}" aria-live="polite">${messages.map(message=>`<article class="practice-message ${message.role==='user'?'is-user':''}"><span class="practice-message-avatar ${message.role==='user'?'':'is-tetrato'}" aria-hidden="true">${message.role==='user'?esc(cloud.profile.textContent.trim()):'<img class="practice-tetrato-avatar" src="/assets/mascot/trato-guide.png" alt="" width="44" height="44">'}</span><div class="practice-message-bubble"><strong>${uiText(message.role==='user'?'practice.you':'practice.client')}</strong><p>${esc(message.text)}</p></div></article>`).join('')}</div>${replyBusy?renderAIWait('practice.replyThinking','practice.replyThinkingHint'):''}${rehearsal.replyError?`<div class="cloud-error" role="alert">${esc(rehearsal.replyError)}</div><button class="button secondary" data-practice-reply-retry>${uiText(rehearsal.replyUncertain||rehearsal.replyStatus==='failed'?'practice.replyRetry':'practice.replyCheck')}</button>`:''}${finished?`<p class="practice-note">${uiText('practice.finished')}</p>`:`<form data-practice-chat><div class="practice-chat-label"><label for="practice-response">${uiText('practice.reply')}</label><span>${uiText('practice.exchange',{number:messages.filter(m=>m.role==='user').length+1})}</span></div><textarea id="practice-response" name="response" rows="3" maxlength="4000" required ${replyBusy?'disabled':''} placeholder="${uiText('practice.replyPlaceholder')}"></textarea><button class="button" type="submit" ${replyBusy||rehearsal.replyError?'disabled':''}>${uiText('practice.respond')}${icon('arrow-right')}</button></form>`}`}</div>${finished&&rehearsal.evaluation?`<button class="button" data-practice-retry>${uiText('practiceCompare.retry')}</button><p class="practice-note">${uiText('practiceCompare.retryHint')}</p>`:''}</section>`;
+  restoreChatScroll(root.querySelector('.practice-chat'),rehearsal.chatScroll);
  }
- function start(){
+ function start(repeat=false){
+  let previous=null;
+  if(repeat){try{previous=practiceAttempt(rehearsal);}catch{throw Error(uiText('practiceCompare.invalid'));}}
   clearTimeout(pollTimer);pollTimer=null;
+  cloud.storage.removeItem(key()+':closed');
   cloud.storage.removeItem(key()+':evaluation');
   clearTimeout(replyTimer);cloud.storage.removeItem(key()+':dialogue');
-  const context=persist();rehearsal={context,ended:false,view:'conversation',evaluationIndex:0,messages:[]};cloud.notify();requestReply();cloud.document.querySelector('.practice-conversation')?.scrollIntoView({block:'start'});cloud.document.querySelector('#practice-conversation-title')?.focus({preventScroll:true});
+  const context=previous?previous.context:persist();rehearsal=previous?repeatPracticeAttempt(previous):{context,comparisonBaseline:null,ended:false,view:'conversation',evaluationIndex:0,messages:[]};saveDialogue(rehearsal);cloud.notify();if(!previous)requestReply();cloud.document.querySelector('.practice-conversation')?.scrollIntoView({block:'start'});cloud.document.querySelector('#practice-conversation-title')?.focus({preventScroll:true});
  }
  function saveDialogue(state){
-  cloud.storage.setItem(key()+':dialogue',JSON.stringify({version:1,settings:validatePracticeSettings(settings),output_language:state.context.output_language,messages:state.messages,ended:state.ended===true,jobId:state.replyJobId||null,payload:state.replyPayload,uncertain:state.replyUncertain===true}));
+  cloud.storage.setItem(key()+':dialogue',JSON.stringify({version:1,comparisonBaseline:state.comparisonBaseline||null,settings:validatePracticeSettings(settings),output_language:state.context.output_language,messages:state.messages,ended:state.ended===true,jobId:state.replyJobId||null,payload:state.replyPayload,uncertain:state.replyUncertain===true}));
  }
  async function pollReply(state){
   if(rehearsal!==state||owner!==cloud.navigationOwner)return;
@@ -130,7 +225,7 @@ export function installPracticeWorkspace(cloud){
  }
  function evaluationError(issue){
   const code=issue?.code||'';
-  const key=code.includes('SOURCE')?'practice.evalSourceError':code.includes('CONTEXT')?'practice.evalContextError':code.includes('CITATION')?'practice.evalCitationError':code.includes('NOT_CONFIGURED')?'practice.evalNotConfigured':(code.includes('LOCAL_MODEL')||code==='MODEL_REQUEST_FAILED')?'practice.evalModelError':'practice.evalFailed';
+  const key=code==='REHEARSAL_QUOTE_BUDGET_EXCEEDED'?'practice.evalQuoteBudgetError':(code.includes('SOURCE')||code.includes('REFERENCE')||code.includes('VECTOR')||code.includes('EMBEDDING'))?'practice.evalSourceError':code.includes('CONTEXT')?'practice.evalContextError':code.includes('CITATION')?'practice.evalCitationError':code.includes('NOT_CONFIGURED')?'practice.evalNotConfigured':(code.includes('LOCAL_MODEL')||code==='MODEL_REQUEST_FAILED')?'practice.evalModelError':'practice.evalFailed';
   return uiText(key);
  }
  async function pollEvaluation(state){
@@ -156,11 +251,11 @@ export function installPracticeWorkspace(cloud){
   try{
    const payload=state.submissionUncertain?state.evaluationPayload:{action:'evaluate',scenario:state.context.scenario_id,output_language:state.context.output_language,persona:state.context.persona,messages:state.messages};
    state.evaluationPayload=payload;
-   cloud.storage.setItem(key()+':evaluation',JSON.stringify({version:1,settings:validatePracticeSettings(settings),messages:state.messages,jobId,payload,submitted:false}));
+   cloud.storage.setItem(key()+':evaluation',JSON.stringify({version:1,comparisonBaseline:state.comparisonBaseline||null,settings:validatePracticeSettings(settings),messages:state.messages,jobId,payload,submitted:false}));
    const job=await cloud.request('/api/v1/rehearsals/evaluations',{method:'POST',headers:{'Content-Type':'application/json','Idempotency-Key':jobId},body:JSON.stringify(payload)});
    if(rehearsal!==state||owner!==cloud.navigationOwner)return;
    state.jobId=job.id;state.evaluationStatus=job.status;state.evaluationSubmitting=false;state.submissionUncertain=false;
-   cloud.storage.setItem(key()+':evaluation',JSON.stringify({version:1,settings:validatePracticeSettings(settings),messages:state.messages,jobId:job.id,payload,submitted:true}));
+   cloud.storage.setItem(key()+':evaluation',JSON.stringify({version:1,comparisonBaseline:state.comparisonBaseline||null,settings:validatePracticeSettings(settings),messages:state.messages,jobId:job.id,payload,submitted:true}));
    cloud.notify();pollEvaluation(state);
   }catch(issue){if(rehearsal!==state||owner!==cloud.navigationOwner)return;state.evaluationSubmitting=false;state.submissionUncertain=true;state.evaluationStatus='unavailable';state.evaluationError=evaluationError(issue);cloud.notify();}
  }
@@ -176,19 +271,21 @@ export function installPracticeWorkspace(cloud){
   updateSaveState();event.target.setAttribute('aria-valuetext',uiText('practice.level',{value}));
  });
  cloud.document.addEventListener('change',event=>{if(!event.target.matches('#practice-case'))return;settings.scenario=event.target.value;updateSaveState();});
+ cloud.document.addEventListener('scroll',event=>{if(event.target.matches?.('.practice-chat')&&rehearsal)rehearsal.chatScroll=chatScrollPosition(event.target);},true);
+ cloud.document.addEventListener('keydown',event=>{if(cloud.active&&cloud.navigationOwner===owner&&window.location.hash==='#ensayos')submitChatOnEnter(event,'#practice-response');});
  cloud.document.addEventListener('submit',event=>{
   if(event.target.matches('[data-practice-chat]')){
    event.preventDefault();if(!rehearsal||rehearsal.ended||rehearsal.replySubmitting||['queued','running'].includes(rehearsal.replyStatus)||rehearsal.replyError)return;
    const text=event.target.elements.response.value.trim();if(!text)return;
-   rehearsal.messages.push({role:'user',text});requestReply();return;
+   rehearsal.chatScroll=null;rehearsal.messages.push({role:'user',text});requestReply();return;
   }
   if(!event.target.matches('[data-practice-form]'))return;event.preventDefault();
   try{persist();updateSaveState();event.target.querySelector('[data-practice-error]').textContent='';}
   catch(issue){event.target.querySelector('[data-practice-error]').textContent=issue.message;}
  });
  cloud.document.addEventListener('click',event=>{
+  const comparison=event.target.closest('[data-practice-comparison-detail]');if(comparison){openComparisonDialog(comparison.dataset.practiceComparisonDetail,comparison);return;}
   if(event.target.closest('[data-practice-reply-retry]')){requestReply();return;}
-  if(event.target.closest('[data-practice-end]')){if(rehearsal&&!rehearsal.replySubmitting&&!['queued','running'].includes(rehearsal.replyStatus)){rehearsal.ended=true;rehearsal.view='analysis';saveDialogue(rehearsal);cloud.notify();}return;}
   if(event.target.closest('[data-practice-evaluate]')){requestEvaluation();return;}
   const pager=event.target.closest('[data-practice-evaluation]');
   if(pager){
@@ -203,8 +300,8 @@ export function installPracticeWorkspace(cloud){
   const step=event.target.closest('[data-practice-step]');
   if(step){if(!rehearsal||step.dataset.practiceStep===rehearsal.view||!['conversation','analysis'].includes(step.dataset.practiceStep)||(step.dataset.practiceStep==='analysis'&&!rehearsal.ended))return;rehearsal.view=step.dataset.practiceStep;cloud.notify();cloud.document.querySelector(`[data-practice-step="${rehearsal.view}"]`)?.focus({preventScroll:true});return;}
   if(event.target.closest('[data-practice-start],[data-practice-retry]')){
-   try{start();}catch(issue){const target=cloud.document.querySelector('[data-practice-error]');if(target)target.textContent=issue.message;else{cloud.message=issue.message;cloud.notify();}}return;
+   try{start(Boolean(event.target.closest('[data-practice-retry]')));}catch(issue){const target=cloud.document.querySelector('[data-practice-error]');if(target)target.textContent=issue.message;else{cloud.message=issue.message;cloud.notify();}}return;
   }
-  if(event.target.closest('[data-practice-back]')){rehearsal=null;cloud.notify();cloud.document.querySelector('.practice-introduction')?.scrollIntoView({block:'start'});return;}
-  if(!event.target.closest('[data-practice-reset]'))return;try{cloud.storage.removeItem(key());owner='';settings=null;cloud.notify();}catch{cloud.message=uiText('practice.storageError');cloud.notify();}});
+  if(event.target.closest('[data-practice-finish]')){requestFinishPractice();return;}
+  if(!event.target.closest('[data-practice-reset]'))return;try{cloud.storage.removeItem(key());cloud.storage.removeItem(key()+':evaluation');cloud.storage.removeItem(key()+':dialogue');cloud.storage.removeItem(key()+':evaluation-before-reanalysis');cloud.storage.removeItem(key()+':closed');owner='';settings=null;cloud.notify();}catch{cloud.message=uiText('practice.storageError');cloud.notify();}});
 }

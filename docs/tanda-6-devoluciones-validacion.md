@@ -63,4 +63,4 @@ Las migraciones compartidas, el formulario financiero completo, el recorrido rea
 
 ## Recursos de pruebas
 
-PostgreSQL se ejecutó únicamente en `/tmp/trato-refunds-pg`, por socket privado sin puerto TCP. Chromium y su biblioteca temporal se descargaron en `/tmp/trato-refund-browser`; la web de pruebas usó el puerto reservado 5173. El cierre detiene solo esos procesos propios y elimina sus bases, binarios, registros y capturas temporales después de documentar resultados. No se modifican `.env`, credenciales, Weaviate, Redis ajeno ni QAMAQ.
+PostgreSQL se ejecutó únicamente en `/tmp/trato-refunds-pg`, por socket privado sin puerto TCP. Chromium y su biblioteca temporal se descargaron en `/tmp/trato-refund-browser`; la web de pruebas usó el puerto reservado 5173. El cierre detiene solo esos procesos propios y elimina sus bases, binarios, registros y capturas temporales después de documentar resultados. No se modifican `.env`, credenciales, Weaviate, Redis ajeno ni otros proyectos locales.

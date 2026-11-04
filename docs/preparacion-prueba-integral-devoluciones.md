@@ -76,7 +76,7 @@ Son 23 tablas en `public` y 2 en `private`. El esquema público no implica acces
 | Comprobantes, aplicación contable y recuperación | `refund_provider_receipts`, `refund_receipt_applications`, `refund_financial_incidents`, `refund_recovery_checks`, `refund_recovery_consents` |
 | Registro interno de comandos y recepción de eventos | `private.refund_commands`, `private.refund_webhook_inbox` |
 
-El listener dedicado tiene ID `523634105C1895649`. Para consultar sus eventos: [Sandbox Webhooks Events](https://developer.paypal.com/dashboard/webhooks/sandbox), seleccionar la app utilizada por Trato y filtrar fecha/tipo. El registro del listener se consulta desde Apps & Credentials → Sandbox → app → Webhooks. Las consultas GET realizadas por Trato a la API de PayPal no son eventos de webhook. La prueba de conectividad vacía rechazada con 422 tampoco crea un evento en ese panel.
+El identificador del listener dedicado se conserva en la configuración privada. Para consultar sus eventos: [Sandbox Webhooks Events](https://developer.paypal.com/dashboard/webhooks/sandbox), seleccionar la app utilizada por Trato y filtrar fecha/tipo. El registro del listener se consulta desde Apps & Credentials → Sandbox → app → Webhooks. Las consultas GET realizadas por Trato a la API de PayPal no son eventos de webhook. La prueba de conectividad vacía rechazada con 422 tampoco crea un evento en ese panel.
 
 ## Identidad del pagador para esta prueba Sandbox
 
@@ -90,8 +90,8 @@ Esta configuración es una herramienta explícita para ensayos Sandbox, no la im
 
 El usuario ejecutó el reembolso desde la interfaz tras registrar la aceptación y autorización. Consultas posteriores de solo lectura confirmaron:
 
-- PayPal Sandbox: reembolso `04777997LX9607719`, USD 12, `COMPLETED`, contra la captura de la adenda.
-- PayPal Sandbox: reembolso `39V70311R2300380U`, USD 6, `COMPLETED`, contra la captura inicial.
+- PayPal Sandbox: reembolso identificador conservado en evidencia privada, USD 12, `COMPLETED`, contra la captura de la adenda.
+- PayPal Sandbox: reembolso identificador conservado en evidencia privada, USD 6, `COMPLETED`, contra la captura inicial.
 - Ambas operaciones e intentos en Trato: completados, un intento por operación.
 - Resumen contable: USD 18 confirmados, USD 0 reservados, dos comprobantes y dos aplicaciones, cero incidencias.
 - Expediente completado y proyecto cerrado.
@@ -110,9 +110,9 @@ Se eliminó el listener Sandbox dedicado y una consulta posterior confirmó HTTP
 
 3 de noviembre de 2026. El usuario completó el recorrido con la nueva interfaz sobre Proyecto_1. Verificación posterior de solo consulta:
 
-- Adenda: USD 120, orden `1VV99012MW920051D`, captura `35504632L06697450`, verificadas contra PayPal Sandbox.
+- Adenda: USD 120, orden identificador conservado en evidencia privada, captura identificador conservado en evidencia privada, verificadas contra PayPal Sandbox.
 - Expediente `41bbff6c-44f8-44a1-a812-9a6466264302`: alcance `payment_only`, completado y asociado exclusivamente a esa adenda.
-- Un intento y una operación completados. PayPal Sandbox confirma el reembolso `7K930455PY864474F`, USD 120, `COMPLETED`, contra la captura indicada.
+- Un intento y una operación completados. PayPal Sandbox confirma el reembolso identificador conservado en evidencia privada, USD 120, `COMPLETED`, contra la captura indicada.
 - Resumen contable: USD 120 confirmados, USD 0 reservados, un comprobante, una aplicación y cero incidencias.
 - Proyecto_1 conserva su estado previo `draft`; no quedó cerrado. El pago original permanece `completed` y la propuesta mantiene su bloqueo por pago (`locked_at`), sin reabrirse como borrador editable.
 

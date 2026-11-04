@@ -25,7 +25,7 @@ test('every explanation has ES and EN titles and bodies',async()=>{
 function fixture(){
  const handlers={},elements=new Map();let root,requests=0;
  const node=()=>({hidden:false,isConnected:true,style:{},attributes:{},focusCount:0,setAttribute(k,v){this.attributes[k]=v;},focus(){this.focusCount++;},closest(){return null;},getClientRects(){return [{}];},getBoundingClientRect(){return {left:100,top:100,right:700,bottom:450};},scrollIntoView(){},remove(){this.isConnected=false;}});
- for(const selector of ['[data-guide-open]','.guide-panel','.guide-highlight','#guide-step-title','.guide-explanation','.guide-progress','[data-guide-previous]','[data-guide-next]'])elements.set(selector,node());
+ for(const selector of ['[data-guide-open]','.guide-panel','.guide-highlight','#guide-step-title','.guide-explanation','.guide-lead','.guide-support','.guide-progress','[data-guide-previous]','[data-guide-next]'])elements.set(selector,node());
  elements.get('.guide-panel').hidden=true;elements.get('.guide-highlight').hidden=true;
  const targets=new Map(['.cloud-client-directory','[data-cloud-action="client"]','#client-workspace'].map(k=>[k,node()]));
  const win={innerWidth:1400,innerHeight:1000,matchMedia:()=>({matches:true}),requestAnimationFrame:()=>1,cancelAnimationFrame(){},addEventListener(k,fn){handlers['window:'+k]=fn;},removeEventListener(k){delete handlers['window:'+k];}};

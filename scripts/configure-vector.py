@@ -55,7 +55,7 @@ def main():
             collection = client.collections.use(COLLECTION)
             expected = {'projects_private', 'reputation_public'}
             existing = set(collection.tenants.get())
-            if not existing.issubset(expected):
+            if not existing.issubset(expected | {'references_shared'}):
                 raise VectorError('VECTOR_TENANT_LAYOUT_CONFLICT', 409)
             missing = expected - existing
             if missing:

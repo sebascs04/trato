@@ -45,3 +45,11 @@ class AIRoutesTests(unittest.TestCase):
         self.assertEqual(self.client.post('/api/v1/ai/projects',json=body,headers={'Idempotency-Key':str(uuid4())}).status_code,409)
         body['stages'][0]['percent']=50
         self.assertEqual(self.client.post('/api/v1/ai/projects',json=body,headers={'Idempotency-Key':DRAFT}).status_code,422)
+
+    def test_confirming_plan_registers_server_usage_only_after_validated_creation(self):
+        from unittest.mock import Mock
+        writer=Mock();app=FastAPI();app.include_router(build_ai_router(None,lambda:'owner',Repo,self.jobs,Preferences(),usage_writer=writer))
+        self.jobs.owner='owner';self.jobs.data={'workflow':'project_plan','client_id':CLIENT,'draft_id':DRAFT,'brief':'Brief','budget':'100.00','target_date':'2026-12-01','reviews':[{'id':'review','version':1,'body':'Published source'}],'output_language':'es'}
+        body={'client_id':CLIENT,'name':'Project','plan_job_id':JOB,'stages':[{'title':'Delivery','body':'Deliver work','percent':100,'when':'On review'}]}
+        response=TestClient(app).post('/api/v1/ai/projects',json=body,headers={'Idempotency-Key':DRAFT})
+        self.assertEqual(response.status_code,201);writer.assert_called_once_with(None,'owner',DRAFT,JOB,self.jobs.data)

@@ -14,20 +14,21 @@ test('all three problem journeys have four complete ES/EN steps and approved ico
   icons.forEach(name=>assert.ok(icon(name)));
  }
 });
-test('horizontal journeys change only on request and preserve keyboard navigation without scrolling the page',async()=>{
+test('timeline advances on its timer and supports pause and manual navigation',async()=>{
  const {installVisitorLanding}=await import('../visitor-landing.mjs');
- const previousWindow=global.window,previousObserver=global.IntersectionObserver;
- const handlers={},nodes=new Map(),tabs=['change','start','practice'].map(key=>({dataset:{landStory:key},attributes:{},setAttribute(k,v){this.attributes[k]=v;},focus(){this.focused=true;}}));
+ const previousWindow=global.window,previousObserver=global.IntersectionObserver,previousTimeout=global.setTimeout,previousClear=global.clearTimeout;
+ const observers=[],timers=new Map();let timerId=0;global.setTimeout=(fn,delay)=>{fn.delay=delay;timers.set(++timerId,fn);return timerId;};global.clearTimeout=id=>timers.delete(id);
+ const handlers={},nodes=new Map(),tabs=['change','start'].map(key=>({dataset:{landStory:key},attributes:{},setAttribute(k,v){this.attributes[k]=v;},focus(){this.focused=true;}}));
  let scrolls=0,frame,authCalls=0;
  function node(selector){
-  if(!nodes.has(selector))nodes.set(selector,{hidden:false,innerHTML:'',textContent:'',dataset:{},style:{setProperty(){}},attributes:{},classList:{toggle(){},add(){}},setAttribute(k,v){this.attributes[k]=v;},querySelector:node,querySelectorAll:()=>[],focus(){this.focused=true;},scrollIntoView(){throw Error('Journey selection must not scroll the page');}});
+  if(!nodes.has(selector))nodes.set(selector,{hidden:false,innerHTML:'',textContent:'',getBoundingClientRect(){return {top:48,bottom:1348};},dataset:{},style:{setProperty(){}},attributes:{},classList:{toggle(){},add(){}},setAttribute(k,v){this.attributes[k]=v;},querySelector:node,querySelectorAll:()=>[],focus(){this.focused=true;},scrollIntoView(){throw Error('Journey selection must not scroll the page');}});
   return nodes.get(selector);
  }
  const root={...node('root'),addEventListener(k,fn){handlers[k]=fn;},querySelector:selector=>tabs.find(tab=>selector==='[data-land-story="'+tab.dataset.landStory+'"]')||node(selector),querySelectorAll:selector=>selector==='[data-land-story]'?tabs:[]};
  const body={classList:{toggle(){}},setAttribute(){}};
  const doc={body,querySelector:()=>root,documentElement:{classList:{toggle(){}}},defaultView:{history:{replaceState(){}}}};
- global.window={matchMedia:()=>({matches:false,addEventListener(){}}),addEventListener(){},scrollTo(){scrolls++;},innerWidth:1400,innerHeight:1000};
- global.IntersectionObserver=class{observe(){}unobserve(){}};
+ global.window={matchMedia:()=>({matches:false,addEventListener(){}}),addEventListener(){},scrollTo(){scrolls++;},scrollY:0,innerWidth:1400,innerHeight:1000};
+ global.IntersectionObserver=class{constructor(callback){this.callback=callback;observers.push(this);}observe(target){this.target=target;}unobserve(){}};
  const oldRaf=global.requestAnimationFrame;global.requestAnimationFrame=fn=>{frame=fn;return 1;};
  try{
   const cloud={document:doc,location:{hash:'',href:'http://localhost:5173/'},active:false,state:'anonymous',syncChrome(){},openAccount(){authCalls++;}};
@@ -39,8 +40,19 @@ test('horizontal journeys change only on request and preserve keyboard navigatio
   assert.equal(node('#land-story-panel').attributes['aria-labelledby'],'story-tab-start');
   assert.equal((node('#land-story-panel').innerHTML.match(/data-land-story-step=/g)||[]).length,4);
   let prevented=false;handlers.keydown({...event('[data-land-story]',tabs[1]),key:'ArrowRight',preventDefault(){prevented=true;}});
-  assert.equal(prevented,true);assert.equal(tabs[2].attributes['aria-selected'],'true');assert.equal(tabs[2].focused,true);
+  assert.equal(prevented,true);assert.equal(tabs[0].attributes['aria-selected'],'true');assert.equal(tabs[0].focused,true);
   assert.equal(scrolls,1);assert.equal(authCalls,0);
   assert.ok(frame);
- }finally{global.window=previousWindow;global.IntersectionObserver=previousObserver;global.requestAnimationFrame=oldRaf;}
+  assert.doesNotMatch(root.innerHTML,/land-mascot-welcome|land-hero-actions|land-practice-details|land-practice-cta|class="land-cta"/);
+  assert.doesNotMatch(root.innerHTML,/class="land-visual"/);
+  const timeline=observers.find(observer=>observer.target===node('.land-stories'));
+  timeline.callback([{isIntersecting:true}]);assert.equal(timers.size,1);
+  for(const stage of [0,1,2,3,-1]){
+   const [id,tick]=[...timers][0];assert.equal(tick.delay,2500);timers.delete(id);tick();
+   assert.match(node('#land-story-panel').innerHTML,new RegExp('data-narrative-stage="'+stage+'"'));
+  }
+  handlers.click(event('[data-land-motion]',{}));assert.equal(timers.size,0);
+  assert.match(node('#land-story-panel').innerHTML,/land-story-mascot/);
+
+ }finally{global.window=previousWindow;global.IntersectionObserver=previousObserver;global.requestAnimationFrame=oldRaf;global.setTimeout=previousTimeout;global.clearTimeout=previousClear;}
 });

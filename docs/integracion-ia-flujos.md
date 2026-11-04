@@ -1,5 +1,8 @@
 # Integracion IA: Ensayos, Reputacion y proyecto inicial
 
+Actualización vigente del 3 de noviembre: el responsable del proyecto autorizó recuperar la biblioteca mediante Weaviate y herramientas internas en dos nodos. El texto posterior sobre lectura completa obligatoria describe el diseño anterior; queda sustituido por [ensayos-busqueda-vectorial.md](ensayos-busqueda-vectorial.md). La autorización de fuentes y verificación literal continúan.
+
+
 ## Responsabilidades
 
 Frontend envia intencion y datos del formulario; API autentica y aporta el cliente y las resenas publicadas; Redis mantiene trabajos privados e idempotentes; worker llama al modelo elegido y valida JSON. No se ejecutan Gmail, PayPal, reembolsos ni aceptaciones en estos agentes.

@@ -234,3 +234,65 @@ class WeaviateStore:
             if result.failed or col.aggregate.over_all(filters=stale,total_count=True).total_count != 0:
                 raise VectorError('VECTOR_PRUNE_INCOMPLETE',503)
             return {'pruned':True,'embedding_identity':PROFILE_ID}
+
+    def provision_references(self):
+        """Explicit operator action for the third tenant; never called during search/index."""
+        from weaviate.classes.tenants import Tenant
+        with self.connection() as client:
+            self.validate(client)
+            col=client.collections.use(COLLECTION);names=set(col.tenants.get())
+            if 'references_shared' not in names:
+                if len(names)>=3:raise VectorError('VECTOR_TENANT_LIMIT',409)
+                col.tenants.create([Tenant(name='references_shared')])
+            if 'references_shared' not in col.tenants.get():raise VectorError('VECTOR_TENANT_NOT_CONFIGURED',503)
+        return {'tenant':'references_shared','embedding_identity':PROFILE_ID}
+
+    def write_references(self,scope,file_id,records):
+        from weaviate.classes.query import Filter
+        filters=Filter.all_of([Filter.by_property('generation').equal(scope),
+            Filter.by_property('file_id').equal(file_id),Filter.by_property('embedding_identity').equal(PROFILE_ID)])
+        return self._write('references_shared',records,filters)
+
+    @staticmethod
+    def _reference_counts(col,scope,counts):
+        from weaviate.classes.query import Filter
+        for file_id,expected in counts.items():
+            filters=Filter.all_of([Filter.by_property('generation').equal(scope),
+                Filter.by_property('file_id').equal(file_id),Filter.by_property('embedding_identity').equal(PROFILE_ID)])
+            if col.aggregate.over_all(filters=filters,total_count=True).total_count!=expected:
+                raise VectorError('REFERENCE_INDEX_INCOMPLETE',409)
+
+    def reference_counts(self,scope,counts):
+        with self.connection() as client:
+            self.validate(client);base=client.collections.use(COLLECTION)
+            if 'references_shared' not in base.tenants.get():raise VectorError('VECTOR_TENANT_NOT_CONFIGURED',503)
+            self._reference_counts(base.with_tenant('references_shared'),scope,counts)
+
+    def search_references(self,scope,files,counts,query,limit,neighbor_count):
+        from weaviate.classes.query import Filter,HybridFusion,MetadataQuery
+        from .reference_vectors import FIELDS
+        with self.connection() as client:
+            self.validate(client);base=client.collections.use(COLLECTION)
+            if 'references_shared' not in base.tenants.get():raise VectorError('VECTOR_TENANT_NOT_CONFIGURED',503)
+            col=base.with_tenant('references_shared');self._reference_counts(col,scope,counts)
+            filters=Filter.all_of([Filter.by_property('generation').equal(scope),
+                Filter.by_property('embedding_identity').equal(PROFILE_ID),
+                Filter.any_of([Filter.by_property('file_id').equal(file_id) for file_id in files])])
+            response=col.query.hybrid(query=query,alpha=0.7,fusion_type=HybridFusion.RELATIVE_SCORE,
+                target_vector='text',query_properties=['chunk_text'],filters=filters,limit=limit,
+                return_metadata=MetadataQuery(score=True),return_properties=list(FIELDS))
+            results=[]
+            for obj in response.objects:
+                hit={'id':str(obj.uuid),'properties':obj.properties,'score':obj.metadata.score}
+                if not neighbor_count:neighbors=[hit]
+                else:
+                    p=obj.properties
+                    # A context window can never escape its source segment, generation or tenant.
+                    neighbor_filter=Filter.all_of([filters,Filter.by_property('file_id').equal(p.get('file_id')),
+                        Filter.by_property('segment_id').equal(p.get('segment_id'))])
+                    rows=col.query.fetch_objects(filters=neighbor_filter,limit=513,return_properties=list(FIELDS)).objects
+                    if len(rows)>512:raise VectorError('REFERENCE_INDEX_INCOMPLETE',409)
+                    neighbors=[{'id':str(r.uuid),'properties':r.properties} for r in rows]
+                results.append({'hit':hit,'neighbors':neighbors})
+            self._reference_counts(col,scope,counts)
+            return results

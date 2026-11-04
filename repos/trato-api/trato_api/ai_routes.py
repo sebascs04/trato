@@ -13,6 +13,7 @@ from .business_routes import read_bytes
 from .errors import ApiError
 from .model_preferences import ModelPreferences
 from .ai_jobs import AIJobs
+from .reputation_usage import record_plan_usage
 
 class ReputationInput(BaseModel):
     model_config=ConfigDict(extra='forbid')
@@ -69,7 +70,7 @@ def plan_context(repo,item):
             'target_date':item.target_date.isoformat(),'today':date.today().isoformat(),
             'reviews':reputation_context(repo,profile['id']) if profile else []}
 
-def build_ai_router(settings,require_user,repository_factory=None,jobs=None,preferences=None):
+def build_ai_router(settings,require_user,repository_factory=None,jobs=None,preferences=None,usage_writer=None):
     router=APIRouter(prefix='/api/v1/ai');jobs=jobs if jobs is not None else AIJobs()
     preferences=preferences if preferences is not None else ModelPreferences()
     def repository(request):return (repository_factory or Repository)(settings,request.headers.get('authorization',''))
@@ -105,6 +106,7 @@ def build_ai_router(settings,require_user,repository_factory=None,jobs=None,pref
               **{key:result[key] for key in ('summary','observations','limitations','model')},
               'source_job_id':str(item.plan_job_id),'stages':[st.model_dump() for st in item.stages]}
         data=await run_in_threadpool(repository(request).rpc,'create_planned_project',{'p_key':creation_key,'p_client':str(item.client_id),'p_name':item.name.strip(),'p_plan':plan})
+        await run_in_threadpool(usage_writer or record_plan_usage,settings,owner,data['id'],str(item.plan_job_id),context)
         return JSONResponse({'data':data},status_code=201,headers={'Cache-Control':'no-store'})
     @router.get('/projects/{project_id}/plan')
     async def get_plan(project_id:UUID,request:Request,owner=Depends(require_user)):

@@ -248,6 +248,27 @@ class RefundGmailTransportTests(unittest.TestCase):
         self.assertEqual(next(mail.iter_attachments()).get_payload(decode=True),pdf)
         with self.assertRaises(EmailDeliveryError):service.send_refund(OWNER,item,DELIVERY,expected_sender='other@example.invalid')
         self.assertEqual(len(calls),1)
+    def test_send_preserves_long_message_id_crlf_and_mime_payload(self):
+        service=object.__new__(GmailConnectionService);service.lock=threading.RLock();calls=[]
+        sender='owner@'+('a'*50)+'.example.invalid'
+        service.credentials=lambda user:{'email':sender,'access_token':'test-token','scope':READ_SCOPE}
+        service.transport=lambda method,url,**kwargs:(calls.append(kwargs) or (200,{'id':'sent','threadId':'thread'}))
+        from paypal.email import PdfAttachment
+        pdf=b'%PDF-exact-attachment'
+        item=SettlementEmail('customer@example.invalid','Project '+('detailed scope '*100),1,'en',100,
+            PdfAttachment('settlement.pdf',pdf,sha256(pdf).hexdigest()))
+        service.send_refund(OWNER,item,DELIVERY,expected_sender=sender)
+        raw=base64.urlsafe_b64decode(calls[0]['json']['raw'])
+        message=message_from_bytes(raw,policy=policy.default)
+        expected=f"<trato-refund-{DELIVERY}@{sender.rsplit('@',1)[1]}>"
+        self.assertEqual(str(message['Message-ID']),expected)
+        self.assertEqual(len(message.get_all('Message-ID')),1)
+        self.assertIn(('Message-ID: '+expected+'\r\n').encode(),raw)
+        self.assertNotIn(b'\n',raw.replace(b'\r\n',b''))
+        self.assertLessEqual(max(map(len,raw.split(b'\r\n'))),998)
+        self.assertEqual(next(message.iter_attachments()).get_payload(decode=True),pdf)
+        self.assertEqual(len(calls),1)
+
     def test_header_injection_is_rejected(self):
         from paypal.email import PdfAttachment
         pdf=b'%PDF-test'

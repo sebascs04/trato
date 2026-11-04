@@ -63,7 +63,7 @@ class TokenVault:
             db.execute('DELETE FROM oauth_states WHERE owner=?',(owner,))
 
     def begin(self, owner, state, verifier, *, purpose='send'):
-        if purpose not in ('send','read'):
+        if purpose not in ('send','read','send_read'):
             raise GmailError('INVALID_GMAIL_PURPOSE',422)
         with self.connect() as db:
             db.execute('DELETE FROM oauth_states WHERE expires <= ?', (self.clock(),))
@@ -83,6 +83,6 @@ class TokenVault:
                 raise GmailError('GMAIL_AUTHORIZATION_EXPIRED',409)
             db.execute('DELETE FROM oauth_states WHERE digest=? AND owner=?',(digest,owner))
         value=self.decrypt(owner,row[0])
-        if value.get('purpose') not in ('send','read') or not isinstance(value.get('verifier'),str):
+        if value.get('purpose') not in ('send','read','send_read') or not isinstance(value.get('verifier'),str):
             raise GmailError('GMAIL_VAULT_UNREADABLE')
         return value

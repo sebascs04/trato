@@ -36,6 +36,7 @@ from .refunds.financial_routes import build_refund_financial_router
 from .proposals.workflow import ProposalWorkflow
 from .gmail.service import GmailSettings, GmailConnectionService
 from .gmail.routes import build_gmail_router
+from .gmail.shared import TratoGmailService
 from .sandbox_payment import SandboxPaymentTest
 from .sandbox_payment_routes import build_sandbox_payment_router
 from paypal.config import SandboxSettings
@@ -136,7 +137,7 @@ def create_app(settings=None, services=None, repository_factory=None, *, gmail_s
     app.state.services = services
     gmail_settings = GmailSettings.from_env()
     if gmail_service is None and gmail_settings.configured():
-        gmail_service = GmailConnectionService(gmail_settings)
+        gmail_service = (TratoGmailService if gmail_settings.delivery_mode=='trato' else GmailConnectionService)(gmail_settings)
     app.state.gmail = gmail_service
     if sandbox_test_service is None and os.getenv('TRATO_PAYPAL_TEST_ENABLED') == 'true':
         test_settings = replace(SandboxSettings.from_env(), return_url=os.environ['PAYPAL_TEST_RETURN_URL'], cancel_url=os.environ['PAYPAL_TEST_CANCEL_URL'])

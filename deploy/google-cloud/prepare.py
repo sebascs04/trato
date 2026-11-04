@@ -46,6 +46,18 @@ def load_inputs(root=ROOT):
                   'FILE_PROCESSOR_TOKEN', 'TRATO_WORKER_TOKEN', 'GOOGLE_GMAIL_CLIENT_ID',
                   'GOOGLE_GMAIL_CLIENT_SECRET', 'GMAIL_TOKEN_ENCRYPTION_KEY',
                   'PAYPAL_CLIENT_ID', 'PAYPAL_CLIENT_SECRET', 'PAYPAL_MERCHANT_ID'), 'api')
+    mode=api.get('GMAIL_DELIVERY_MODE','personal')
+    if mode not in ('personal','trato'):
+        raise ValueError('Invalid explicit Gmail delivery mode')
+    if mode=='trato':
+        require(api,('GMAIL_TRATO_ACCOUNT_OWNER','GMAIL_TRATO_ACCOUNT_EMAIL'),'central Gmail')
+        from uuid import UUID
+        try:UUID(api['GMAIL_TRATO_ACCOUNT_OWNER'])
+        except (ValueError,TypeError):raise ValueError('Invalid central Gmail manager identity') from None
+        from email.utils import parseaddr
+        email=api['GMAIL_TRATO_ACCOUNT_EMAIL']
+        if parseaddr(email)[1]!=email or '@' not in email or any(c in email for c in '\r\n'):
+            raise ValueError('Invalid central Gmail sender')
     require(processor, ('FILE_PROCESSOR_TOKEN', 'WEAVIATE_URL', 'WEAVIATE_API_KEY'), 'processor')
     require(worker, ('TRATO_WORKER_TOKEN', 'FILE_PROCESSOR_TOKEN', 'TRATO_GOOGLE_CREDENTIALS_FILE',
                      'TRATO_GOOGLE_CLOUD_PROJECT', 'TRATO_GOOGLE_CLOUD_LOCATION',

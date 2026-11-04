@@ -261,5 +261,13 @@
 .land-story-sticky{position:relative;top:auto;padding:18px 0;background:transparent}
 .land-story-tabs{display:grid;grid-template-columns:repeat(2,minmax(0,1fr))}
 .land-story-tabs>button{width:100%;box-sizing:border-box}
-.land-narrative-trail>button.is-selected:after{animation:land-step-time 2.5s linear both}
+.land-narrative-trail>button.is-selected:after{animation:land-step-time 4s linear both}
 .land-paused .land-narrative-trail>button.is-selected:after{animation-play-state:paused}
+
+/* The question has its own countdown, outside the numbered steps. */
+.land-narrative-trail>button.is-selected{border-color:#8060b0;background:#e9dff4;color:#59377d}
+.land-narrative-trail>button.is-selected:after{height:3px;background:#8060b0;animation-duration:4s}
+.land-question-progress{display:block;position:absolute;left:90px;bottom:54px;width:202px;height:3px;border-radius:3px;background:#e9dff4;overflow:hidden}
+.land-question-progress:after{content:"";display:block;width:100%;height:100%;background:#8060b0;transform-origin:left;animation:land-step-time 4s linear both}
+.land-paused .land-question-progress:after{animation-play-state:paused}
+@media(prefers-reduced-motion:reduce){.land-question-progress:after{animation:none;transform:scaleX(1)}}

@@ -12,8 +12,12 @@
     html.trato-starting #visitor-landing { display: none !important; }
     body.trato-visitor > .skip { display: none; }
     #boot-status { position: fixed; inset: 0; display: grid; place-content: center; background: #faf9fc; color: #62596f; font: 14px Manrope, sans-serif; }
+    #boot-status .ai-activity { border:0; background:none; padding:24px; min-height:0; gap:18px; }
+    #boot-status .ai-activity-orbit { width:120px; height:120px; }
+    #boot-status .ai-activity-mascot { width:120px; height:120px; }
     #boot-status[hidden] { display: none; }
   </style>
+  <link rel="preload" href="/assets/mascot/trato-guide.png" as="image">
   <link rel="preload" href="/assets/fonts/manrope-variable.ttf" as="font" type="font/ttf" crossorigin>
   <link rel="stylesheet" href="/styles.css?v=history-4">
   <link rel="stylesheet" href="/connected-workspace.css">
@@ -27,15 +31,13 @@
   <script src="/boot.js" defer></script>
 <link rel="stylesheet" href="/ai-activity.css">
   <link rel="stylesheet" href="/demo-workspace.css">
-<link rel="stylesheet" href="/project-grid.css">
 </head>
 <body class="foundation-preview cloud-design" aria-busy="true">
-  <div id="boot-status" role="status" aria-live="polite">Conectando…</div>
+  <div id="boot-status" role="status" aria-live="polite"><div class="ai-activity  practice-ai-wait" aria-busy="true"><div class="ai-activity-orbit" aria-hidden="true"><img class="ai-activity-mascot" src="/assets/mascot/trato-guide.png" alt="" width="88" height="88"></div><strong>Estoy preparando Trato…</strong><div class="ai-activity-dots" aria-hidden="true"><i></i><i></i><i></i></div></div></div>
   <div id="visitor-landing" class="land-page" hidden></div>
   <a class="skip" href="#main">Ir al contenido</a>
   <aside class="sidebar" id="trato-sidebar">
     <a href="#inicio" class="brand" aria-label="Trato inicio"><span class="brand-symbol">t<span>↗</span></span>trato<span class="brand-dot">.</span></a>
-    <div class="workspace"><span class="avatar" aria-hidden="true">t</span><div>Mi estudio<small>Espacio freelance</small></div><span class="workspace-chevron" data-ui-icon="chevron-down"></span></div>
     <span class="nav-label">TU ESPACIO</span>
     <nav aria-label="Navegación principal">
       <a href="#inicio" data-view="inicio" class="active"><span data-ui-icon="layout-dashboard"></span>Vista general</a>
@@ -45,7 +47,7 @@
     </nav>
   </aside>
   <div class="shell">
-    <header class="topbar"><button id="sidebar-toggle" class="sidebar-toggle" type="button" aria-label="Ocultar barra lateral" aria-expanded="true" aria-controls="trato-sidebar" title="Ocultar barra lateral"><span data-ui-icon="menu"></span></button><div class="breadcrumb">Mi estudio <span>/</span> <strong id="crumb">Vista general</strong></div><div class="top-actions"><span class="demo-pill"><i></i>Conectando…</span><span class="avatar small"></span></div></header>
+    <header class="topbar"><button id="sidebar-toggle" class="sidebar-toggle" type="button" aria-label="Ocultar barra lateral" aria-expanded="true" aria-controls="trato-sidebar" title="Ocultar barra lateral"><span data-ui-icon="menu"></span></button><div class="breadcrumb"><strong id="crumb">Vista general</strong></div><div class="top-actions"><span class="demo-pill"><i></i>Conectando…</span><span class="avatar small"></span></div></header>
     <main id="main" tabindex="-1">
       <div class="page-heading"><div><p class="eyebrow">EL BACK OFFICE DE TU VIDA FREELANCE</p><h1 id="page-title">Tu espacio en Trato</h1><p class="page-description" id="page-description">Tus clientes, proyectos y acuerdos en un solo lugar.</p></div></div>
       <section id="client-workspace" aria-label="Espacio de clientes"></section>

@@ -9,6 +9,7 @@ import smtplib
 import ssl
 from urllib.parse import urlparse
 from .client import exact_amount, PayPalError
+from .email_layout import email_layout
 
 
 @dataclass(frozen=True)
@@ -79,7 +80,7 @@ def build_proposal_email(sender,item:ProposalEmail,notification_id):
     text=f'{greeting}\n\nTe compartimos la propuesta de cambio para {item.project_name}.\n\n{item.proposed_scope}\n\n{cost}\nFecha de entrega propuesta: {item.revised_due_date}.\n\n{instruction}\n\nEsta propuesta queda pendiente de aceptación. No incluye una solicitud de pago.\nReferencia: {item.proposal_id}\n'
     message.set_content(text)
     scope=escape(item.proposed_scope).replace('\n','<br>')
-    message.add_alternative(f'<p>{escape(greeting)}</p><p>Te compartimos la propuesta de cambio para <strong>{escape(item.project_name)}</strong>.</p><p>{scope}</p><p>{escape(cost)}<br>Fecha de entrega propuesta: {escape(item.revised_due_date)}.</p><p>{escape(instruction)}</p><p>Esta propuesta queda pendiente de aceptación. No incluye una solicitud de pago.</p><p>Referencia: {escape(item.proposal_id)}</p>',subtype='html')
+    message.add_alternative(email_layout(str(message['Subject']).split(' · ')[0],item.project_name,f'<p>{escape(greeting)}</p><p>Te compartimos la propuesta de cambio para <strong>{escape(item.project_name)}</strong>.</p><p>{scope}</p><p>{escape(cost)}<br>Fecha de entrega propuesta: {escape(item.revised_due_date)}.</p><p>{escape(instruction)}</p><p>Esta propuesta queda pendiente de aceptación. No incluye una solicitud de pago.</p><p>Referencia: {escape(item.proposal_id)}</p>'),subtype='html')
     message.add_attachment(item.agreement.content,maintype='application',subtype='pdf',filename=item.agreement.filename)
     return message
 
@@ -126,14 +127,14 @@ def build_payment_email(sender,item:PaymentEmail,notification_id):
     greeting=f'Hola, {item.recipient_name}.' if item.recipient_name else 'Hola.'
     text=f'{greeting}\n\nTienes una solicitud de pago de prueba por USD {item.amount} para {item.project_name}.\n\nRevisa y aprueba el pago en PayPal sandbox:\n{item.approval_url}\n\nEs una prueba: usa una cuenta sandbox, sin dinero real. Abrir este correo no confirma el pago.\nReferencia: {item.payment_id}\n'
     message.set_content(text)
-    message.add_alternative(f'<p>{escape(greeting)}</p><p>Tienes una solicitud de pago de prueba por <strong>USD {escape(item.amount)}</strong> para {escape(item.project_name)}.</p><p><a href="{escape(item.approval_url,quote=True)}">Revisar pago en PayPal sandbox</a></p><p>Prueba sin dinero real. Abrir el correo no confirma un pago.</p><p>Referencia: {escape(item.payment_id)}</p>',subtype='html')
+    message.add_alternative(email_layout(str(message['Subject']).split(' · ')[0],item.project_name,f'<p>{escape(greeting)}</p><p>Tienes una solicitud de pago de prueba por <strong>USD {escape(item.amount)}</strong> para {escape(item.project_name)}.</p><p><a href="{escape(item.approval_url,quote=True)}">Revisar pago en PayPal sandbox</a></p><p>Prueba sin dinero real. Abrir el correo no confirma un pago.</p><p>Referencia: {escape(item.payment_id)}</p>'),subtype='html')
     if item.agreement is not None:
         # The PDF is a server-authorized snapshot, not a browser-supplied path or URL.
         attachment=item.agreement
         plain=message.get_body(preferencelist=('plain',))
         plain.set_content(plain.get_content()+'\nAdjuntamos la adenda correspondiente a este cobro.\n')
         html=message.get_body(preferencelist=('html',))
-        html.set_content(html.get_content()+'<p>Adjuntamos la adenda correspondiente a este cobro.</p>',subtype='html')
+        html.set_content(html.get_content().replace('<!-- attachment-note -->','<p style="font-size:14px;line-height:1.8;color:#62576d">Adjuntamos la adenda correspondiente a este cobro.</p>'),subtype='html')
         message.add_attachment(attachment.content,maintype='application',subtype='pdf',filename=attachment.filename)
     return message
 

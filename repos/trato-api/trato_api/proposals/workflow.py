@@ -147,6 +147,7 @@ class ProposalWorkflow:
                 sent=next((message for message in messages if message.get('id')==target['provider_message_id']),None)
                 if sent is None or str(sent.get('threadId',''))!=target['provider_thread_id']:
                     continue
+                if self._addresses(self.gmail._header(sent,'From'))!=[connection['email'].lower()]:continue
                 sent_header=self._normal_message_id(self.gmail._header(sent,'Message-ID'))
                 if not sent_header:continue
                 self.backend().gmail_inbox(owner,'record_sent_header',{'delivery_id':target['delivery_id'],

@@ -2,6 +2,7 @@
 from hashlib import sha256
 import json
 import os
+from datetime import datetime, timezone
 from redis import Redis
 from redis.exceptions import RedisError
 from .errors import ApiError
@@ -64,6 +65,15 @@ class AIJobs:
         if status == 'completed':
             try: result['result'] = json.loads(row['result'])
             except (KeyError, ValueError): raise ApiError('AI_JOB_INVALID', 502) from None
+            try:
+                if row.get('completed_at') is not None:
+                    result['completed_at'] = datetime.fromtimestamp(float(row['completed_at']),timezone.utc).isoformat()
+                context=json.loads(row['input'])
+                if context.get('workflow')=='reputation':
+                    sources=context['reviews']
+                    if not isinstance(sources,list) or any(not isinstance(s,dict) or not isinstance(s.get('id'),str) or not s['id'] or type(s.get('version')) is not int or s['version']<1 for s in sources):raise ValueError()
+                    result['source_reviews']=[{'id':s['id'],'version':s['version']} for s in sources]
+            except (KeyError,ValueError,TypeError,OverflowError):raise ApiError('AI_JOB_INVALID',502) from None
         if status == 'failed': result['error_code'] = row.get('error_code', 'AI_EVALUATION_FAILED')
         return result
 

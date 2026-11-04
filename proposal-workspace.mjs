@@ -187,7 +187,7 @@ export function installProposalWorkspace(cloud){
   this.run(async()=>{
    if(action==='gmail-sync'){
     const status=await this.refreshGmailStatus();
-    if(!status.connected||!status.can_send)throw Error(uiText("Conecta Gmail desde tu perfil antes de buscar respuestas."));
+    if(!status.connected||!status.can_send)throw Error(status.delivery_mode==='trato'?uiText('gmailCentral.pending'):uiText("Conecta Gmail desde tu perfil antes de buscar respuestas."));
     if(!status.can_read){showGmailReadConsent();return;}
     const result=await this.request(`/api/v1/projects/${this.projectId}/gmail-replies/sync`,{method:'POST',body:'{}'});
     await refresh(this.requestId,undefined,{reloadList:true});showGmailSyncResult(result);return;

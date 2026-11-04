@@ -56,6 +56,33 @@ class GmailTest(unittest.TestCase):
         self.assertNotIn('fake-secret',data['authorization_url'])
         self.assertNotIn('code_verifier',query)
 
+    def test_combined_consent_requests_both_permissions_and_saves_verified_identity(self):
+        query=parse_qs(urlparse(self.service.start('owner','send_read')['authorization_url']).query)
+        self.assertEqual(set(query['scope'][0].split()),{'openid','email',SEND_SCOPE,READ_SCOPE})
+        self.responses.extend([(200,self.token(scope='openid email '+SEND_SCOPE+' '+READ_SCOPE)),
+                               (200,{'sub':'google-subject','email':'sender@example.com','email_verified':True})])
+        status=self.service.complete('owner',query['state'][0],code='combined-code')
+        self.assertTrue(status['can_send']);self.assertTrue(status['can_read'])
+        self.assertFalse(any(call[1]==SEND_URL for call in self.calls))
+
+    def test_combined_consent_does_not_replace_existing_connection_when_read_is_denied(self):
+        self.connect();previous=self.vault.get('owner')
+        query=parse_qs(urlparse(self.service.start('owner','send_read')['authorization_url']).query)
+        self.responses.append((200,self.token()))
+        with self.assertRaises(GmailError) as caught:self.service.complete('owner',query['state'][0],code='partial-code')
+        self.assertEqual(caught.exception.code,'GMAIL_READ_PERMISSION_REQUIRED')
+        self.assertEqual(self.vault.get('owner'),previous)
+
+    def test_combined_upgrade_keeps_the_original_sender_identity(self):
+        self.connect();previous=self.vault.get('owner')
+        query=parse_qs(urlparse(self.service.start('owner','send_read')['authorization_url']).query)
+        self.assertEqual(query['login_hint'],['sender@example.com'])
+        self.responses.extend([(200,self.token(scope='openid email '+SEND_SCOPE+' '+READ_SCOPE)),
+                               (200,{'sub':'other-subject','email':'other@example.com','email_verified':True})])
+        with self.assertRaises(GmailError) as caught:self.service.complete('owner',query['state'][0],code='changed-account-code')
+        self.assertEqual(caught.exception.code,'GMAIL_ACCOUNT_CHANGED')
+        self.assertEqual(self.vault.get('owner'),previous)
+
     def test_read_consent_is_incremental_and_bound_to_existing_sender(self):
         self.connect()
         query=parse_qs(urlparse(self.service.start('owner','read')['authorization_url']).query)

@@ -1,0 +1,10 @@
+import {readFileSync,writeFileSync} from 'node:fs';
+import {textForLanguage} from '../i18n.mjs';
+const dir=new URL('../supabase/templates/',import.meta.url);
+const layout=readFileSync(new URL('confirmation-layout.html',dir),'utf8');
+const escape=value=>value.replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;').replaceAll('"','&quot;');
+const render=lang=>layout.replace('lang="es"','lang="'+lang+'"').replace(/@@([a-z]+)@@/g,(_,key)=>escape(textForLanguage(lang,'authEmail.'+key)));
+for(const lang of ['es','en'])writeFileSync(new URL('confirmation-'+lang+'.html',dir),render(lang));
+writeFileSync(new URL('confirmation.html',dir),'{{ if eq .Data.output_language "en" }}'+render('en')+'{{ else }}'+render('es')+'{{ end }}');
+writeFileSync(new URL('confirmation-subject.txt',dir),'{{ if eq .Data.output_language "en" }}'+textForLanguage('en','authEmail.subject')+'{{ else }}'+textForLanguage('es','authEmail.subject')+'{{ end }}');
+console.log('Confirmation email generated: ES/EN');

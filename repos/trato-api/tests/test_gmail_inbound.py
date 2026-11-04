@@ -241,3 +241,18 @@ class InboundReplyWorkflowTest(unittest.TestCase):
         self.assertEqual(result,{'synced':0})
         self.assertEqual(gmail.reads,[])
         self.assertFalse(any(action=='record' for _,action,_ in store.calls))
+
+    def test_reply_is_not_imported_when_outbound_message_has_a_different_sender(self):
+        self.thread['messages'][0]['payload']['headers']=[{'name':'Message-ID','value':'<sent-v1@example.com>'},{'name':'From','value':'other-mailbox@example.com'},{'name':'To','value':'client@example.com'}]
+        result=self.workflow.sync_gmail_replies(None,'authenticated-owner','project-1')
+        self.assertEqual(result,{'synced':0})
+        self.assertEqual(self.store.messages,{})
+
+    def test_shared_mailbox_keeps_business_owner_and_project_on_each_import(self):
+        self.gmail.status=lambda owner:{'connected':True,'email':'sender@example.com','can_send':True,'can_read':True,'delivery_mode':'trato','can_manage_connection':False}
+        result=self.workflow.sync_gmail_replies(None,'freelancer-owner','project-1')
+        self.assertEqual(result['synced'],1)
+        self.assertTrue(all(owner=='freelancer-owner' for owner,action,data in self.store.calls))
+        saved=next(iter(self.store.messages.values()))
+        self.assertEqual(saved['project_id'],'project-1')
+        self.assertEqual(saved['delivery_id'],'delivery-1')

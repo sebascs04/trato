@@ -2,6 +2,23 @@
 
 Actualizado: 31 de octubre de 2026. Se incorpora el cierre del flujo de renegociación validado localmente por el usuario; las demás prioridades conservan el estado de la revisión del 26 de octubre. Este documento no activa servicios, gasto, modelos, correos ni operaciones financieras. Las asignaciones se acuerdan entre los integrantes humanos; no se presume que alguien ya tomó una tarea.
 
+## Lote del 4 de noviembre: terminado y en publicación
+
+- Ensayos: configuración simplificada, conversación y análisis, repetición con feedback y comparación de intentos. Diseño revisado por el usuario.
+- Reputación: selección de clientes registrados, experiencias y adjuntos, tarjetas y detalle flotante, análisis con fecha del servidor y recomendaciones agrupadas. Diseño revisado por el usuario.
+- Registro: confirmación por correo con plantilla de marca; retorno a la instalación de origen e inicio de sesión tras verificar la cuenta, probado manualmente. Detección de una cuenta ya existente comprobada.
+- Correo de Trato: envío y recepción centralizados implementados, sin exigir Gmail personal a cada usuario. SMTP de confirmación y OAuth del buzón son conexiones independientes. Buzón conectado localmente; falta repetir envío de adenda y recepción de respuesta tras configurar producción.
+- Inicio y demostraciones: navegación y botón de demostración corregidos, introducción y carga con mascota, máximo dos clientes en la vista general.
+- Publicación: preparar snapshot conjunto y desplegar sobre la infraestructura existente. No acreditar el recorrido financiero por pasar comprobaciones de arranque.
+
+### Investigación TRATO-19: siguiente implementación, todavía pendiente
+
+La ruta `POST /projects/{project_id}/initial-payments` registra una captura ya completada y verificada; no crea un checkout. `project_received_payments` exige captura única, importe positivo y verificación, por lo que no debe usarse para guardar solicitudes pendientes.
+
+Construir una solicitud de pago inicial persistente y separada de las revisiones de adenda. Reutilizar creación y verificación de órdenes PayPal, permisos, idempotencia y checkout, manteniendo referencia del proyecto y validaciones de pagador y comercio. Tras verificar la captura, registrar el dinero recibido para permitir devoluciones. No crear una adenda ficticia. Probar concurrencia, reintentos, propietario incorrecto, estado incierto y captura duplicada.
+
+TRATO-18 (cierre del proyecto) y TRATO-19 (checkout inicial) siguen por hacer. Primero publicar el lote terminado; después implementar el siguiente recorrido.
+
 ## Cierre de devoluciones — 3 de noviembre de 2026
 
 TRATO-13, TRATO-14, TRATO-15 y TRATO-16: **implementados y validados en el alcance Sandbox aprobado, sin IA**. Dos recorridos manuales confirmados (cierre global parcial e individual total de adenda) y prueba conectada de entrega/deduplicación de eventos genuinos completados. Los apartados siguientes conservan el historial de tandas; sus pendientes históricos se resuelven en [el acta de cierre](cierre-validacion-devoluciones.md). La IA, un checkout inicial integrado y el uso Live no forman parte de este cierre. No se autoriza PR ni merge por publicar esta rama.
@@ -81,8 +98,8 @@ Este cierre corresponde al flujo de negocio de cambios y renegociaciones, sin IA
 ## Prioridades
 
 - **P0:** necesario para cerrar y demostrar el recorrido real.
-- **P1:** ampliación elegida del producto; tomar después de asegurar el recorrido P0.
-- **P2:** fuera del primer cierre, salvo nueva decisión explícita.
+- **el equipo:** ampliación elegida del producto; tomar después de asegurar el recorrido P0.
+- **el equipo:** fuera del primer cierre, salvo nueva decisión explícita.
 
 Todos los pendientes siguientes están **Por hacer** al publicar. Antes de empezar una tarea, anotar responsable y marcarla **En curso** en el tablero acordado.
 
@@ -92,7 +109,7 @@ Todos los pendientes siguientes están **Por hacer** al publicar. Antes de empez
 | --- | --- | --- | --- |
 | TRATO-01 | Preparar el entorno del compañero | Ninguna | Instala desde un clon limpio siguiendo colaboradores.md; entra con sus accesos autorizados, arranca los servicios sin reutilizar recursos de otro proyecto y registra problemas de instalación. |
 | TRATO-02 | Definir contrato de referencia inicial revisada y resultado de análisis | Ninguna | API y worker acuerdan IDs, versión de base, fuentes, citas, datos ausentes, estados y traspaso a propuesta. Todo queda en DTO/esquema y pruebas; el modelo no decide permisos ni aceptación. |
-| TRATO-03 | Configurar Gemini de forma explícita | Decisión y acceso de la administración del proyecto | Backend, proyecto/región y modelo quedan fijados; se verifica cuota/costo y se autoriza la primera llamada. No autodetecta otro proveedor ni usa Gemini desde el navegador. |
+| TRATO-03 | Configurar Gemini de forma explícita | Decisión y acceso del responsable del proyecto | Backend, proyecto/región y modelo quedan fijados; se verifica cuota/costo y se autoriza la primera llamada. No autodetecta otro proveedor ni usa Gemini desde el navegador. |
 | TRATO-04 | Conectar evaluación semántica y análisis de cambios | TRATO-02 y 03 | Texto real autorizado produce JSON validado, citas literales verificables y clasificación por elemento, o pide aclaración. No usa fixture, precio inventado ni aprobación automática. Conecta analyze-change v3 al contrato acordado. |
 | TRATO-05 | Integrar el flujo real de análisis con los threads persistentes | TRATO-02 y 04 | Usa la cola y sobre genéricos; start/resume, idempotencia, contexto y revisión vigente se validan. Sobrevive a reinicio y no duplica propuestas. Las instantáneas del worker se mapean al UUID real de revisión de la API. |
 | TRATO-06 | Mostrar análisis real y fuentes en la interfaz | TRATO-04 y 05 | El usuario ve pedido, comparación, citas y aclaraciones del backend; puede revisar antes de crear adenda. No confunde error técnico con pedido ajeno, ni mezcla información de clientes. |
@@ -100,21 +117,7 @@ Todos los pendientes siguientes están **Por hacer** al publicar. Antes de empez
 | TRATO-08 | Preparar alojamiento y configuración de la demo | Servicios definidos | URLs, orígenes OAuth/CORS y callbacks son accesibles al evaluador; el enlace de pago no depende de localhost. Se documentan secretos y procesos requeridos sin publicarlos ni contratar planes no autorizados. |
 | TRATO-09 | Preparar entrega de hackathon | TRATO-07 y 08 | README reproducible, descripción fiel, cuentas/instrucciones de evaluación y video que muestra el mismo comportamiento del código; revisar duración, idioma, elegibilidad y plazo contra bases vigentes. |
 
-Tanda 6, 2 de noviembre de 2026: conciliación, inbox de webhook verificado, registro canónico sin duplicados, recuperación explícita de intentos y aplicación de dinero externo implementados localmente para TRATO-15; historial único ES/EN ampliado para TRATO-16. Validaciones principales aprobadas; repetición adicional final y límites documentados en [validación de tanda 6](tanda-6-devoluciones-validacion.md). TRATO-13 a 16 conservan el cierre conectado pendiente de tanda 7, con interfaz financiera, migraciones y recorrido Sandbox propios.
-
-Tanda 7 — frontend, 2 de noviembre de 2026: interfaz financiera de TRATO-16 implementada y validada localmente con 4 pruebas de lógica y 7 casos de Chromium, incluidos ES/EN, móvil y recuperación tras recarga. No se usó PayPal conectado ni dinero real. Falta la aceptación integral de TRATO-13 a 16; ver [validación del frontend](tanda-7-frontend-validacion.md).
-
-Actualización del 3 de noviembre de 2026: migraciones aplicadas y dos recorridos manuales confirmados contra PayPal Sandbox: cierre global de USD 18 (inicial + adenda) e individual total de adenda de USD 120. El segundo conserva el proyecto sin cerrar y la adenda pagada bloqueada. La interfaz pasó a un asistente de seis etapas tras feedback del usuario. No hubo dinero real. La entrega/deduplicación completa de webhooks y las variantes no recorridas manualmente siguen documentadas como límites; no se afirma cobertura integral de todas ellas. Evidencia: [acta de preparación y recorridos](preparacion-prueba-integral-devoluciones.md).
-
-## P1 — recuperación, relaciones y devoluciones
-
-Avance local de devoluciones, 1 de noviembre de 2026: TRATO-13 en curso en `codex/devoluciones-reales`. Tandas 1 y 2 implementan contrato, cálculo revisable, persistencia y API de borradores; migración compartida pendiente de coordinar. No hay todavía devolución financiera conectada ni interfaz nueva. TRATO-14 a 16 siguen pendientes de sus tandas. Evidencia y límites: [validación de tanda 2](tanda-2-devoluciones-validacion.md). La incorporación de IA será un requerimiento posterior separado.
-
-Tanda 3: interfaz de expedientes y borradores implementada, como avance parcial de TRATO-16. Pruebas de código/API/SQL y 18 casos únicos de Chromium aprobados localmente. No marcar TRATO-13 ni TRATO-16 como Hecho; falta despliegue coordinado y validación conectada del recorrido. Detalle: [validación de tanda 3](tanda-3-devoluciones-validacion.md).
-
-Tanda 4, 2 de noviembre de 2026: implementación local de TRATO-14 y avance de TRATO-13/16 con devolución individual o cierre multipago, PDF inmutable, revisión, Gmail explícito y aceptación documental. No se marca como entrega conectada: las migraciones compartidas y el envío real siguen pendientes. TRATO-15 corresponde a tandas 5–6 y la prueba financiera integral a tanda 7. Evidencia: [validación de tanda 4](tanda-4-devoluciones-validacion.md).
-
-Tanda 5: backend financiero de TRATO-15 implementado y validado localmente, con autorización separada, reservas, ejecución por captura y conservación de éxitos parciales. API, SQL, concurrencia y 17 escenarios con proveedor doble aprobados. Continúa en curso: faltan despliegue coordinado, recuperación/webhooks de tanda 6 e interfaz/prueba Sandbox integral de tanda 7. Evidencia: [validación de tanda 5](tanda-5-devoluciones-validacion.md).
+## el equipo — recuperación, relaciones y devoluciones
 
 | ID | Tarea | Dependencia | Terminado cuando |
 | --- | --- | --- | --- |
@@ -127,7 +130,7 @@ Tanda 5: backend financiero de TRATO-15 implementado y validado localmente, con 
 | TRATO-16 | Integrar UI de devolución y fuentes oficiales aplicables | TRATO-13 a 15 | Usa estados reales, documentos y condiciones verificadas por país/producto, con URL/fecha/ámbito de las fuentes. Separa comisión, neto y devolución; no garantiza saldo global, conversión ni fecha de abono. Sólo hitos confirmados van al historial único. |
 | TRATO-17 | Convertir Word a PDF antes de la ingesta | Conversor y alcance elegidos | Modal de consentimiento/previsualización, conversión explícita y PDF resultante relacionado con el original. Un fallo conserva el estado y no usa otro conversor automáticamente. Hoy DOCX devuelve PDF_CONVERSION_REQUIRED. |
 
-## P2 — ideas posteriores
+## el equipo — ideas posteriores
 
 - OCR para documentos escaneados, después de elegir motor y evaluar calidad/costo.
 - Asistente general y por cliente con fuentes y aislamiento de contexto.

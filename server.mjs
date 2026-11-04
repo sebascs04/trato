@@ -9,6 +9,7 @@ import {browserOriginAllowed} from './web-origin.mjs';
 const localPorts = JSON.parse(readFileSync(new URL('./local-ports.json', import.meta.url), 'utf8'));
 const port = Number(process.env.PORT || localPorts.web);
 const assets = new Map([
+  ['/auth-return.mjs',['auth-return.mjs','text/javascript; charset=utf-8']],
   ['/project-grid.mjs',['project-grid.mjs','text/javascript; charset=utf-8']],
   ['/project-grid-locale-keys.mjs',['project-grid-locale-keys.mjs','text/javascript; charset=utf-8']],
   ['/project-grid.css',['project-grid.css','text/css; charset=utf-8']],

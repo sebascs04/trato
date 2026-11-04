@@ -15,7 +15,7 @@ class CallbackInput(BaseModel):
 
 class ConnectInput(BaseModel):
     model_config=ConfigDict(extra='forbid')
-    purpose:str=Field(default='send',pattern='^(send|read)$')
+    purpose:str=Field(default='send',pattern='^(send|read|send_read)$')
 
 
 def build_gmail_router(service,require_user):

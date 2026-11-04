@@ -2,6 +2,7 @@ import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {webcrypto} from 'node:crypto';
 import {AIJobClient} from '../ai-jobs.mjs';
+import {reputationAnalysisChanged} from '../reputation-workspace.mjs';
 // Node18 contract harness supplies the browser crypto API explicitly.
 globalThis.crypto??=webcrypto;
 function fixture(){
@@ -10,6 +11,24 @@ function fixture(){
  return {cloud,calls};
 }
 const payload={profile_id:'client-a',output_language:'es'};
+test('the original server completion time and review versions survive reopening',async()=>{
+ const {cloud}=fixture();const completed='2026-11-04T02:10:20.123456+00:00';
+ cloud.request=async(path,options)=>({id:options.headers['Idempotency-Key'],status:'completed',result:{kind:'reputation'},completed_at:completed,source_reviews:[{id:'review-a',version:1}]});
+ const job=new AIJobClient({cloud,scope:'reputation:client-a'});await job.start('/api/v1/ai/reputation',payload);job.dispose();
+ const restored=new AIJobClient({cloud,scope:'reputation:client-a'});assert.equal(restored.state.completedAt,completed);assert.deepEqual(restored.state.sourceReviews,[{id:'review-a',version:1}]);restored.dispose();
+});
+test('old results do not acquire a fabricated completion time',async()=>{
+ const {cloud}=fixture();cloud.request=async(path,options)=>({id:options.headers['Idempotency-Key'],status:'completed',result:{kind:'reputation'}});
+ const job=new AIJobClient({cloud,scope:'reputation:client-a'});await job.start('/api/v1/ai/reputation',payload);assert.equal(job.state.completedAt,null);job.dispose();
+});
+test('new reviews, edits and removals mark the analysis as changed without confusing pagination',()=>{
+ const sources=[{id:'a',version:1},{id:'b',version:2}];
+ assert.equal(reputationAnalysisChanged(sources,[{id:'a',version:1}],2),false);
+ assert.equal(reputationAnalysisChanged(sources,[{id:'c',version:1}],3),true);
+ assert.equal(reputationAnalysisChanged(sources,[{id:'b',version:3}],2),true);
+ assert.equal(reputationAnalysisChanged(sources,[{id:'a',version:1}],1),true);
+ assert.equal(reputationAnalysisChanged(null,[{id:'a',version:1}],1),false);
+});
 test('Reputation resumes an uncertain submission with its original UUID and language',async()=>{
  const {cloud,calls}=fixture();
  const first=new AIJobClient({cloud,scope:'reputation:client-a'});

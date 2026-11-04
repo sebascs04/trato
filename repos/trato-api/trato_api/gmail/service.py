@@ -33,15 +33,24 @@ class GmailSettings:
     redirect_uri:str = 'http://localhost:5173/gmail-callback.html'
     encryption_key:str = field(default='',repr=False)
     vault_path:str = '.local/gmail/vault.sqlite3'
+    delivery_mode:str = 'personal'
+    trato_owner:str = field(default='',repr=False)
+    trato_email:str = ''
 
     @classmethod
     def from_env(cls):
-        return cls(os.getenv('GOOGLE_GMAIL_CLIENT_ID',''),os.getenv('GOOGLE_GMAIL_CLIENT_SECRET',''),os.getenv('GOOGLE_GMAIL_REDIRECT_URI','http://localhost:5173/gmail-callback.html'),os.getenv('GMAIL_TOKEN_ENCRYPTION_KEY',''),os.getenv('GMAIL_VAULT_PATH','.local/gmail/vault.sqlite3'))
+        return cls(os.getenv('GOOGLE_GMAIL_CLIENT_ID',''),os.getenv('GOOGLE_GMAIL_CLIENT_SECRET',''),os.getenv('GOOGLE_GMAIL_REDIRECT_URI','http://localhost:5173/gmail-callback.html'),os.getenv('GMAIL_TOKEN_ENCRYPTION_KEY',''),os.getenv('GMAIL_VAULT_PATH','.local/gmail/vault.sqlite3'),os.getenv('GMAIL_DELIVERY_MODE','personal'),os.getenv('GMAIL_TRATO_ACCOUNT_OWNER',''),os.getenv('GMAIL_TRATO_ACCOUNT_EMAIL',''))
 
     def configured(self):
         return bool(self.client_id and self.client_secret and self.encryption_key)
 
     def validate(self):
+        if self.delivery_mode not in ('personal','trato'):raise GmailError('INVALID_GMAIL_DELIVERY_MODE')
+        if self.delivery_mode=='trato':
+            from uuid import UUID
+            try:UUID(self.trato_owner)
+            except (ValueError,TypeError):raise GmailError('GMAIL_TRATO_ACCOUNT_NOT_CONFIGURED') from None
+            if not valid_email(self.trato_email):raise GmailError('GMAIL_TRATO_ACCOUNT_NOT_CONFIGURED')
         parsed=urlparse(self.redirect_uri)
         if not self.configured() or parsed.username or parsed.password or parsed.query or parsed.fragment or parsed.path!='/gmail-callback.html' or not (parsed.scheme=='https' and parsed.hostname or parsed.scheme=='http' and parsed.hostname in ('localhost','127.0.0.1')):
             raise GmailError('GMAIL_NOT_CONFIGURED')
@@ -159,6 +168,9 @@ class GmailConnectionService:
         self.transport=transport or GoogleTransport()
         self.lock=threading.RLock()  # Single API process in local development.
 
+    def validate_mailbox_identity(self,user,profile):
+        pass
+
     def status(self,user):
         item=self.vault.get(user)
         scopes=set(item.get('scope','').split()) if item else set()
@@ -166,7 +178,7 @@ class GmailConnectionService:
                 'can_send':SEND_SCOPE in scopes,'can_read':READ_SCOPE in scopes}
 
     def start(self,user,purpose='send'):
-        if purpose not in ('send','read'):raise GmailError('INVALID_GMAIL_PURPOSE',422)
+        if purpose not in ('send','read','send_read'):raise GmailError('INVALID_GMAIL_PURPOSE',422)
         previous=self.vault.get(user)
         if purpose=='read' and (not previous or SEND_SCOPE not in previous.get('scope','').split()):
             raise GmailError('GMAIL_SEND_CONNECTION_REQUIRED',409)
@@ -174,9 +186,9 @@ class GmailConnectionService:
         challenge=base64.urlsafe_b64encode(hashlib.sha256(verifier.encode()).digest()).decode().rstrip('=')
         self.vault.begin(user,state,verifier,purpose=purpose)
         query={'client_id':self.settings.client_id,'redirect_uri':self.settings.redirect_uri,'response_type':'code',
-               'scope':(SEND_SCOPES if purpose=='send' else READ_SCOPE),'access_type':'offline',
+               'scope':(SEND_SCOPES+' '+READ_SCOPE if purpose=='send_read' else SEND_SCOPES if purpose=='send' else READ_SCOPE),'access_type':'offline',
                'include_granted_scopes':'true','prompt':'consent','state':state,'code_challenge':challenge,'code_challenge_method':'S256'}
-        if purpose=='read' and previous.get('email'):query['login_hint']=previous['email']
+        if purpose in ('read','send_read') and previous and previous.get('email'):query['login_hint']=previous['email']
         return {'authorization_url':'https://accounts.google.com/o/oauth2/v2/auth?'+urlencode(query)}
 
     def token_fields(self,body,previous=None):
@@ -198,17 +210,18 @@ class GmailConnectionService:
         with self.lock:
             status,body=self.transport('POST',TOKEN_URL,data={'client_id':self.settings.client_id,'client_secret':self.settings.client_secret,'code':code,'code_verifier':verifier,'redirect_uri':self.settings.redirect_uri,'grant_type':'authorization_code'})
             if status!=200:raise GmailError('GMAIL_AUTHORIZATION_FAILED',409)
-            previous=self.vault.get(user) if purpose=='read' else None
+            previous=self.vault.get(user) if purpose in ('read','send_read') else None
             tokens=self.token_fields(body,previous)
             granted=set(tokens['scope'].split())
             required={SEND_SCOPE} if purpose=='send' else {SEND_SCOPE,READ_SCOPE}
             if not required.issubset(granted):
-                if purpose=='read':raise GmailError('GMAIL_READ_PERMISSION_REQUIRED',409)
+                if purpose in ('read','send_read'):raise GmailError('GMAIL_READ_PERMISSION_REQUIRED',409)
                 raise GmailError('GMAIL_SEND_PERMISSION_REQUIRED',409)
             status,profile=self.transport('GET',USERINFO_URL,headers={'Authorization':'Bearer '+tokens['access_token']})
             if status!=200 or not isinstance(profile,dict) or profile.get('email_verified') is not True or not valid_email(profile.get('email')) or not isinstance(profile.get('sub'),str) or not profile['sub']:raise GmailError('GMAIL_IDENTITY_NOT_VERIFIED',409)
             if previous and (profile['sub']!=previous.get('subject') or profile['email'].lower()!=previous.get('email','').lower()):
                 raise GmailError('GMAIL_ACCOUNT_CHANGED',409)
+            self.validate_mailbox_identity(user,profile)
             self.vault.save(user,{**tokens,'email':profile['email'],'subject':profile['sub']})
         return self.status(user)
 

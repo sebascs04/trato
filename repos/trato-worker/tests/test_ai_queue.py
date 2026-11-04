@@ -23,10 +23,17 @@ class AIQueueTests(unittest.TestCase):
             jobs.enqueue('owner',id,data);jobs.enqueue('owner',id,data)
             self.assertTrue(consumer.process_once());result=jobs.get('owner',id,'reputation')
             self.assertEqual(result['status'],'completed');self.assertEqual(result['result']['sources_read'],1)
+            from datetime import datetime,timezone
+            completed=datetime.fromisoformat(result['completed_at'])
+            self.assertLess(abs((datetime.now(timezone.utc)-completed).total_seconds()),10)
+            self.assertEqual(result['source_reviews'],[{'id':REVIEW['id'],'version':REVIEW['version']}])
             self.assertNotIn('reviews',result);self.assertEqual(len(model.calls),1)
             with self.assertRaises(ApiError):jobs.get('other',id)
             with self.assertRaises(ApiError):jobs.get('owner',id,'project_plan')
             self.redis.xadd(STREAM,{'job_id':id});consumer.process_once();self.assertEqual(len(model.calls),1)
+            self.assertEqual(jobs.get('owner',id)['completed_at'],result['completed_at'])
+            self.redis.hdel('trato:ai:job:'+id,'completed_at')
+            self.assertNotIn('completed_at',jobs.get('owner',id))
     def test_document_index_job_calls_backend_not_model_and_is_not_automatically_retried(self):
         from trato_api.ai_jobs import AIJobs
         from trato_worker.source_tools import ToolError
@@ -64,3 +71,4 @@ class AIQueueTests(unittest.TestCase):
             consumer.process_once()
             self.assertEqual(jobs.get('owner',id)['status'],'failed')
             self.assertEqual(jobs.get('owner',id)['error_code'],'AI_INTERRUPTED')
+            self.assertNotIn('completed_at',self.redis.hgetall(PREFIX+id))

@@ -24,7 +24,12 @@ return 0
 '''
 FINISH = '''
 if redis.call('HGET',KEYS[1],'status')~='running' or redis.call('HGET',KEYS[1],'execution_id')~=ARGV[1] then return 0 end
-redis.call('HSET',KEYS[1],'status',ARGV[2],ARGV[3],ARGV[4]) return 1
+redis.call('HSET',KEYS[1],'status',ARGV[2],ARGV[3],ARGV[4])
+if ARGV[2]=='completed' then
+ local now=redis.call('TIME')
+ redis.call('HSET',KEYS[1],'completed_at',now[1]..'.'..string.format('%06d',tonumber(now[2])))
+end
+return 1
 '''
 
 

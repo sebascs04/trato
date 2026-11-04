@@ -22,14 +22,33 @@ export class SessionClient {
     let payload = {};
     try {payload = await response.json();} catch { /* Never expose raw Auth responses. */ }
     if (!response.ok) {
-      const messages = {email_not_confirmed:uiText("Confirma tu correo antes de iniciar sesión."),
+      const messages = {user_already_exists:uiText('auth.accountExists'),email_exists:uiText('auth.accountExists'),email_not_confirmed:uiText("Confirma tu correo antes de iniciar sesión."),
         invalid_credentials:uiText("Correo o contraseña incorrectos."), over_email_send_rate_limit:uiText("Se alcanzó el límite de correos. Espera antes de reintentar.")};
       throw new Error(messages[payload.error_code || payload.code] || uiText("No se pudo completar el acceso. Revisa los datos o vuelve a intentar."));
     }
     return payload;
   }
+  async acceptAuthReturn(result){
+    this.clear();
+    const fail=key=>{const error=new Error(uiText(['authReturn',key].join('.')));error.authReturn=true;return error;};
+    if(result?.error)throw fail(result.error==='expired'?'expired':'invalid');
+    if(!result?.access_token||!result?.refresh_token||!Number.isSafeInteger(result.expires_in)||result.expires_in<=0)throw fail('invalid');
+    let response,user;
+    try{
+      response=await this.fetch(this.config.supabase_url+'/auth/v1/user',{headers:{apikey:this.config.publishable_key,Authorization:'Bearer '+result.access_token},signal:AbortSignal.timeout(15000)});
+      if(!response.ok)throw fail(response.status===401||response.status===403?'expired':'unavailable');
+      user=await response.json();
+    }catch(error){if(error.authReturn)throw error;throw fail('unavailable');}
+    if(typeof user?.id!=='string'||!/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i.test(user.id)||typeof user.email!=='string'||!user.email_confirmed_at)throw fail('invalid');
+    if(!this.save({...result,user}))throw fail('invalid');
+  }
   async login(email, password) {if (!this.save(await this.auth('token?grant_type=password', {email,password}))) throw new Error(uiText("Sesión inválida."));}
-  async signup(email, password) {return this.save(await this.auth('signup', {email,password}));}
+  async signup(email, password, redirectTo) {
+    const payload=await this.auth('signup'+(redirectTo?'?redirect_to='+encodeURIComponent(redirectTo):''), {email,password,data:{output_language:uiLanguage()}});
+    const user=payload.user||payload;
+    if(!payload.access_token&&Array.isArray(user.identities)&&user.identities.length===0)throw new Error(uiText('auth.accountExists'));
+    return this.save(payload);
+  }
   async refresh() {
     if (!this.session?.refresh_token) throw new Error(uiText("Inicia sesión para continuar."));
     if (!this.refreshing) this.refreshing = this.auth('token?grant_type=refresh_token', {refresh_token:this.session.refresh_token})

@@ -20,7 +20,7 @@ TRATO_VECTOR_SEARCH_ENABLED=true
 
 Conservar FILE_PROCESSOR_URL y FILE_PROCESSOR_TOKEN existentes en API y el mismo FILE_PROCESSOR_TOKEN en procesador. El worker conserva TRATO_API_URL y TRATO_WORKER_TOKEN; no necesita claves de Weaviate. No cambiar las claves de Gmail, PayPal, Supabase o Gemini por esta integracion.
 
-Actualizar las dependencias fijadas del procesador: `repos/trato-file-processor/.venv/bin/python -m pip install -r repos/trato-file-processor/requirements.lock.txt`, desde la raiz. El SDK Weaviate pertenece al procesador, no al backend ni al worker. Reiniciar solo los servicios propios de Trato para cargar variables nuevas, respetando los puertos documentados y sin detener QAMAQ.
+Actualizar las dependencias fijadas del procesador: `repos/trato-file-processor/.venv/bin/python -m pip install -r repos/trato-file-processor/requirements.lock.txt`, desde la raiz. El SDK Weaviate pertenece al procesador, no al backend ni al worker. Reiniciar solo los servicios propios de Trato para cargar variables nuevas, respetando los puertos documentados y sin detener otros proyectos locales.
 
 La clave `trato-companero-dev` existente es administrativa: no requiere otra invitacion por tenant, pero permite acceso directo a todo el cluster. Los permisos de Trato siguen en su backend; una clave administrativa no queda limitada por esos filtros. Compartir la clave por un canal privado, nunca por Git ni documentacion publica.
 
@@ -36,7 +36,7 @@ Las cinco guias de Ensayos se leen completas desde su biblioteca autorizada, fue
 
 El archivo privado `.local/weaviate/connection.env` puede contener exclusivamente la URL y la clave propia. `scripts/configure-vector.py` verifica la coleccion y agrega las variables anteriores sin imprimirlas ni sobrescribir configuraciones diferentes. No hace inferencias ni indexa documentos. `--provision` es una accion administrativa explicita para crear/verificar la coleccion y los dos tenants acordados; una instalacion colaboradora normal no necesita repetirla.
 
-Con el recorrido completo (`--with-worker`, pump/ingesta y consumidor IA habilitados), se encola indexacion despues de confirmar una extraccion nueva. Los flags no inician un backfill masivo de archivos existentes. La consulta y los reintentos siguen siendo explicitos; una fuente pendiente o una generacion parcial no se presenta como indice completo. Las pruebas conjuntas desde la interfaz siguen pendientes por acuerdo con Sebastian. No se publica este lote sin autorizacion nueva.
+Con el recorrido completo (`--with-worker`, pump/ingesta y consumidor IA habilitados), se encola indexacion despues de confirmar una extraccion nueva. Los flags no inician un backfill masivo de archivos existentes. La consulta y los reintentos siguen siendo explicitos; una fuente pendiente o una generacion parcial no se presenta como indice completo. Las pruebas conjuntas desde la interfaz siguen pendientes por acuerdo con el responsable del proyecto. No se publica este lote sin autorizacion nueva.
 
 
 ## Cierre del lote de procesamiento y reputacion (1 noviembre 2026)
@@ -52,3 +52,13 @@ No cambia ninguna clave existente. La clave denominada `trato-companero-dev` en 
 `TRATO_GEMINI_API_KEY` pertenece exclusivamente a la configuracion del modelo. La autenticacion Vertex mediante JSON sigue su configuracion previa y puede dejar esa variable vacia. Ninguna credencial Gemini reemplaza la clave Weaviate.
 
 Estado de publicacion: este lote permanece local, sin push/PR/merge. Confirmar su integracion antes de pedir a un colaborador que ejecute estos pasos sobre main.
+
+## Revisión de separación, 3 de noviembre
+
+Consulta real sin escrituras realizada por el equipo: projects_private y reputation_public activos; tercer tenant libre. La documentación de coordinación para el responsable de cambios y devoluciones está en notas-para-flores.md. Los documentos privados de devoluciones pertenecen al tenant projects_private con filtros de propietario/cliente/proyecto y finalidad; no necesitan consumir un tenant nuevo. references_shared es una propuesta para biblioteca administrada, todavía no creada ni indexada. No hay nuevas variables de entorno por esta revisión.
+
+## Ensayos conectado a referencias, 3 de noviembre
+
+Se autorizó y creó el tercer tenant fijo references_shared en TratoSourceChunks; contiene la biblioteca aprobada (140chunks). Las devoluciones permanecen en projects_private. No hay nuevas variables ni dependencias: se reutilizan manifiesto de guías, tokens de worker/procesador, Redis y Weaviate del FP.
+
+Nuevos módulos: API reference_tools.py, worker rehearsal_research.py y FP reference_vectors.py. Procedimiento para instalación/recibo y límites de acceso en ensayos-busqueda-vectorial.md. El recibo de indexación reside en el Redis de cada backend; no lo obtiene copiando .env ni por una búsqueda automática. Coordinar restauración/inicialización administrativa del recibo en instalaciones de colaboradores antes de probar Ensayos. No activar otra colección, tenant, proveedor o lectura completa alternativa si falta.

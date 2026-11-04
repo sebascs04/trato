@@ -22,6 +22,10 @@ def normalized_public_email(value):
         raise ValueError('Invalid public email')
     return value
 
+class UsefulnessInput(BaseModel):
+    model_config=ConfigDict(extra='forbid',strict=True)
+    helpful:bool
+
 class EmailLookup(BaseModel):
     model_config=ConfigDict(extra='forbid',strict=True)
     public_email: str
@@ -138,6 +142,14 @@ def build_reputation_router(settings,require_user,repository_factory=None):
     @router.get('/clients/{profile_id}')
     def detail(profile_id:UUID,offset:int=Query(default=0,ge=0,le=100000),repo=Depends(repository)):
         return reply(repo,'detail',{'profile_id':str(profile_id),'offset':offset})
+    @router.get('/clients/{profile_id}/usage')
+    def usage(profile_id:UUID,repo=Depends(repository)):
+        return JSONResponse({'data':repo.rpc('reputation_usage',{'p_profile_id':str(profile_id)})},headers={'Cache-Control':'no-store'})
+    @router.post('/clients/{profile_id}/usefulness')
+    async def usefulness(profile_id:UUID,request:Request,repo=Depends(repository)):
+        item=await model(request,UsefulnessInput)
+        value=await run_in_threadpool(repo.rpc,'reputation_usage',{'p_profile_id':str(profile_id),'p_helpful':item.helpful})
+        return JSONResponse({'data':value},headers={'Cache-Control':'no-store'})
     @router.post('/reviews')
     async def save(request:Request,repo=Depends(repository)):
         item=await model(request,ReviewInput)

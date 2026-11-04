@@ -13,9 +13,9 @@ const ratingField=(key,value)=>{const label=t(key==='rating'?'overall':key);retu
 
 export function installReputationWorkspace(cloud){
  let owner='',data=null,search='',selected='',offset=0,more=false,loading=false,error='',notice='',epoch=0,options=null,dialog=null,busy=false,root=null,fileDialog=null,fileUrl=null,fileEpoch=0;
- let analysis=null,analysisScope='',analysisError='';
+ let analysisDialog=null,analysisReturn=null,analysis=null,analysisScope='',analysisError='',usage=null,usageError='',usageBusy=false,usageLoading=false;
  const visible=()=>cloud.active&&cloud.navigationOwner===owner&&cloud.location.hash==='#reputacion';
- function reset(){stopAnalysis();closeFile();owner=cloud.navigationOwner;data=null;search='';selected='';offset=0;more=false;loading=false;error='';notice='';options=null;epoch++;if(dialog){dialog.remove();dialog=null;}busy=false;}
+ function reset(){usage=null;usageError='';usageBusy=false;usageLoading=false;stopAnalysis();closeFile();owner=cloud.navigationOwner;data=null;search='';selected='';offset=0;more=false;loading=false;error='';notice='';options=null;epoch++;if(dialog){dialog.remove();dialog=null;}busy=false;}
  const originalReset=cloud.reset.bind(cloud);cloud.reset=function(){reset();return originalReset();};
  function message(issue){const codes={REPUTATION_ATTACHMENT_LIMIT:'fileLimit',REPUTATION_ATTACHMENT_FORMAT:'fileFormat',REQUEST_TOO_LARGE:'fileSize',REPUTATION_ATTACHMENT_MISMATCH:'fileMismatch',REPUTATION_ATTACHMENT_NOT_READY:'fileNotReady',REPUTATION_ATTACHMENT_NOT_FOUND:'fileUnavailable',REPUTATION_ATTACHMENT_CONFLICT:'fileConflict',REPUTATION_ATTACHMENT_INVALID:'fileUnavailable',REPUTATION_FILE_BACKEND_NOT_CONFIGURED:'fileError',REPUTATION_EMAIL_INVALID:'emailInvalid',REPUTATION_EMAIL_REQUIRED:'emailInvalid',REPUTATION_EMAIL_EXISTS:'emailExists',REPUTATION_INVALID:'invalid',REPUTATION_CONSENT_REQUIRED:'invalid',REPUTATION_CLIENT_MISMATCH:'mismatch',REPUTATION_REVIEW_EXISTS:'exists',REPUTATION_REVIEW_HIDDEN:'hidden',REPUTATION_NOT_FOUND:'notFound',PROJECT_NOT_FOUND:'notFound'};return t(codes[issue?.code]||'error');}
  function filesMarkup(files){return files?.length?`<section class="rep-evidence"><h4>${icon('paperclip')}${t('filesShared',{count:files.length})}</h4><ul>${files.map(file=>`<li><button type="button" class="text-button" data-rep-file="${esc(file.id)}" data-rep-filename="${esc(file.filename)}">${icon('file-text')}<span>${esc(file.filename)}</span>${icon('eye')}</button><small>${new Intl.NumberFormat(uiLocale(),{maximumFractionDigits:1}).format(file.size_bytes/1048576)} MB</small></li>`).join('')}</ul></section>`:'';}
@@ -27,9 +27,34 @@ export function installReputationWorkspace(cloud){
   try{const blob=await cloud.request(`/api/v1/reputation/attachments/${encodeURIComponent(id)}/file`,{},true);if(run!==fileEpoch||owner!==runOwner||!visible())return;if(blob.type.split(';')[0]!=='application/pdf')throw new Error('Invalid evidence response');fileUrl=URL.createObjectURL(blob);preview.querySelector('.rep-modal-status').outerHTML=`<div class="rep-file-toolbar"><span>${t('fileRead')}</span><a class="text-button" data-rep-file-download>${t('fileDownload')}${icon('download')}</a></div><iframe class="rep-file-frame" title="${t('filePreview')}"></iframe>`;preview.querySelector('iframe').src=fileUrl+'#view=FitH';const link=preview.querySelector('[data-rep-file-download]');link.href=fileUrl;link.download=filename;}
   catch(issue){if(run===fileEpoch&&fileDialog===preview)preview.querySelector('.rep-modal-status').outerHTML=`<p class="rep-error rep-file-error" role="alert">${esc(message(issue))}</p>`;}
  }
+ function usagePanel(){
+  if(usageLoading)return `<section class="rep-usage"><span class="rep-usage-loading" role="status" aria-label="${esc(t('usage.loading'))}"></span></section>`;
+  if(!usage)return `<section class="rep-usage"><p class="rep-error" role="alert">${esc(usageError||t('usage.unavailable'))}</p><button class="text-button" data-rep-action="usage-retry">${t('usage.retry')}</button></section>`;
+  const n=value=>new Intl.NumberFormat(uiLocale()).format(value);
+  return `<section class="rep-usage" aria-label="${esc(t('usage.title'))}"><div><strong>${esc(n(usage.confirmed_plan_freelancers))}</strong><span>${t(usage.confirmed_plan_freelancers===1?'usage.confirmedOne':'usage.confirmed')}</span></div><div><strong>${esc(n(usage.self_reported_helpful))}</strong><span>${t(usage.self_reported_helpful===1?'usage.reportedOne':'usage.reported')}</span></div><p>${t('usage.help')}</p><button class="button secondary" data-rep-action="usage-vote" aria-pressed="${usage.my_helpful===true}" ${usageBusy?'disabled':''}>${t(usage.my_helpful===true?'usage.undo':'usage.vote')}</button>${usageError?`<p class="rep-error" role="alert">${esc(usageError)}</p>`:''}</section>`;
+ }
+ function validateUsage(value,profile){
+  if(!value||value.profile_id!==profile||!Number.isSafeInteger(value.confirmed_plan_freelancers)||value.confirmed_plan_freelancers<0||!Number.isSafeInteger(value.self_reported_helpful)||value.self_reported_helpful<0||![true,false,null].includes(value.my_helpful))throw Error('Invalid usage response');return value;
+ }
+ async function refreshUsage(vote=false){
+  if(!selected||usageBusy)return;const profile=selected,run=epoch;usageBusy=true;usageError='';render();
+  try{const value=await cloud.request(`/api/v1/reputation/clients/${encodeURIComponent(profile)}/${vote?'usefulness':'usage'}`,vote?{method:'POST',body:JSON.stringify({helpful:usage?.my_helpful!==true})}:{});if(run!==epoch||profile!==selected||!visible())return;usage=validateUsage(value,profile);}
+  catch{if(run===epoch&&profile===selected&&visible())usageError=t('usage.unavailable');}
+  finally{if(run===epoch&&profile===selected&&visible()){usageBusy=false;render();}}
+ }
  function shell(content){return `<section class="rep-workspace" data-reputation><header class="rep-heading"><div><span class="eyebrow">${t('community')}</span><h2>${t(selected?'reviewHeading':'intro')}</h2><p>${t('introCopy')}</p></div><button class="button" data-rep-action="write">${icon('pencil')}${t('write')}</button></header>${purpose()}${notice?`<p class="rep-notice" role="status">${esc(notice)}</p>`:''}${content}</section>`;}
- function purpose(){return `<details class="rep-purpose rep-purpose-compact"><summary>${icon('info')}<span>${t('howAiWorks')}</span></summary><div class="rep-purpose-content"><header>${icon('sparkles')}<div><span class="rep-ai-label">${t('aiLabel')}</span><h3>${t('purposeAiTitle')}</h3></div></header><p class="rep-purpose-main">${t('purposeCopy')} <strong>${t('purposeDecision')}</strong></p><p>${t('purposeLead')}</p><div>${[['messages-square','purposeTalk'],['credit-card','purposePay'],['git-compare-arrows','purposeChanges']].map(([glyph,key])=>`<span>${icon(glyph)}${t(key)}</span>`).join('')}</div></div></details>`;}
- function stopAnalysis(){analysis?.dispose();analysis=null;analysisScope='';analysisError='';}
+ function purpose(){return `<button type="button" class="text-button rep-purpose-trigger" data-rep-action="purpose" aria-haspopup="dialog">${icon('info')}${t('howAiWorks')}</button>`;}
+ function purposeContent(){return `<div class="rep-purpose-content"><span class="rep-ai-label">${t('aiLabel')}</span><p class="rep-purpose-intro">${t('purposeIntro')}</p><ol class="rep-purpose-steps">${[['purposeTalk','purposeProfileDetail'],['purposeChanges','purposeDeliveryDetail'],['purposePay','purposePaymentDetail']].map(([title,detail],index)=>`<li><span class="rep-purpose-number" aria-hidden="true">${index+1}</span><div><h3>${t(title)}</h3><p>${t(detail)}</p></div></li>`).join('')}</ol><p class="rep-purpose-decision">${t('purposeDecision')}</p></div>`;}
+ function closeAnalysis(){if(!analysisDialog)return;const panel=analysisDialog;analysisDialog=null;panel.close();panel.remove();if(analysisReturn?.isConnected)analysisReturn.focus({preventScroll:true});analysisReturn=null;}
+ function paintAnalysis(){const panel=analysisDialog?.querySelector('[data-rep-analysis]');if(panel){const top=panel.scrollTop;panel.innerHTML=analysisMarkup();panel.scrollTop=top;}const trigger=root?.querySelector('[data-rep-action=ai-open]');if(trigger)trigger.innerHTML=icon('sparkles')+t(analysis?.state.status==='idle'?'ai.start':'ai.open');}
+ function openAnalysis(trigger){
+  if(analysisDialog){analysisDialog.focus();return;}
+  analysisReturn=trigger;analysisDialog=cloud.document.createElement('dialog');analysisDialog.className='rep-dialog rep-analysis-drawer';analysisDialog.setAttribute('aria-labelledby','rep-analysis-drawer-title');
+  analysisDialog.innerHTML=`<header><div><span class="rep-ai-label">${t('aiLabel')}</span><h2 id="rep-analysis-drawer-title">${t('ai.title')}</h2></div><button type="button" class="rep-close" data-rep-analysis-close aria-label="${t('close')}" title="${t('close')}">${icon('x')}</button></header><section class="rep-analysis" data-rep-analysis></section>`;
+  cloud.document.body.append(analysisDialog);paintAnalysis();analysisDialog.addEventListener('cancel',event=>{event.preventDefault();closeAnalysis();});analysisDialog.addEventListener('click',event=>{if(event.target===analysisDialog)closeAnalysis();});analysisDialog.showModal();
+  if(analysis?.state.status==='idle')void runAnalysis();
+ }
+ function stopAnalysis(){closeAnalysis();analysis?.dispose();analysis=null;analysisScope='';analysisError='';}
  function prepareAnalysis(){
   const scope=`reputation:${selected}`;
   if(analysisScope===scope)return;
@@ -37,7 +62,7 @@ export function installReputationWorkspace(cloud){
   const profile=selected,runOwner=owner;
   try{analysis=new AIJobClient({cloud,scope,onChange:()=>{
    if(!visible()||selected!==profile||owner!==runOwner)return;
-   const panel=root?.querySelector('[data-rep-analysis]');if(panel)panel.innerHTML=analysisMarkup();
+   paintAnalysis();
   }});}catch{analysisError=t('ai.error');}
  }
  function analysisMarkup(){
@@ -46,7 +71,7 @@ export function installReputationWorkspace(cloud){
   const result=state.status==='completed'?state.result:null;
   const valid=result?.kind==='reputation'&&typeof result.summary==='string'&&Array.isArray(result.observations)&&Array.isArray(result.limitations)&&Number.isInteger(result.sources_read)&&typeof result.model==='string'&&result.observations.every(o=>o&&typeof o.finding==='string'&&typeof o.recommendation==='string'&&Array.isArray(o.citations)&&o.citations.every(c=>c&&typeof c.review_id==='string'&&Number.isInteger(c.version)&&typeof c.quote==='string'))&&result.limitations.every(v=>typeof v==='string');
   const failed=analysisError||['failed','unavailable'].includes(state.status)||(state.status==='completed'&&!valid);
-  return `<header><div><span class="rep-ai-label">${t('aiLabel')}</span><h3>${t('ai.title')}</h3></div>${icon('sparkles')}</header><p>${t('ai.context')}</p>${waiting?renderAIActivity({label:t('ai.working'),hint:t('ai.wait'),compact:true}):''}${failed?`<p class="rep-error" role="alert">${t('ai.error')}</p>`:''}${valid?`<div class="rep-analysis-result"><p class="rep-analysis-summary">${esc(result.summary)}</p><p class="rep-analysis-meta">${t('ai.sources',{count:result.sources_read})} · ${esc(result.model)}</p>${result.observations.map(o=>`<article><h4>${esc(o.finding)}</h4><p>${esc(o.recommendation)}</p><details><summary>${t('ai.evidence',{count:o.citations.length})}</summary>${o.citations.map(c=>`<figure><blockquote>${esc(c.quote)}</blockquote><figcaption>${t('ai.version',{version:c.version})}<span class="rep-analysis-source-id">${esc(c.review_id)}</span></figcaption></figure>`).join('')}</details></article>`).join('')}${result.limitations.length?`<details class="rep-analysis-limits"><summary>${t('ai.limitations')}</summary><ul>${result.limitations.map(v=>`<li>${esc(v)}</li>`).join('')}</ul></details>`:''}</div>`:''}<div class="rep-analysis-actions">${waiting?`<button type="button" class="text-button" data-rep-action="ai-check">${t('ai.check')}</button>`:analysis?`<button type="button" class="button ${valid?'secondary':''}" data-rep-action="ai-start">${icon('sparkles')}${t(state.status==='unavailable'?(state.uncertain?'ai.retrySend':'ai.check'):state.status==='failed'?'ai.retry':valid?'ai.again':'ai.start')}</button>`:''}</div>`;
+  return `<header><div><span class="rep-ai-label">${t('aiLabel')}</span><h3>${t('ai.title')}</h3></div>${icon('sparkles')}</header><p>${t('ai.context')}</p>${waiting?renderAIActivity({label:t('ai.working'),hint:t('ai.wait'),compact:true}):''}${failed?`<p class="rep-error" role="alert">${t('ai.error')}</p>`:''}${valid?`<div class="rep-analysis-result"><section class="rep-analysis-overview"><h4>${t('ai.summaryHeading')}</h4><p class="rep-analysis-summary">${esc(result.summary)}</p></section><p class="rep-analysis-meta">${t('ai.sources',{count:result.sources_read})}</p>${result.observations.map(o=>`<article><section class="rep-analysis-finding"><h4>${t('ai.findingHeading')}</h4><p>${esc(o.finding)}</p></section><section class="rep-analysis-recommendation"><h4>${t('ai.recommendationHeading')}</h4><p>${esc(o.recommendation)}</p></section><details><summary>${t('ai.evidence',{count:o.citations.length})}</summary>${o.citations.map(c=>`<figure><blockquote>${esc(c.quote)}</blockquote><figcaption>${t('ai.version',{version:c.version})}</figcaption></figure>`).join('')}</details></article>`).join('')}</div>`:''}<div class="rep-analysis-actions">${waiting?`<button type="button" class="text-button" data-rep-action="ai-check">${t('ai.check')}</button>`:analysis?`<button type="button" class="button ${valid?'secondary':''}" data-rep-action="ai-start">${icon('sparkles')}${t(state.status==='unavailable'?(state.uncertain?'ai.retrySend':'ai.check'):state.status==='failed'?'ai.retry':valid?'ai.again':'ai.start')}</button>`:''}</div>`;
  }
  async function runAnalysis(check=false){
   if(!selected||!visible()||!analysis)return;
@@ -55,7 +80,7 @@ export function installReputationWorkspace(cloud){
    if(check)await client.check();
    else await client.start('/api/v1/ai/reputation',{profile_id:selected,output_language:uiLanguage()});
   }catch{
-   if(visible()&&analysis===client&&analysisScope===`reputation:${selected}`){analysisError=t('ai.error');const panel=root?.querySelector('[data-rep-analysis]');if(panel)panel.innerHTML=analysisMarkup();}
+   if(visible()&&analysis===client&&analysisScope===`reputation:${selected}`){analysisError=t('ai.error');paintAnalysis();}
   }
  }
  function publicEmail(client){return `<p class="rep-public-email">${icon('mail')}<span>${esc(client.public_email||t('emailNotPublished'))}</span></p>`;}
@@ -69,12 +94,16 @@ export function installReputationWorkspace(cloud){
  }
  function renderDetail(){
   const c=data.client;prepareAnalysis();
-  root.innerHTML=shell(`<button class="text-button rep-back" data-rep-action="back">${icon('arrow-left')}${t('back')}</button><section class="rep-profile workspace-panel"><div class="rep-profile-identity"><span class="rep-client-avatar">${esc((c.public_email||'').slice(0,2).toUpperCase())}</span><div><span class="rep-client-label">${t('clientLabel')}</span><h2>${esc(emailLabel(c))}</h2></div></div><div class="rep-profile-score"><strong>${number(c.rating)}</strong>${stars(c.rating)}<span>${count(c.review_count)}</span></div><div class="rep-score-breakdown"><div><span>${t('communication')}</span><strong>${number(c.communication)}<small> / 5</small></strong></div><div><span>${t('collaboration')}</span><strong>${number(c.collaboration??null)}<small> / 5</small></strong></div></div></section><section class="rep-analysis workspace-panel" data-rep-analysis aria-label="${t('ai.title')}">${analysisMarkup()}</section><div class="rep-review-list">${data.reviews.map(r=>`<article class="rep-review workspace-panel"><header><div class="rep-author"><span>${esc(r.alias.slice(0,2).toUpperCase())}</span><div><strong>${esc(r.alias)}</strong><small>${r.mine?t('own'):t('author')}</small></div></div><time datetime="${esc(r.created_at)}">${date(r.created_at)}</time></header><div class="rep-review-rating"><span aria-label="${t('rating',{value:r.rating})}">${stars(r.rating)}</span><span class="rep-project-badge" title="${t('linkedHelp')}">${icon('file-text')}${t('linked')}</span></div><p class="rep-review-copy">${esc(r.body)}</p>${filesMarkup(r.attachments)}<div class="rep-review-facts"><span>${t('communication')}: ${r.communication}/5</span>${r.collaboration!=null?`<span>${t('collaboration')}: ${r.collaboration}/5</span>`:''}</div><footer>${r.updated_at!==r.created_at?`<small>${t('updated',{date:date(r.updated_at)})}</small>`:'<span></span>'}<div>${r.mine?`<button class="text-button" data-rep-action="edit" data-rep-id="${esc(r.id)}">${icon('pencil')}${t('edit')}</button><button class="text-button" data-rep-action="withdraw" data-rep-id="${esc(r.id)}">${t('withdraw')}</button>`:`<button class="text-button" data-rep-action="report" data-rep-id="${esc(r.id)}">${icon('flag')}${t('report')}</button>`}</div></footer></article>`).join('')}</div>${more?`<button class="button secondary rep-more" data-rep-action="more" ${loading?'disabled':''}>${t('more')}</button>`:''}<p class="rep-evidence-note">${t('linkedHelp')}</p>`);
+  root.innerHTML=shell(`${usagePanel()}<button class="text-button rep-back" data-rep-action="back">${icon('arrow-left')}${t('back')}</button><section class="rep-profile workspace-panel"><div class="rep-profile-identity"><span class="rep-client-avatar">${esc((c.public_email||'').slice(0,2).toUpperCase())}</span><div><span class="rep-client-label">${t('clientLabel')}</span><h2>${esc(emailLabel(c))}</h2></div></div><div class="rep-profile-score"><strong>${number(c.rating)}</strong>${stars(c.rating)}<span>${count(c.review_count)}</span></div><div class="rep-score-breakdown"><div><span>${t('communication')}</span><strong>${number(c.communication)}<small> / 5</small></strong></div><div><span>${t('collaboration')}</span><strong>${number(c.collaboration??null)}<small> / 5</small></strong></div></div></section><div class="rep-analysis-launch"><button type="button" class="button secondary" data-rep-action="ai-open" aria-haspopup="dialog">${icon('sparkles')}${t(analysis?.state.status==='idle'?'ai.start':'ai.open')}</button></div><div class="rep-review-list">${data.reviews.map(r=>`<article class="rep-review workspace-panel"><header><div class="rep-author"><span>${esc(r.alias.slice(0,2).toUpperCase())}</span><div><strong>${esc(r.alias)}</strong><small>${r.mine?t('own'):t('author')}</small></div></div><time datetime="${esc(r.created_at)}">${date(r.created_at)}</time></header><div class="rep-review-rating"><span aria-label="${t('rating',{value:r.rating})}">${stars(r.rating)}</span><span class="rep-project-badge" title="${t('linkedHelp')}">${icon('file-text')}${t('linked')}</span></div><p class="rep-review-copy">${esc(r.body)}</p>${filesMarkup(r.attachments)}<div class="rep-review-facts"><span>${t('communication')}: ${r.communication}/5</span>${r.collaboration!=null?`<span>${t('collaboration')}: ${r.collaboration}/5</span>`:''}</div><footer>${r.updated_at!==r.created_at?`<small>${t('updated',{date:date(r.updated_at)})}</small>`:'<span></span>'}<div>${r.mine?`<button class="text-button" data-rep-action="edit" data-rep-id="${esc(r.id)}">${icon('pencil')}${t('edit')}</button><button class="text-button" data-rep-action="withdraw" data-rep-id="${esc(r.id)}">${t('withdraw')}</button>`:`<button class="text-button" data-rep-action="report" data-rep-id="${esc(r.id)}">${icon('flag')}${t('report')}</button>`}</div></footer></article>`).join('')}</div>${more?`<button class="button secondary rep-more" data-rep-action="more" ${loading?'disabled':''}>${t('more')}</button>`:''}<p class="rep-evidence-note">${t('linkedHelp')}</p>`);
  }
  async function load(append=false){
-  const run=++epoch;loading=true;error='';if(!append)data=null;render();
+  const run=++epoch;loading=true;error='';if(!append){data=null;usage=null;usageError='';usageBusy=false;usageLoading=Boolean(selected);}render();
   try{
-   const result=await cloud.request(selected?`/api/v1/reputation/clients/${encodeURIComponent(selected)}?offset=${offset}`:`/api/v1/reputation?search=${encodeURIComponent(search)}&offset=${offset}`);
+   const profile=selected;
+   if(profile&&!append)cloud.request(`/api/v1/reputation/clients/${encodeURIComponent(profile)}/usage`).then(value=>{
+    if(run!==epoch||profile!==selected||!visible())return;usage=validateUsage(value,profile);usageLoading=false;render();
+   }).catch(()=>{if(run===epoch&&profile===selected&&visible()){usage=null;usageLoading=false;usageError=t('usage.unavailable');render();}});
+   const result=await cloud.request(profile?`/api/v1/reputation/clients/${encodeURIComponent(profile)}?offset=${offset}`:`/api/v1/reputation?search=${encodeURIComponent(search)}&offset=${offset}`);
    if(run!==epoch||!visible())return;
    if(append){if(selected)result.reviews=[...data.reviews,...result.reviews];else result.clients=[...data.clients,...result.clients];}
    data=result;more=result.next_offset!==null;loading=false;render();
@@ -193,12 +222,17 @@ export function installReputationWorkspace(cloud){
   if(!event.target.matches('[data-rep-search]'))return;event.preventDefault();search=String(new FormData(event.target).get('search')||'').trim();offset=0;notice='';load();
  });
  cloud.document.addEventListener('click',async event=>{
+  if(event.target.closest('[data-rep-analysis-close]')){closeAnalysis();return;}
   if(event.target.closest('[data-rep-file-close]')){closeFile();return;}
   const fileButton=event.target.closest('[data-rep-file]');if(fileButton&&visible()){previewFile(fileButton.dataset.repFile,fileButton.dataset.repFilename);return;}
   if(event.target.closest('[data-rep-close]')){close();return;}
   const action=event.target.closest('[data-rep-action]');if(!action||!visible())return;
   const id=action.dataset.repId;
   switch(action.dataset.repAction){
+   case 'purpose':openDialog(t('howAiWorks'),purposeContent()).classList.add('rep-purpose-dialog');break;
+   case 'usage-retry':await refreshUsage();break;
+   case 'usage-vote':await refreshUsage(true);break;
+   case 'ai-open':openAnalysis(action);break;
    case 'ai-start':await runAnalysis();break;
    case 'ai-check':await runAnalysis(true);break;
    case 'open':stopAnalysis();selected=id;offset=0;notice='';load();break;

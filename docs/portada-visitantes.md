@@ -64,3 +64,25 @@ Los porcentajes y su fuente siguen presentes y contextualizados. Los casos son e
 Pestañas con aria-selected, aria-controls, tabulación y flechas/Home/End, foco conservado tras actualizar pasos y respeto a pausa y movimiento reducido. ES/EN sin rayas largas visibles. Verificación mediante contratos de código y sintaxis; no se ejecutaron pruebas visuales de navegador en esta etapa. Las pruebas históricas de scroll y cámara de la portada anterior no acreditan esta revisión.
 
 Archivos: visitor-landing.mjs/css, claves landing.flow* y landing.mascotWelcome ES/EN, guide.name. Tests de contrato tests/landing-flows.test.cjs. Cambios solo locales, sin publicación Git ni despliegue.
+
+
+## Ajuste de recorrido narrado, 2 de noviembre de 2026
+
+La portada local elimina los CTA duplicados del hero, la presentación aislada de la mascota y el CTA final. TeTrato acompaña ahora cada etapa con una explicación en un bocadillo. La secuencia avanza cada siete segundos y pasa al siguiente caso al completar sus cuatro etapas; esto sustituye la decisión anterior de recorrido exclusivamente manual. Los controles manuales y pausa siguen disponibles. El temporizador se detiene con sección fuera de vista, página oculta, sesión privada o movimiento reducido. La escena principal tiene un ciclo visual independiente de 6,5 segundos. No hay audio ni llamadas a un modelo en estas demostraciones.
+
+La conversación ilustrada de Ensayos está siempre visible y elimina su CTA de preparación. Se usan animaciones CSS y los recursos existentes, sin nuevas librerías. Prueba de contrato del recorrido cubre avance automático, pausa, navegación por teclado y ausencia de bloques retirados. Estos ajustes son posteriores a PR9 y permanecen locales.
+
+
+### Historia de problema y solución con TeTrato
+
+El recorrido sustituye las cuatro tarjetas simultáneas por una escena a la vez. Cada caso comienza con TeTrato preguntando si el problema le ha ocurrido al visitante y un mensaje ilustrativo del cliente. Después explica cuatro pasos, con escenas de conversación, documento, IA y cobro o evaluación según el caso. El robot tiene nube de diálogo sobre su imagen. Las tres historias disponen de narración ES/EN propia; son ilustraciones editoriales sin audio ni inferencia. Se conservan pausa y controles manuales accesibles. Las pruebas de temporizador verifican avance y pausa sin abrir el navegador.
+
+
+### Recorrido ligado al scroll, revisión posterior
+
+Por revisión de diseño, se retira la escena duplicada del hero y se elimina el temporizador de la historia. Una sección sticky breve conserva a TeTrato y la escena mientras el scroll nativo recorre la introducción y cuatro etapas. Subir vuelve a etapas anteriores; detener el desplazamiento conserva la etapa. No se intercepta wheel/touch ni se cambia la velocidad de desplazamiento. Los otros casos siguen seleccionables y la conversación de Ensayos permanece visible debajo. Las pruebas de contrato cubren avance y retroceso según geometría y ausencia de temporizadores para esta historia. La inspección visual corresponde a la revisión local del usuario.
+
+
+### Comunicación de valor del producto
+
+Las narraciones ES/EN explican qué recibe Trato, qué hace con ello y qué obtiene el freelancer. Se sustituyen expresiones genéricas como “las experiencias sirven de contexto” por el vínculo explícito entre experiencias disponibles, IA, encargo y propuesta de entregas/pagos. Sin prometer cobros garantizados. Referencias: https://www.ycombinator.com/blog/how-to-pitch-your-company/ y https://www.w3.org/WAI/WCAG2/supplemental/patterns/o3p02-simple-tense/ .

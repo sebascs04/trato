@@ -22,3 +22,17 @@
 .guide-launcher .guide-mascot{transform:translateY(-7px);filter:drop-shadow(0 4px 4px #6c489c18)}
 .guide-panel{bottom:112px}.guide-avatar{flex-basis:64px;height:64px;background:none;border:0;border-radius:0;box-shadow:none;overflow:visible}
 .guide-avatar .guide-mascot{width:86px;height:86px;filter:drop-shadow(0 3px 3px #6c489c12)}
+
+.guide-launcher[hidden]{display:none!important}
+
+/* Separate the essential instruction from supporting context. */
+.guide-panel{width:365px;bottom:25px;max-height:calc(100vh - 50px)}
+.guide-panel header{padding:13px 19px;gap:12px}
+.guide-panel header>div>span{display:none}
+.guide-copy{padding:21px 23px 24px}
+.guide-progress{font-size:10px;letter-spacing:.7px;color:#a38bb9;margin:0 0 10px}
+#guide-step-title{font-size:21px;line-height:1.35;font-weight:500;letter-spacing:-.3px;margin:0 0 16px}
+.guide-explanation{margin:0}
+.guide-lead{display:block;font-size:15px;line-height:1.75;color:#534260}
+.guide-support{display:block;font-size:13px;line-height:1.8;color:#93839f;margin-top:14px;padding-top:13px;border-top:1px solid #eee7f4}
+.guide-panel footer{padding:14px 20px;border-top:1px solid #eee7f4;background:#fdfbff}

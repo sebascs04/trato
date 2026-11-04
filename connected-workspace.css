@@ -422,3 +422,10 @@ body.cloud-design{--bg:#faf9fc;--paper:#fff;--surface:#fff;--surface-soft:#f7f5f
 .cloud-design .cloud-profile-dialog .cloud-account-footer { margin-top: 20px; padding-top: 17px; }
 .cloud-design .cloud-profile-dialog .cloud-account-footer button { display: inline-flex; align-items: center; gap: 8px; }
 @media(max-width:620px) { .cloud-design .cloud-profile-dialog { padding: 22px; } .cloud-design .cloud-profile-dialog .cloud-profile-hero { padding: 18px; } .cloud-design .cloud-profile-dialog .cloud-identity strong { font-size: 14px; } }
+
+/* Seven sections in two compact rows, without horizontal overflow. */
+.cloud-design .cloud-project-navigation{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:4px}
+.cloud-design .cloud-project-navigation>button{min-height:46px;padding:10px 12px;gap:9px}
+.cloud-design .cloud-project-navigation small{display:none}
+.cloud-design .cloud-project-navigation strong{font-size:13px}
+@media(max-width:700px){.cloud-design .cloud-project-navigation{grid-template-columns:repeat(2,minmax(0,1fr))}}

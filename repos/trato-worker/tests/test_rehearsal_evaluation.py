@@ -4,7 +4,14 @@ import unittest
 from unittest.mock import patch
 from trato_worker.rehearsal_evaluation import evaluate_rehearsal, RehearsalModel, bind_feedback
 from trato_worker.source_tools import ToolError
-from test_source_tools import Client
+from test_source_tools import Client as BaseClient,source
+
+class Client(BaseClient):
+    def reference_catalog(self):
+        return {'schema_version':1,'workflow':'rehearsal_feedback','scope_id':self.info['scope_id'],'enabled_tools':['search_reference_passages','read_reference_context'],'documents':[{k:source(i)[k] for k in ('file_id','title','author','url')} for i in self.info['required_file_ids']]}
+    def reference_execute(self,call):
+        return self.execute({'params':{'file_ids':self.info['required_file_ids']}})
+
 
 
 def data(language='es'):
@@ -19,6 +26,11 @@ class Model:
     name = 'test-model'
     def __init__(self, mutation=None): self.calls = []; self.mutation = mutation
     def generate(self, messages, schema):
+        if 'oneOf' in schema:
+            original=json.loads(messages[1]['content'])
+            if not any('tool_result' in message.get('content','') for message in messages):
+                return {'type':'tool_call','tool':'search_reference_passages','params':{'query':'Scope boundaries and clear negotiation commitments'}}
+            return {'type':'final','result':{'aspects':[{'aspect':'Scope and commitments','message_indices':[i for i,m in enumerate(original['messages']) if m['role']=='user'],'rationale':'Review the requested additional work and the actual replies.'}],'unresolved_questions':[]}}
         self.calls.append(messages)
         payload = json.loads(messages[-1]['content']); f = payload['guides'][0]
         segment_id, spans = next(iter(f['segments'].items())); ref, text = next(iter(spans.items()))
@@ -32,6 +44,25 @@ class Model:
 
 
 class EvaluatorTests(unittest.TestCase):
+    def test_multiple_relevant_guides_are_allowed_and_logs_exclude_conversation(self):
+        class Multiple(Model):
+            def generate(self,messages,schema):
+                result=super().generate(messages,schema)
+                if 'type' in result:return result
+                guides=json.loads(messages[-1]['content'])['guides']
+                result['items']['1']['citations']=[next(iter(next(iter(f['segments'].values())))) for f in guides[:3]]
+                return result
+        with patch('trato_worker.rehearsal_evaluation.audit') as audit:
+            result=evaluate_rehearsal(data(),Client(),Multiple())
+        self.assertEqual(len(result['items'][0]['citations']),3)
+        self.assertEqual(sum(source['cited'] for source in result['sources']),3)
+        events=[call.args[0] for call in audit.call_args_list]
+        self.assertIn('guides_loaded',events);self.assertIn('references_selected',events)
+        logged=repr(audit.call_args_list)
+        self.assertNotIn(data()['messages'][1]['text'],logged)
+        self.assertNotIn(data()['case']['agreement'],logged)
+
+
     def test_model_cannot_omit_duplicate_or_reassign_message_slots(self):
         for items in ({'1': {}}, {'1': {}, '3': {}, '7': {}}, [], {'1': {'message_index': 5}, '3': {}, '5': {}}):
             with self.subTest(items=items), self.assertRaises(ToolError):
@@ -44,6 +75,7 @@ class EvaluatorTests(unittest.TestCase):
         class EveryTurn(Model):
             def generate(self,messages,schema):
                 result=super().generate(messages,schema)
+                if 'type' in result:return result
                 item=result['items']['1']
                 result['items']={str(i):{**deepcopy(item),'evidence_quote':m['text']}
                                  for i,m in enumerate(payload['messages']) if m['role']=='user'}
@@ -80,7 +112,7 @@ class EvaluatorTests(unittest.TestCase):
 
     def test_missing_source_never_calls_model(self):
         client = Client(); model = Model()
-        client.execute = lambda _: (_ for _ in ()).throw(ToolError('SOURCE_LIBRARY_UNREADABLE'))
+        client.reference_catalog = lambda: (_ for _ in ()).throw(ToolError('SOURCE_LIBRARY_UNREADABLE'))
         with self.assertRaisesRegex(ToolError, 'SOURCE_LIBRARY_UNREADABLE'):
             evaluate_rehearsal(data(), client, model)
         self.assertEqual(model.calls, [])
@@ -114,4 +146,77 @@ class SourceSpanTests(unittest.TestCase):
         self.assertEqual(''.join(guides[0]['segments']['page-1'].values()),original)
         output={'items':[{'citations':['r1']}]};resolve_citations(output,refs)
         self.assertEqual(output['items'][0]['citations'][0]['quote'],'One two three four five six seven eight.')
-        self.assertTrue(all(len(r['quote'].split())<=8 for r in refs.values()))
+        self.assertEqual(refs['r2']['quote'],'Nine ten eleven.')
+
+class CitationSelectionTests(unittest.TestCase):
+    def test_repeated_verified_references_are_not_rejected_for_accumulated_word_count(self):
+        from trato_worker.rehearsal_evaluation import validate_feedback
+        text='One two three four five six seven eight.'
+        files={'file-a':{'file_id':'file-a','title':'Guide','author':'Author','url':'https://example.invalid/guide',
+                         'segments':[{'segment_id':'p1','text':text,'locator':{'kind':'page','page':1}}]}}
+        def item(index):
+            return {'message_index':index,'evidence_quote':f'Reply {index}', 'assessment':'improvement',
+                    'finding':'A finding','suggestion':None,'why':'A principle',
+                    'citations':[{'file_id':'file-a','segment_id':'p1','quote':text}]}
+        output={'summary':'Summary','items':[item(i) for i in (1,3,5,7)]}
+        validate_feedback(output,{i:f'Reply {i}' for i in (1,3,5,7)},files)
+        self.assertEqual(len(output['items']),4)
+
+    def test_passages_have_no_word_budget_metadata(self):
+        from trato_worker.rehearsal_evaluation import citation_references,resolve_citations,validate_feedback
+        text='One two three four five six seven eight. Nine ten.'
+        f={'file_id':'file-a','title':'Guide','author':'Author','url':'https://example.invalid/guide',
+           'segments':[{'segment_id':'p1','text':text,'locator':{'kind':'page','page':1}}]}
+        guides,refs=citation_references([f])
+        self.assertNotIn('citation_word_counts',guides[0]);self.assertNotIn('maximum_quoted_words',guides[0])
+        output={'summary':'Summary','items':[{'message_index':i,'evidence_quote':f'Reply {i}',
+                 'assessment':'strength','finding':'A finding','suggestion':None,'why':'A principle',
+                 'citations':['r1']} for i in (1,3,5)]}
+        resolve_citations(output,refs)
+        validate_feedback(output,{i:f'Reply {i}' for i in (1,3,5)},{'file-a':f})
+        self.assertEqual(len(output['items']),3)
+
+class ContextualReferenceTests(unittest.TestCase):
+    def test_all_original_passages_remain_available_for_model_selection(self):
+        from trato_worker.rehearsal_evaluation import citation_references,resolve_citations
+        texts=['Conditions','Timing adjustments','Explore several options before committing to a solution.']
+        f={'file_id':'file','title':'Guide','author':'Author','segments':[
+            {'segment_id':f'b{i}','text':text} for i,text in enumerate(texts)]}
+        guides,refs=citation_references([f]);guide=guides[0]
+        self.assertEqual([''.join(spans.values()) for spans in guide['segments'].values()],texts)
+        self.assertEqual(guide['citable_reference_ids'],['r1','r2','r3'])
+        output={'items':[{'citations':['r3']}]};resolve_citations(output,refs)
+        self.assertEqual(output['items'][0]['citations'][0]['quote'],texts[2])
+
+    def test_sentence_boundaries_preserve_meaning_and_every_original_character(self):
+        from trato_worker.rehearsal_evaluation import citation_references
+        text='  Explain the original scope before discussing a new price.\nDiscuss timing and conditions together.  '
+        guide,refs=citation_references([{'file_id':'f','title':'Guide','author':'Author',
+                                       'segments':[{'segment_id':'p','text':text}]}])
+        self.assertEqual(''.join(guide[0]['segments']['p'].values()),text)
+        self.assertEqual(refs['r1']['quote'],'Explain the original scope before discussing a new price.')
+        self.assertEqual(refs['r2']['quote'],'Discuss timing and conditions together.')
+
+class UnboundedVerifiedCitationTests(unittest.TestCase):
+    def test_long_original_passages_and_more_than_three_citations_are_accepted(self):
+        from trato_worker.rehearsal_evaluation import citation_references,resolve_citations,validate_feedback
+        text=' '.join(f'originalword{i}' for i in range(65))+'.'
+        f={'file_id':'f','title':'Guide','author':'Author','url':'https://example.invalid/guide',
+           'segments':[{'segment_id':'p','text':text,'locator':{'kind':'page','page':1}}]}
+        guides,refs=citation_references([f]);self.assertEqual(refs['r1']['quote'],text)
+        self.assertEqual(''.join(guides[0]['segments']['p'].values()),text)
+        output={'summary':'Summary','items':[{'message_index':1,'evidence_quote':'My reply',
+            'assessment':'strength','finding':'A supported finding','suggestion':None,'why':'A supported principle',
+            'citations':['r1']*4}]}
+        resolve_citations(output,refs);validate_feedback(output,{1:'My reply'},{'f':f})
+        self.assertEqual(len(output['items'][0]['citations']),4)
+        self.assertEqual(output['items'][0]['citations'][0]['quote'],text)
+
+    def test_removing_word_limits_does_not_allow_forged_quotes(self):
+        from trato_worker.rehearsal_evaluation import validate_feedback
+        f={'file_id':'f','segments':[{'segment_id':'p','text':'A real original sentence.'}]}
+        output={'summary':'Summary','items':[{'message_index':1,'evidence_quote':'My reply',
+            'assessment':'strength','finding':'A finding','suggestion':None,'why':'A principle',
+            'citations':[{'file_id':'f','segment_id':'p','quote':'A fabricated sentence.'}]}]}
+        with self.assertRaisesRegex(ToolError,'REHEARSAL_INVALID_CITATION'):
+            validate_feedback(output,{1:'My reply'},{'f':f})

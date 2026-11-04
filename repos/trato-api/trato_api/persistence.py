@@ -135,7 +135,23 @@ class Repository:
                   'document_extractions(id,status,error_code,worker_thread_id,worker_threads(status,phase)),') + ','.join((artifacts, acceptances, feedback))
         rows = self.rows('documents', {'select': select,
                                        'project_id': 'eq.' + project['id'], 'order': 'created_at.desc', 'limit': 100})
+        ids='in.('+','.join(row['id'] for row in rows)+')' if rows else None
+        refund_links={}
+        if ids:
+            artifacts=self.rows('refund_artifacts',{'select':'document_id,snapshot_id,settlement_id','document_id':ids})
+            acceptances=self.rows('refund_acceptances',{'select':'snapshot_id,settlement_id,evidence','evidence->>document_id':ids})
+            feedback=self.rows('refund_feedback',{'select':'snapshot_id,settlement_id,evidence','evidence->>document_id':ids})
+            references=[(a['document_id'],a,'proposal') for a in artifacts]
+            references += [(a['evidence']['document_id'],a,'acceptance') for a in acceptances]
+            references += [(a['evidence']['document_id'],a,'feedback') for a in feedback]
+            snapshot_ids={a['snapshot_id'] for _,a,_ in references}
+            versions=self.rows('refund_snapshots',{'select':'id,version_no','id':'in.('+','.join(sorted(snapshot_ids))+')'}) if snapshot_ids else []
+            for document_id,link,role in references:
+                version=next((v['version_no'] for v in versions if v['id']==link['snapshot_id']),None)
+                if version is None:raise ApiError('REFUND_SNAPSHOT_NOT_FOUND',409)
+                refund_links.setdefault(document_id,[]).append({'settlement_id':link['settlement_id'],'snapshot_id':link['snapshot_id'],'version_no':version,'role':role})
         for row in rows:
+            row['refund_links']=refund_links.get(row['id'],[])
             links = []
             def add_link(revision, role):
                 if revision and revision.get('proposal'):
@@ -183,7 +199,7 @@ class Repository:
         from concurrent.futures import ThreadPoolExecutor
         from datetime import datetime
         project=self.project(project_id)
-        common={'project_id':'eq.'+project['id'],'limit':1000}
+        common={'project_id':'eq.'+project['id']}
         queries={
             'requests':('documents',{'select':'id,title,created_at','kind':'eq.email_request'}),
             'proposals':('change_proposals',{'select':'id,request_document_id'}),
@@ -191,9 +207,18 @@ class Repository:
             'deliveries':('proposal_deliveries',{'select':'id,proposal_id,revision_id,kind,updated_at','status':'eq.accepted_by_gmail'}),
             'acceptances':('proposal_acceptances',{'select':'id,proposal_id,revision_id,created_at'}),
             'payments':('proposal_payments',{'select':'id,proposal_id,revision_id,amount_minor,currency,updated_at','status':'eq.completed'}),
-            'closures':('request_closures',{'select':'request_document_id,reason,closed_at'})}
+            'closures':('request_closures',{'select':'request_document_id,reason,closed_at','order':'request_document_id.asc'})}
+        from .refunds.activity import QUERIES,milestones
+        queries.update(QUERIES)
+        def all_rows(table,params):
+            result=[];offset=0
+            while True:
+                page=self.rows(table,{'order':'id.asc',**common,**params,'limit':500,'offset':offset})
+                result.extend(page)
+                if len(page)<500:return result
+                offset+=len(page)
         with ThreadPoolExecutor(max_workers=4) as pool:
-            futures={name:pool.submit(self.rows,table,{**common,**params}) for name,(table,params) in queries.items()}
+            futures={name:pool.submit(all_rows,table,params) for name,(table,params) in queries.items()}
             data={name:future.result() for name,future in futures.items()}
         requests={row['id']:row for row in data['requests']}
         proposals={row['id']:row for row in data['proposals']}
@@ -203,7 +228,7 @@ class Repository:
             if not timestamp:raise ApiError('ACTIVITY_TIMESTAMP_MISSING',502)
             request=requests.get(request_id)
             if request is None:raise ApiError('ACTIVITY_CONTEXT_MISSING',502)
-            events.append({'id':id,'kind':kind,'title':title,'created_at':timestamp,'request_document_id':request_id,'request_title':request['title'],**extra})
+            events.append({'id':id,'kind':kind,'title':title,'created_at':timestamp,'request_document_id':request_id,'request_title':request['title'],'group_kind':'change','group_id':request_id,'group_title':request['title'],**extra})
         def context(row):
             proposal=proposals.get(row['proposal_id']);revision=revisions.get(row['revision_id'])
             if proposal is None or revision is None:raise ApiError('ACTIVITY_CONTEXT_MISSING',502)
@@ -221,7 +246,8 @@ class Repository:
             request_id,version=context(row);minor=row['amount_minor']
             add('payment-'+row['id'],'payment_completed',f'Pago confirmado · {row["currency"]} {minor//100}.{minor%100:02d}',row['updated_at'],request_id,revision_no=version,amount_minor=minor,currency=row['currency'])
         for row in data['closures']:
-            add('closure-'+row['request_document_id'],'request_closed','Pedido cerrado · '+('Rechazado' if row['reason']=='rejected' else 'Retirado'),row['closed_at'],row['request_document_id'])
+            add('closure-'+row['request_document_id'],'request_closed','Pedido cerrado · '+('Rechazado' if row['reason']=='rejected' else 'Retirado'),row['closed_at'],row['request_document_id'],reason=row['reason'])
+        events.extend(milestones(data))
         events.sort(key=lambda event:datetime.fromisoformat(event['created_at'].replace('Z','+00:00')),reverse=True)
         return events
 

@@ -78,6 +78,10 @@ class PersistenceTests(unittest.TestCase):
             self.assertEqual(request.headers['authorization'], 'Bearer user-a')
             if request.url.path.endswith('/projects'):
                 return httpx.Response(200, json=[{'id': PROJECT, 'client_id': CLIENT}])
+            if request.url.path.rsplit('/', 1)[-1] in ('refund_artifacts', 'refund_acceptances', 'refund_feedback'):
+                key='document_id' if request.url.path.endswith('/refund_artifacts') else 'evidence->>document_id'
+                self.assertEqual(request.url.params[key],'in.(pdf,returned,feedback,unlinked)')
+                return httpx.Response(200, json=[])
             self.assertEqual(request.url.params['project_id'], 'eq.' + PROJECT)
             selection = request.url.params['select']
             self.assertIn('request_document_id', selection)
@@ -90,12 +94,31 @@ class PersistenceTests(unittest.TestCase):
                 {'id': 'feedback', 'feedback': [revision]},
                 {'id': 'unlinked', 'proposal_artifacts': []}])
         result = self.repo(handler).list_documents(PROJECT)
-        self.assertEqual(len(calls), 2)
+        self.assertEqual(len(calls), 5)
         for index, role in enumerate(('addendum', 'acceptance', 'feedback')):
             self.assertEqual(result[index]['request_links'], [{'request_document_id': DOC, 'revision_no': 2, 'role': role}])
         self.assertEqual(result[0]['proposal_artifacts'], [{'revision_id': 'revision-2'}])
         self.assertEqual(result[3]['request_links'], [])
         self.assertNotIn('acceptances', result[1])
+
+    def test_refund_documents_keep_their_own_version_and_do_not_become_paid_addenda(self):
+        def handler(request):
+            self.assertEqual(request.headers['authorization'], 'Bearer user-a')
+            table=request.url.path.rsplit('/',1)[-1]
+            data={
+                'projects':[{'id':PROJECT,'client_id':CLIENT}],
+                'documents':[{'id':DOC,'project_id':PROJECT,'kind':'addendum'}],
+                'refund_artifacts':[{'document_id':DOC,'snapshot_id':'snapshot-v2','settlement_id':'refund'}],
+                'refund_acceptances':[], 'refund_feedback':[],
+                'refund_snapshots':[{'id':'snapshot-v2','version_no':2}],
+            }
+            if table.startswith('refund_'):
+                self.assertNotIn('body_text',request.url.params['select'])
+                self.assertIn('in.',str(request.url.params))
+            return httpx.Response(200,json=data[table])
+        result=self.repo(handler).list_documents(PROJECT)
+        self.assertEqual(result[0]['request_links'],[])
+        self.assertEqual(result[0]['refund_links'],[{'settlement_id':'refund','snapshot_id':'snapshot-v2','version_no':2,'role':'proposal'}])
 
     def test_owner_is_not_inserted_from_browser_or_app_claims(self):
         def handler(request):

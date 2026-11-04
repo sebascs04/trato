@@ -1,0 +1,54 @@
+begin;
+set local statement_timeout='15s';
+\ir fixtures/refund_financial_fixture.sql
+create temp table financial_test(f jsonb);
+insert into financial_test select pg_temp.refund_financial_fixture(true);
+grant select on financial_test to authenticated;
+set local role authenticated;
+select set_config('request.jwt.claim.sub',f->>'owner',true) from financial_test;
+do $$declare f jsonb;body jsonb;r jsonb;begin
+ select x.f into f from financial_test x;
+ body:=jsonb_build_object('settlement_id',f->>'parent','expected_snapshot_id',f->>'snapshot','check_id',f->'check'->>'id','digest',f->'check'->>'digest','confirmed',true,'notes','Reviewed financial authorization');
+ begin perform public.refund_financial_authorize(body||jsonb_build_object('confirmed',false),'denied');raise exception 'False consent accepted';exception when sqlstate 'PT409' then null;end;
+ begin perform public.refund_financial_authorize(body||jsonb_build_object('digest',repeat('0',64)),'bad-digest');raise exception 'Forged check accepted';exception when sqlstate 'PT409' then null;end;
+ r:=public.refund_financial_authorize(body,'authorize-test');
+ if r<>public.refund_financial_authorize(body,'authorize-test') then raise exception 'Authorization replay changed';end if;
+ if r->>'confirmed_minor'<>'0' or r->>'reserved_minor'<>'25000' or jsonb_array_length(r->'operations')<>2 then raise exception 'Wrong reservation';end if;
+ begin perform public.refund_financial_authorize(body,'another-key');raise exception 'Duplicate authorization';exception when sqlstate 'PT409' then null;end;
+ begin perform public.refund_finance_backend((f->>'owner')::uuid,'result','{}');raise exception 'Browser can apply financial results';exception when insufficient_privilege then null;end;
+ begin update public.refund_financial_operations set status='completed';raise exception 'Direct result writes allowed';exception when insufficient_privilege then null;end;
+end $$;
+reset role;
+do $$declare f jsonb;view jsonb;r jsonb;run_id uuid;auth uuid;op jsonb;next_op jsonb;e jsonb;claim jsonb;first_amount bigint;begin
+ select x.f into f from financial_test x;
+ view:=public.refund_financial((f->>'parent')::uuid);auth:=(view->'authorizations'->0->>'id')::uuid;
+ r:=public.refund_finance_backend((f->>'owner')::uuid,'run_claim',jsonb_build_object('settlement_id',f->>'parent','authorization_id',auth,'operation_key','execute-test'));run_id:=(r->>'run_id')::uuid;
+ if r->>'acquired'<>'true' then raise exception 'Run not claimed';end if;
+ r:=public.refund_finance_backend((f->>'owner')::uuid,'run_claim',jsonb_build_object('settlement_id',f->>'parent','authorization_id',auth,'operation_key','execute-test'));
+ if r->>'acquired'<>'false' then raise exception 'Run replay can dispatch';end if;
+ view:=public.refund_financial((f->>'parent')::uuid);op:=view->'operations'->0;next_op:=view->'operations'->1;first_amount:=(op->>'amount_minor')::bigint;
+ select value into e from jsonb_array_elements(f->'check'->'evidence') where value->>'payment_id'=op->>'payment_id';
+ claim:=public.refund_finance_backend((f->>'owner')::uuid,'dispatch_claim',jsonb_build_object('settlement_id',f->>'parent','operation_id',op->>'id','run_id',run_id,'evidence',e));
+ if claim->>'acquired'<>'true' then raise exception 'Dispatch not claimed';end if;
+ r:=public.refund_finance_backend((f->>'owner')::uuid,'dispatch_claim',jsonb_build_object('settlement_id',f->>'parent','operation_id',op->>'id','run_id',run_id,'evidence',e));
+ if r->>'acquired'<>'false' then raise exception 'Duplicate dispatch';end if;
+ perform public.refund_finance_backend((f->>'owner')::uuid,'bind',jsonb_build_object('settlement_id',f->>'parent','operation_id',op->>'id','refund_id','REFUND-FIRST'));
+ r:=public.refund_finance_backend((f->>'owner')::uuid,'result',jsonb_build_object('settlement_id',f->>'parent','operation_id',op->>'id','status','completed','canonical',true,'refund_id','REFUND-FIRST','amount_minor',first_amount,'currency','USD','capture_id',claim->'payment'->>'capture_id'));
+ if r->'settlement'->>'status'<>'refund_pending' or (r->>'confirmed_minor')::bigint<>first_amount then raise exception 'Partial completion lost';end if;
+ if private.refund_previous((op->>'payment_id')::uuid)<>first_amount then raise exception 'Partial result not counted';end if;
+ select value into e from jsonb_array_elements(f->'check'->'evidence') where value->>'payment_id'=next_op->>'payment_id';
+ claim:=public.refund_finance_backend((f->>'owner')::uuid,'dispatch_claim',jsonb_build_object('settlement_id',f->>'parent','operation_id',next_op->>'id','run_id',run_id,'evidence',e));
+ perform public.refund_finance_backend((f->>'owner')::uuid,'bind',jsonb_build_object('settlement_id',f->>'parent','operation_id',next_op->>'id','refund_id','REFUND-SECOND'));
+ perform public.refund_finance_backend((f->>'owner')::uuid,'result',jsonb_build_object('settlement_id',f->>'parent','operation_id',next_op->>'id','status','uncertain','error_code','PAYPAL_UNAVAILABLE'));
+ r:=public.refund_finance_backend((f->>'owner')::uuid,'run_finish',jsonb_build_object('settlement_id',f->>'parent','authorization_id',auth,'run_id',run_id));
+ if (r->>'reserved_minor')::bigint<>25000-first_amount then raise exception 'Uncertainty released funds';end if;
+ r:=public.refund_finance_backend((f->>'owner')::uuid,'result',jsonb_build_object('settlement_id',f->>'parent','operation_id',next_op->>'id','status','pending','canonical',true,'refund_id','REFUND-SECOND','amount_minor',next_op->'amount_minor','currency','USD','capture_id',claim->'payment'->>'capture_id'));
+ if r->'settlement'->>'status'<>'refund_pending' then raise exception 'Pending completes parent';end if;
+ r:=public.refund_finance_backend((f->>'owner')::uuid,'result',jsonb_build_object('settlement_id',f->>'parent','operation_id',next_op->>'id','status','completed','canonical',true,'refund_id','REFUND-SECOND','amount_minor',next_op->'amount_minor','currency','USD','capture_id',claim->'payment'->>'capture_id'));
+ if r->'settlement'->>'status'<>'completed' or r->>'confirmed_minor'<>'25000' or r->>'reserved_minor'<>'0' then raise exception 'Global completion incorrect';end if;
+ if private.refund_previous((op->>'payment_id')::uuid)<>first_amount then raise exception 'Confirmed amount counted twice';end if;
+ if not exists(select 1 from public.projects where id=(f->>'project')::uuid and status='closed') then raise exception 'Global project not closed';end if;
+ begin perform public.refund_finance_backend((f->>'owner')::uuid,'result',jsonb_build_object('settlement_id',f->>'parent','operation_id',next_op->>'id','status','failed','definitive_rejection',true));raise exception 'Completed degraded';exception when sqlstate 'PT409' then null;end;
+end $$;
+-- All synthetic evidence is rolled back; no financial provider was contacted.
+rollback;

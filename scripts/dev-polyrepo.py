@@ -53,6 +53,8 @@ def environment(repo):
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Inicia los servicios y la interfaz oficial de Trato.')
     parser.add_argument('--with-worker',action='store_true',help='Iniciar Redis propio, publicador/resultados y worker de ingesta.')
+    parser.add_argument('--redis-server', default=str(ROOT / '.local/redis-runtime/bin/redis-server'),
+                        help='Ruta explícita de Redis >= 6.2; por defecto usa la instalación privada de Trato.')
     parser.add_argument('--with-ai',action='store_true',help='Iniciar Redis propio y workers IA sin ingesta de documentos.')
     parser.add_argument('--tools', action='store_true', help='Usar la pantalla técnica de 5174 en lugar de la interfaz oficial.')
     parser.add_argument('--api-port',type=int,default=PORTS['api'])
@@ -70,10 +72,18 @@ if __name__ == '__main__':
         raise SystemExit('Instala primero el entorno de trato-file-processor según su README.')
     if queue_requested and not (ROOT/'.local/redis/redis.conf').exists():
         raise SystemExit('Ejecuta primero scripts/configure-ingestion.py para configurar la cola privada de Trato.')
+    if queue_requested:
+        redis_binary = Path(args.redis_server).resolve()
+        if not redis_binary.is_file():
+            raise SystemExit('No existe el Redis privado. Instálalo o indica su ruta con --redis-server.')
+        version = subprocess.run([str(redis_binary), '--version'], check=True, capture_output=True, text=True)
+        match = re.search(r'v=(\d+)\.(\d+)', version.stdout)
+        if not match or tuple(map(int, match.groups())) < (6, 2):
+            raise SystemExit('El worker necesita Redis >= 6.2 para XAUTOCLAIM.')
     children = []
     try:
         if queue_requested:
-            children.append(subprocess.Popen(['redis-server',str(ROOT/'.local/redis/redis.conf')],cwd=ROOT))
+            children.append(subprocess.Popen([str(redis_binary),str(ROOT/'.local/redis/redis.conf')],cwd=ROOT))
 
         for name, service_port, module in [('trato-file-processor', str(args.processor_port), 'file_processor.app:app'),
                                    ('trato-api', str(args.api_port), 'trato_api.app:app')]:

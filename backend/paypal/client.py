@@ -15,9 +15,10 @@ BASE_URL='https://api-m.sandbox.paypal.com'
 
 
 class PayPalError(Exception):
-    def __init__(self, code, *, status=502, uncertain=False):
+    def __init__(self, code, *, status=502, uncertain=False, http_status=None, provider_issue=None, definitive=False):
         super().__init__(code)
         self.code, self.status, self.uncertain=code,status,uncertain
+        self.http_status,self.provider_issue,self.definitive=http_status,provider_issue,definitive
 
 
 @dataclass(frozen=True)
@@ -56,8 +57,16 @@ def http_transport(method,path,headers,body):
             if len(raw)>1024*1024: raise PayPalError('PROVIDER_RESPONSE_TOO_LARGE',uncertain=method=='POST')
             return Response(response.status,json.loads(raw))
     except HTTPError as error:
-        # Deliberately do not log bodies/headers or expose provider account details.
-        return Response(error.code,{})
+        # Preserve only machine-readable error codes, never free text or account data.
+        try:
+            raw=error.read(1024*1024+1)
+            body=json.loads(raw) if len(raw)<=1024*1024 else {}
+            if not isinstance(body,dict):body={}
+            safe=lambda value:value if isinstance(value,str) and re.fullmatch('[A-Z_]{1,80}',value) else None
+            details=body.get('details',[])
+            issues=[safe(d.get('issue')) for d in details[:20] if isinstance(d,dict)] if isinstance(details,list) else []
+            return Response(error.code,{'name':safe(body.get('name')),'issues':[i for i in issues if i]})
+        except (ValueError,OSError):return Response(error.code,{})
     except (URLError,TimeoutError,OSError):
         raise PayPalError('PAYPAL_UNAVAILABLE',uncertain=method=='POST')
     except (ValueError,UnicodeError):
@@ -84,13 +93,23 @@ class PayPalSandboxClient:
         self._token=result.body['access_token'];self._expires=self.clock()+max(0,lifetime-60)
         return self._token
 
-    def _request(self,method,path,payload=None,request_id=None):
+    def _request(self,method,path,payload=None,request_id=None,*,refund=False):
         headers={'Authorization':'Bearer '+self._access_token(),'Content-Type':'application/json','Prefer':'return=representation'}
         if request_id:
             if not re.fullmatch(r'[A-Za-z0-9_-]{1,38}',request_id): raise PayPalError('INVALID_PROVIDER_REQUEST_ID',status=422)
             headers['PayPal-Request-Id']=request_id
         response=self.transport(method,path,headers,json.dumps(payload).encode() if payload is not None else None)
         if not 200<=response.status<300:
+            if refund:
+                body=response.body if isinstance(response.body,dict) else {}
+                names={'INVALID_REQUEST','VALIDATION_ERROR','AUTHENTICATION_FAILURE','NOT_AUTHORIZED','PERMISSION_DENIED',
+                       'REFUND_AMOUNT_EXCEEDED','CAPTURE_FULLY_REFUNDED','REFUND_TIME_LIMIT_EXCEEDED','REFUND_NOT_ALLOWED','INSUFFICIENT_FUNDS'}
+                issue=body.get('name') if body.get('name') in names else None
+                issues=body.get('issues',[])
+                if isinstance(issues,list):issue=next((i for i in issues if isinstance(i,str) and i in names),issue)
+                definitive=response.status in (401,403) or response.status==400 and issue in ('INVALID_REQUEST','VALIDATION_ERROR')
+                code=('PAYPAL_REFUND_AUTH_REJECTED' if response.status in (401,403) else 'PAYPAL_REFUND_REQUEST_REJECTED') if definitive else 'PAYPAL_REFUND_RECONCILIATION_REQUIRED'
+                raise PayPalError(code,status=409 if definitive else 503,uncertain=not definitive,http_status=response.status,provider_issue=issue,definitive=definitive)
             raise PayPalError('PAYPAL_REQUEST_FAILED',status=503 if response.status==429 else 502,uncertain=method=='POST' and (response.status>=500 or response.status in (408,429)))
         if not isinstance(response.body,dict):raise PayPalError('INVALID_PROVIDER_RESPONSE',uncertain=method=='POST')
         return response.body
@@ -114,6 +133,23 @@ class PayPalSandboxClient:
         order=self._request('POST','/v2/checkout/orders',payload,request_id)
         self.validate_order(order,item)
         return order
+
+    def get_capture(self,capture_id):
+        if not isinstance(capture_id,str) or not re.fullmatch(r'[A-Za-z0-9_-]{1,64}',capture_id):raise PayPalError('INVALID_CAPTURE_ID',status=422)
+        return self._request('GET','/v2/payments/captures/'+capture_id)
+
+    def refund_capture(self,capture_id,payload,request_id):
+        if not isinstance(capture_id,str) or not re.fullmatch(r'[A-Za-z0-9_-]{1,64}',capture_id):raise PayPalError('INVALID_CAPTURE_ID',status=422)
+        if not isinstance(payload,dict) or set(payload)!={'amount','custom_id'} or not isinstance(payload['amount'],dict) or set(payload['amount'])!={'currency_code','value'}:
+            raise PayPalError('INVALID_REFUND_INSTRUCTION',status=422)
+        exact_amount(payload['amount'].get('value'))
+        if payload['amount']['currency_code']!='USD' or not isinstance(payload['custom_id'],str) or not re.fullmatch(r'trato-refund-[a-f0-9-]{36}',payload['custom_id']):raise PayPalError('INVALID_REFUND_INSTRUCTION',status=422)
+        if not isinstance(request_id,str) or not re.fullmatch(r'[a-f0-9-]{36}',request_id):raise PayPalError('INVALID_PROVIDER_REQUEST_ID',status=422)
+        return self._request('POST','/v2/payments/captures/'+capture_id+'/refund',payload,request_id,refund=True)
+
+    def get_refund(self,refund_id):
+        if not isinstance(refund_id,str) or not re.fullmatch(r'[A-Za-z0-9_-]{1,64}',refund_id):raise PayPalError('INVALID_REFUND_ID',status=422)
+        return self._request('GET','/v2/payments/refunds/'+refund_id)
 
     def get_order(self,order_id):
         self._order_id(order_id)
@@ -172,7 +208,7 @@ class PayPalSandboxClient:
         required=['paypal-auth-algo','paypal-cert-url','paypal-transmission-id','paypal-transmission-sig','paypal-transmission-time']
         if any(not isinstance(h.get(key),str) or not h[key] or len(h[key])>8192 for key in required):return False
         cert=urlparse(h['paypal-cert-url'])
-        if cert.scheme!='https' or cert.hostname not in ('api.sandbox.paypal.com','api-m.sandbox.paypal.com','api.paypal.com') or cert.username or cert.password or not cert.path.startswith('/v1/notifications/certs/'):
+        if cert.scheme!='https' or cert.netloc not in ('api.sandbox.paypal.com','api-m.sandbox.paypal.com','api.paypal.com') or cert.query or cert.fragment or cert.username or cert.password or not cert.path.startswith('/v1/notifications/certs/'):
             return False
         payload={'auth_algo':h['paypal-auth-algo'],'cert_url':h['paypal-cert-url'],'transmission_id':h['paypal-transmission-id'],
             'transmission_sig':h['paypal-transmission-sig'],'transmission_time':h['paypal-transmission-time'],'webhook_id':self.webhook_id,'webhook_event':event}

@@ -335,7 +335,7 @@ test('multiple source uploads and reload keep one initial-agreement view without
 test('one project history shows payment and milestones newest first without internal reading events',async({page})=>{
  const activityData=[
   {id:'request',kind:'request_registered',title:'Pedido registrado',request_document_id:'request',request_title:'Pedido de cambio',created_at:'2026-10-24T18:00:00Z'},
-  {id:'payment',kind:'payment_completed',title:'Pago confirmado · USD 0.10',request_document_id:'request',request_title:'Pedido de cambio',created_at:'2026-10-26T18:00:00Z'},
+  {id:'payment',kind:'payment_completed',amount_minor:10,currency:'USD',title:'Pago confirmado · USD 0.10',request_document_id:'request',request_title:'Pedido de cambio',created_at:'2026-10-26T18:00:00Z'},
   {id:'mail',kind:'adenda_sent',title:'Adenda v1 enviada',request_document_id:'request',request_title:'Pedido de cambio',created_at:'2026-10-25T18:00:00Z'}];
  const errors=await setup(page,{activityData});await openClient(page);
  await page.getByRole('button',{name:'Abrir proyecto Proyecto privado A',exact:true}).click();
@@ -428,7 +428,7 @@ test('documents group each request with its own versions and acceptance, newest 
 test('project history groups milestones by request and orders both groups and milestones newest first',async({page})=>{
  const activityData=[
   {id:'old',kind:'request_registered',title:'Pedido registrado',request_document_id:'request-1',request_title:'Pedido anterior',created_at:'2026-10-24T18:00:00Z'},
-  {id:'paid',kind:'payment_completed',title:'Pago confirmado · USD 0.10',request_document_id:'request-1',request_title:'Pedido anterior',created_at:'2026-10-25T18:00:00Z'},
+  {id:'paid',kind:'payment_completed',amount_minor:10,currency:'USD',title:'Pago confirmado · USD 0.10',request_document_id:'request-1',request_title:'Pedido anterior',created_at:'2026-10-25T18:00:00Z'},
   {id:'new',kind:'request_registered',title:'Pedido registrado',request_document_id:'request-2',request_title:'Pedido más reciente',created_at:'2026-10-26T18:00:00Z'}];
  await setup(page,{activityData});await openClient(page);
  await page.getByRole('button',{name:'Abrir proyecto Proyecto privado A',exact:true}).click();
@@ -493,10 +493,10 @@ test('project data is requested on demand and reopening history reuses its loade
  expect(requests.filter(path=>path.endsWith('/activity')||path.endsWith('/events'))).toHaveLength(0);
  await expect(page.locator('[data-cloud-files] .document-library')).toHaveCount(0);
  const history=page.getByRole('button',{name:'Historial del proyecto: Historial y mapa',exact:true});
- await history.click();await expect(page.locator('[data-cloud-history]')).toContainText('Los pedidos, envíos');
+ await history.click();await expect(page.locator('[data-cloud-history]')).toContainText('Los pedidos, devoluciones, envíos');
  expect(requests.filter(path=>path.endsWith('/activity'))).toHaveLength(1);
  await history.click();await history.click();
- await expect(page.locator('[data-cloud-history]')).toContainText('Los pedidos, envíos');
+ await expect(page.locator('[data-cloud-history]')).toContainText('Los pedidos, devoluciones, envíos');
  expect(requests.filter(path=>path.endsWith('/activity'))).toHaveLength(1);
  await page.evaluate(()=>document.fonts.ready);
  expect(await page.evaluate(()=>document.fonts.check('500 16px Manrope'))).toBe(true);
@@ -540,11 +540,11 @@ test('project sections distinguish agreement changes from refunds without invent
  await expect(nav.locator('[aria-current="page"]')).toContainText('Cambios');
  const financial=[];page.on('request',request=>{if(request.method()==='POST')financial.push(request.url());});
  await nav.getByRole('button',{name:'Devoluciones: Dinero de un pago recibido',exact:true}).click();
- await expect(page.getByRole('heading',{name:'Revisar dinero que ya se pagó',exact:true})).toBeVisible();
+ await expect(page.getByRole('heading',{name:'Devoluciones del proyecto',exact:true})).toBeVisible();
  await expect(page.locator('.cloud-refunds')).not.toContainText('todavía no está disponible');
  await expect(page.locator('.cloud-setup-path')).toHaveCount(0);
- await expect(page.locator('.cloud-refunds button')).toHaveCount(1);
- await expect(page.locator('.cloud-refunds button')).toHaveAttribute('data-cloud-action','refund-preview');
+ await expect(page.locator('.refund-simulation button')).toHaveCount(1);
+ await expect(page.locator('.refund-simulation button')).toHaveAttribute('data-cloud-action','refund-preview');
  await expect(nav.getByRole('button',{name:'Historial del proyecto: Historial y mapa',exact:true})).toBeVisible();
  await expect(page.locator('.cloud-project-resources')).toHaveCount(0);
  await page.screenshot({path:'.local/browser-tests/project-refunds-navigation.png',fullPage:true});
@@ -680,4 +680,16 @@ test('a failed reload preserves navigation for explicit retry instead of showing
  await expect(page.locator('.client-banner h2')).toHaveText('Proyecto privado A');
  await expect(page.locator('.document-library')).toContainText('Documento exclusivo A');
  expect(errors).toEqual([]);
+});
+
+test('refund PDFs and acceptance stay in their closure group, separate from paid addenda',async({page})=>{
+ const link={settlement_id:'refund-a',snapshot_id:'snapshot-v2',version_no:2};
+ const proposal={...doc('a'),id:'refund-pdf',title:'Cierre revisado',kind:'addendum',request_links:[],refund_links:[{...link,role:'proposal'}]};
+ const returned={...doc('a'),id:'refund-acceptance',title:'Cierre aceptado',refund_links:[{...link,role:'acceptance'}]};
+ const errors=await setup(page,{documentData:[proposal,returned]});await openClient(page);
+ await page.getByRole('button',{name:'Abrir proyecto Proyecto privado A',exact:true}).click();
+ await page.getByRole('button',{name:'Documentos: Archivos por pedido',exact:true}).click();
+ const group=page.locator('[data-document-kind="refund"]');await expect(group).toContainText('Cierre revisado');await expect(group).toContainText('v2');
+ await expect(group).toContainText('Cierre aceptado');await expect(page.locator('[data-document-kind="unlinked"]')).toHaveCount(0);
+ await expect(group.getByRole('button',{name:'Descargar original Cierre revisado',exact:true})).toBeVisible();expect(errors).toEqual([]);
 });

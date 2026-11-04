@@ -315,7 +315,9 @@ export function installProposalWorkspace(cloud){
    }
    if(kind==='proposal-accept'){
     const file=values.get('file');if(!file?.size||file.size>10485760)throw Error(uiText("Selecciona un PDF de hasta 10 MB."));
-    const upload=await this.request(base(data)+`/returned-pdf?${new URLSearchParams({filename:file.name})}`,{method:'POST',body:file,headers:{'Content-Type':'application/pdf','Idempotency-Key':'return-'+data.revision.id}});
+    // Preserve retries of the same upload while allowing a corrected returned PDF.
+    const uploadDigest=Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',await new Blob([file.name,'\0',file]).arrayBuffer())),byte=>byte.toString(16).padStart(2,'0')).join('');
+    const upload=await this.request(base(data)+`/returned-pdf?${new URLSearchParams({filename:file.name})}`,{method:'POST',body:file,headers:{'Content-Type':'application/pdf','Idempotency-Key':'return-'+data.revision.id+'-'+uploadDigest}});
     await this.request(`/api/v1/proposals/${data.proposal.id}/acceptance`,{...this.json({expected_revision_id:data.revision.id,document_id:upload.document_id,confirmed:true,review_notes:values.get('notes')}),headers:{'Content-Type':'application/json','Idempotency-Key':'accept-'+data.revision.id}});
    }
    this.modal.close();

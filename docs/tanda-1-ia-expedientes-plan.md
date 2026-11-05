@@ -1,6 +1,6 @@
 # Tanda 1 — evidencia y asistente del expediente
 
-Estado: análisis completado; plan pendiente de validación del usuario. Fecha: 3 de noviembre de 2026.
+Estado: plan aprobado e implementación realizada; pruebas y validación del recorrido real en curso. Fecha: 3 de noviembre de 2026. Ver [acta](tanda-1-ia-expedientes-validacion.md).
 
 ## Resultado propuesto
 
@@ -40,4 +40,4 @@ Lista orientativa, no reserva frente a otros chats. Coordinar antes de editar ar
 - No modifica revisiones enviadas/pagadas, ni registra aceptación, correo o movimiento de dinero.
 - Pruebas de código e integración real documentadas; validación final del usuario antes de iniciar tanda 2.
 
-No se han arrancado servicios, modificado configuración privada, aplicado migraciones ni llamado proveedores durante este análisis. La aprobación pendiente es la del plan solicitada por el usuario, no una restricción adicional de una skill.
+El usuario aprobó el plan y el uso de agentes. Durante la implementación se habilitaron explícitamente los interruptores locales de IA/procesamiento, con respaldo privado, y se reinició solo Trato tras autorización específica. Migraciones y resultados de las pruebas se registran en el acta. La validación final del usuario sigue pendiente; no iniciar tanda 2.

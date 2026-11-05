@@ -48,7 +48,7 @@ test('timeline advances on its timer and supports pause and manual navigation',a
   const timeline=observers.find(observer=>observer.target===node('.land-stories'));
   timeline.callback([{isIntersecting:true}]);assert.equal(timers.size,1);
   for(const stage of [0,1,2,3,-1]){
-   const [id,tick]=[...timers][0];assert.equal(tick.delay,2500);timers.delete(id);tick();
+   const [id,tick]=[...timers][0];assert.equal(tick.delay,4000);timers.delete(id);tick();
    assert.match(node('#land-story-panel').innerHTML,new RegExp('data-narrative-stage="'+stage+'"'));
   }
   handlers.click(event('[data-land-motion]',{}));assert.equal(timers.size,0);

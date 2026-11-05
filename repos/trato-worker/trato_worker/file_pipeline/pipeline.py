@@ -134,7 +134,9 @@ class FilePipeline:
             return node
 
         def authorize(_):
-            manifest = FileManifest.model_validate(self.backend.authorize(thread.model_dump()))
+            raw_manifest = self.backend.authorize(thread.model_dump())
+            try: manifest = FileManifest.model_validate(raw_manifest)
+            except (TypeError, ValueError): raise PipelineError('FILE_MANIFEST_INVALID') from None
             if not manifest.matches(thread): raise PipelineError('FILE_THREAD_CONTEXT_CONFLICT')
             return {'manifest': manifest, 'status': 'processing', 'artifacts': {}}
 

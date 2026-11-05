@@ -39,6 +39,8 @@ class Question(Strict):
  output_language:Literal['es','en']
  question:str=Field(min_length=1,max_length=4000)
  history_ids:list[UUID]=Field(default_factory=list,max_length=6)
+ document_ids:list[UUID]|None=Field(default=None,min_length=1,max_length=100)
+ change_proposal_job_id:UUID|None=None
 class Call(Strict):
  execution_id:UUID
  tool:Literal['catalog','search_document_summaries','read_document_summary','search_document_text']
@@ -71,6 +73,11 @@ class ProjectAssistant:
   if data.get('workflow')!='project_assistant' or data.get('owner_id')!=row.get('owner'):raise ApiError('AI_JOB_INVALID',502)
   repo=self.server if self.server is not None else ThreadStore(self.settings).repo
   project=self.scope(repo,row['owner'],data['project_id'],data['client_id'])
+  from .case_assistant import validate_case_job
+  validate_case_job(repo,row['owner'],data)
+  if data.get('action')=='draft_change':
+   from .change_proposal import validate_job_context
+   validate_job_context(repo,row['owner'],data)
   return row,data,repo,project
  def catalog_files(self,repo,owner,project):
   result=[]
@@ -80,25 +87,44 @@ class ProjectAssistant:
    if len(result)>1000:raise ApiError('VECTOR_INVENTORY_LIMIT',413)
    if len(rows)<100:break
   return result
+ def selected_documents(self,repo,owner,project,document_ids):
+  if document_ids is None:return None
+  selected=[uuid(str(value)) for value in document_ids]
+  if not selected or len(selected)>100 or len(set(selected))!=len(selected):raise ApiError('AI_INVALID_INPUT',422)
+  allowed={row['id'] for row in self.catalog_files(repo,owner,project)}
+  if not set(selected).issubset(allowed):raise ApiError('DOCUMENT_NOT_FOUND',404)
+  return sorted(selected)
  def execute(self,job_id,item):
   row,data,repo,project=self.active_job(job_id,str(item.execution_id));owner=row['owner']
   if item.tool=='catalog':
    if item.params:raise ApiError('AI_TOOL_INVALID',422)
-   return {'workflow':'project_assistant','project_id':project['id'],'tools':TOOLS,'documents':self.catalog_files(repo,owner,project)}
+   documents=self.catalog_files(repo,owner,project)
+   selected=data.get('source_document_ids')
+   if selected is not None:
+    if not set(selected).issubset({document['id'] for document in documents}):raise ApiError('DOCUMENT_NOT_FOUND',404)
+    documents=[document for document in documents if document['id'] in selected]
+   return {'workflow':'project_assistant','project_id':project['id'],'tools':TOOLS,'documents':documents,
+    **({'source_scope':{'document_ids':selected,'complete_project':False}} if selected is not None else {}),
+    **({'case_context':data['case_context']} if data.get('case_context') else {})}
   try:
    if item.tool=='read_document_summary':
-    params=Document.model_validate(item.params);value=source(repo,owner,project,str(params.document_id))
+    params=Document.model_validate(item.params)
+    if data.get('source_document_ids') is not None and str(params.document_id) not in data['source_document_ids']:raise ApiError('DOCUMENT_NOT_FOUND',404)
+    value=source(repo,owner,project,str(params.document_id))
     summary=self.gateway.summary(repo,{'id':str(params.document_id),'generation':value['generation']})
     if summary is None:raise ApiError('FILE_SUMMARY_NOT_READY',409)
     rows=[{'file_id':str(params.document_id),'title':value['document']['title'],'generation':value['generation'],
        'source_kind':'summary','summary_fingerprint':summary['summary_fingerprint'],'text':summary['summary'],'locator':None}]
    elif item.tool=='search_document_summaries':
     params=Query.model_validate(item.params)
-    rows=self.gateway.search_summaries(repo,owner,project['id'],params.query,5)['matches']
+    rows=self.gateway.search_summaries(repo,owner,project['id'],params.query,5,
+      **({'file_ids':data['source_document_ids']} if data.get('source_document_ids') is not None else {}))['matches']
    elif item.tool=='search_document_text':
     params=TextQuery.model_validate(item.params)
     if params.document_ids and len(set(params.document_ids))!=len(params.document_ids):raise ApiError('AI_TOOL_INVALID',422)
-    result=self.gateway.search(repo,owner,project['id'],params.query,8,[str(i) for i in params.document_ids] if params.document_ids else None)
+    selected=[str(i) for i in params.document_ids] if params.document_ids else data.get('source_document_ids')
+    if data.get('source_document_ids') is not None and not set(selected).issubset(data['source_document_ids']):raise ApiError('DOCUMENT_NOT_FOUND',404)
+    result=self.gateway.search(repo,owner,project['id'],params.query,8,selected)
     rows=[{**r,'source_kind':'original'} for r in result['matches']]
    else:raise ApiError('AI_TOOL_NOT_ALLOWED',422)
   except ValidationError:raise ApiError('AI_TOOL_INVALID',422) from None
@@ -122,6 +148,14 @@ class ProjectAssistant:
   data=self.jobs.input(owner,job_id)
   if data.get('workflow')!='project_assistant':raise ApiError('AI_JOB_INVALID',502)
   project=self.scope(repo,owner,data['project_id'],data['client_id'])
+  from .case_assistant import validate_case_job,validate_case_answer
+  validate_case_job(repo,owner,data)
+  if data.get('action')=='draft_change':
+   from .change_proposal import validate_job_context
+   validate_job_context(repo,owner,data)
+  if data.get('case_context'):
+   validate_case_answer(result)
+   if result['output_language']!=data['output_language'] or result['model']!=data['model_id']:raise ApiError('AI_INVALID_RESPONSE',502)
   try:stored=json.loads(self.jobs.connection().hget(PREFIX+job_id,'assistant_sources') or '{}')
   except (RedisError,ValueError):raise ApiError('AI_QUEUE_UNAVAILABLE',503) from None
   if not isinstance(result,dict) or result.get('kind')!='project_assistant' or result.get('project_id')!=project['id'] or result.get('status') not in ('answered','insufficient_evidence') or not isinstance(result.get('citations'),list):raise ApiError('AI_INVALID_RESPONSE',502)
@@ -132,13 +166,20 @@ class ProjectAssistant:
    record=stored.get(citation['source_id']);quote=citation['quote']
    if record is None or not isinstance(quote,str) or not quote.strip() or quote not in record['text']:raise ApiError('AI_INVALID_CITATION',502)
    file_id=record['file_id']
+   if data.get('source_document_ids') is not None and file_id not in data['source_document_ids']:raise ApiError('AI_INVALID_CITATION',502)
    if file_id not in checked:checked[file_id]=source(repo,owner,project,file_id)
    if checked[file_id]['generation']!=record['generation']:raise ApiError('VECTOR_SOURCE_CHANGED',409)
    if record['source_kind']=='summary':
     current=self.gateway.summary(repo,{'id':file_id,'generation':record['generation']})
     if current is None or current['summary_fingerprint']!=record['summary_fingerprint']:raise ApiError('FILE_SUMMARY_CHANGED',409)
-   canonical.append({k:record[k] for k in ('source_id','file_id','title','source_kind','generation','locator') if k in record})
-  return {**result,'question':data['question'],'sources':canonical}
+   canonical.append({k:record[k] for k in ('source_id','file_id','title','source_kind','generation','locator','summary_fingerprint') if k in record})
+  if data.get('case_context') and result['status']=='answered' and not any(s['source_kind']=='original' for s in canonical):raise ApiError('AI_INVALID_CITATION',502)
+  if data.get('action')=='draft_change':
+   from .change_proposal import validate_draft_result
+   validate_draft_result(data,result,canonical)
+  return {**{k:v for k,v in result.items() if k!='source_scope'},'question':data['question'],'sources':canonical,
+    **({'source_scope':{'document_ids':data['source_document_ids'],'complete_project':False}} if data.get('source_document_ids') is not None else {}),
+    **({'case_context':data['case_context']} if data.get('case_context') else {})}
 
 def build_project_assistant_router(settings,require_user,repository_factory=None,service=None,preferences=None):
  router=APIRouter();service=service if service is not None else ProjectAssistant(settings)
@@ -150,6 +191,7 @@ def build_project_assistant_router(settings,require_user,repository_factory=None
   except (ValueError,ValidationError):raise ApiError('AI_INVALID_INPUT',422) from None
   if not item.question.strip() or len(set(item.history_ids))!=len(item.history_ids):raise ApiError('AI_INVALID_INPUT',422)
   repo=repository(request);project=await run_in_threadpool(service.scope,repo,owner,str(item.project_id))
+  selected=await run_in_threadpool(service.selected_documents,repo,owner,project,item.document_ids)
   history=[]
   for previous in item.history_ids:
    previous=str(previous);job=await run_in_threadpool(service.jobs.get,owner,previous,'project_assistant')
@@ -161,6 +203,12 @@ def build_project_assistant_router(settings,require_user,repository_factory=None
   model_id=await run_in_threadpool(preferences.for_request,request,owner)
   data={'workflow':'project_assistant','owner_id':owner,'project_id':project['id'],'client_id':project['client_id'],
        'question':item.question.strip(),'output_language':item.output_language,'history':history,'model_id':model_id}
+  if item.change_proposal_job_id is not None:
+   from .change_proposal import ChangeProposalService
+   previous=await run_in_threadpool(ChangeProposalService(settings,assistant=service).result,repo,owner,str(item.change_proposal_job_id))
+   if previous['status']!='completed' or previous['result']['project_id']!=project['id']:raise ApiError('AI_CONTEXT_INVALID',409)
+   data['proposal_discussion']=previous['result']
+  if selected is not None:data['source_document_ids']=selected
   data['thread']={'type':'thread','schema_version':1,'workflow':'project_assistant','action':'start','thread_id':job_id,
     'event_id':str(uuid5(NAMESPACE_URL,'trato:assistant:'+job_id)),'context':{'owner_id':owner,'project_id':project['id'],'client_id':project['client_id']}}
   job=await run_in_threadpool(service.jobs.enqueue,owner,job_id,data)

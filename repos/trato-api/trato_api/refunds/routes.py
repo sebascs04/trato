@@ -1,6 +1,7 @@
 """Authenticated settlement documents and human review; financial execution is separate."""
 from typing import Literal
 from uuid import UUID
+import os
 
 from fastapi import APIRouter, Depends, Request
 from fastapi.responses import JSONResponse, Response
@@ -141,7 +142,19 @@ def build_refund_router(settings, require_user, repository_factory=None, workflo
     @router.post('/refunds/{settlement_id}/snapshots/{snapshot_id}/pdf')
     async def pdf(settlement_id:str,snapshot_id:str,request:Request,repo=Depends(repository),owner=Depends(require_user)):
         key=operation_key(request);data=await read(request,PdfInput)
-        return reply(await run_in_threadpool(workflow.pdf,repo,owner,uuid(settlement_id),uuid(snapshot_id),data['language'],key))
+        result=await run_in_threadpool(workflow.pdf,repo,owner,uuid(settlement_id),uuid(snapshot_id),data['language'],key)
+        document_id=result['artifact']['document_id']
+        if os.getenv('TRATO_FILE_PROCESSING_ENABLED')=='true':
+            from ..file_processing import remember_options
+            document=await run_in_threadpool(repo.document,document_id)
+            options=await run_in_threadpool(repo.rows,'file_processing_options',{'select':'document_id',
+                'document_id':'eq.'+document_id,'owner_id':'eq.'+owner,'project_id':'eq.'+document['project_id']})
+            # Preserve immutable analysis options if this exact artifact was already prepared.
+            if not options:await run_in_threadpool(remember_options,settings,repo,document,data['language'])
+        # Binding the immutable original precedes reading it. Repeating this route
+        # reuses both the exact stored PDF and any existing extraction job.
+        await run_in_threadpool(repo.queue_document,document_id)
+        return reply(result)
 
     @router.post('/refunds/{settlement_id}/review')
     async def review(settlement_id:str,request:Request,repo=Depends(repository)):

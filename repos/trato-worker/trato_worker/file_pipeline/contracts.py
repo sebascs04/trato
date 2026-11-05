@@ -116,8 +116,11 @@ class FileManifest(Strict):
         for value in (self.thread_id, self.event_id, self.lease_id, self.file_id): canonical_id(value)
         if any(c in self.filename for c in ('/', '\\', '\0', '\r', '\n')):
             raise ValueError('No arbitrary file paths.')
-        if not set(self.bindings).issubset({'request_id', 'revision_id', 'payment_id', 'refund_case_id'}):
+        if not set(self.bindings).issubset({'request_id', 'revision_id', 'payment_id', 'refund_case_id', 'snapshot_id'}):
             raise ValueError('Unknown subject binding.')
+        if 'snapshot_id' in self.bindings and (
+            self.purpose not in ('refund_request', 'refund_evidence') or not self.bindings.get('refund_case_id')):
+            raise ValueError('A refund snapshot requires its authorized refund case.')
         for value in self.bindings.values(): canonical_id(value)
         if not set(self.reference_context).issubset({'project_brief', 'baseline_summary', 'experience_description', 'case_description'}):
             raise ValueError('Unknown reference context.')

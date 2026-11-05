@@ -1,7 +1,9 @@
 # IA en cambios, renegociaciones y devoluciones
 
+> Prioridad actual: MVP de agente de cambios únicamente, solicitado el 4 de noviembre. Ver [recorte y plan de dos horas](mvp-agente-cambios.md). Agente de devoluciones: Próximamente, deshabilitado. Las tandas siguientes quedan diferidas.
+
 Fecha: 3 de noviembre de 2026 (America/Lima).
-Base: main da18bc2, que incluye el PR #10.
+Base inicial: main da18bc2, que incluye el PR #10. Durante la implementación otro trabajo integró main/PR #11 en el checkout compartido (4574ba4); se conservan esos cambios.
 Rama del lote: codex/ia-cambios-renegociaciones-devoluciones.
 Responsable de preparación local: este chat. Publicación pendiente de autorización; no crear PR ni hacer merge.
 
@@ -9,7 +11,7 @@ Responsable de preparación local: este chat. Publicación pendiente de autoriza
 
 Cada tanda sigue: análisis → plan presentado → validación del usuario → implementación → pruebas de código → integración real en la app → validación del usuario → siguiente tanda. No implementar la tanda siguiente ni dar por aprobado un plan por silencio. Las pruebas reales desde la app están solicitadas para este requerimiento; la restricción histórica de no recorrer la interfaz durante el lote anterior no se extiende a este lote.
 
-Estado actual: backlog y análisis de tanda 1 preparados; plan pendiente de validación. Sin implementación funcional ni pruebas reales de este requerimiento.
+Estado actual: plan de tanda 1 aprobado por el usuario e implementación realizada. Pruebas técnicas y validación en curso; integración real desde su sesión pendiente de su resultado. Ver [acta de validación](tanda-1-ia-expedientes-validacion.md).
 
 ## Alcance acordado
 
@@ -23,7 +25,7 @@ Neo4j debe ampliar la trazabilidad documental de renegociaciones y devoluciones.
 
 - API y worker: ai_jobs, project_assistant y source_tools; trabajos con identidad, execution_id, herramientas y JSON validado. No asumir que el TTL actual de 24 horas sirve como historial durable del expediente.
 - Procesador: chunking, embeddings y Weaviate. API autoriza y revalida fuentes. Worker → API → procesador → Weaviate; claves y SDK vectoriales solo en procesador.
-- Tenant privado projects_private; reputation_public para experiencias publicadas. Los mensajes del equipo indican references_shared para Ensayos, mientras la documentación local conserva lectura completa de cinco guías y tercer tenant libre. No crear, renombrar ni alterar ese tenant: confirmar configuración vigente antes de cualquier dependencia de esa biblioteca. Estos flujos privados no requieren resolver esa diferencia.
+- Tenant privado projects_private; reputation_public para experiencias publicadas. La actualización incorporada durante el lote confirma references_shared para la biblioteca administrada de Ensayos (docs/ensayos-busqueda-vectorial.md). No modificar sus herramientas ni tenants; estos expedientes reutilizan exclusivamente su ámbito privado autorizado.
 - project_assistant permite buscar resúmenes, leer resúmenes y buscar texto original; valida generación y fingerprint. Reutilizar, sin confundir citas de resumen con texto literal original.
 - graph_projection y graph_routes ya proyectan datos autorizados de Supabase a Neo4j. Ampliar el contrato y sus productores, no crear un grafo paralelo.
 - Propuestas, Gmail y devoluciones tienen dominio real propio. Los flujos change_flow/refund_flow simulados no se convierten en conectados por añadir un prompt.
@@ -34,7 +36,7 @@ Referencias: [asistente actual](asistente-proyecto.md), [búsqueda](busqueda-vec
 
 | Tanda | Entrega | Dependencias | Criterio de cierre | Estado |
 | --- | --- | --- | --- | --- |
-| 1 | Base documental y asistente vinculado al expediente | Base actual | Desde un cambio o devolución real se consulta evidencia autorizada, con citas originales, estado visible y continuidad persistida; insuficiencia y errores explícitos | Plan por validar |
+| 1 | Base documental y asistente vinculado al expediente | Base actual | Desde un cambio o devolución real se consulta evidencia autorizada, con citas originales, estado visible y continuidad persistida; insuficiencia y errores explícitos | Implementada; validación en curso |
 | 2 | Cambio asistido y propuesta económica inicial | 1 | IA completa alcance, esfuerzo/dificultad, precio/rango, plazo y condiciones; revisión aplica al borrador existente sin duplicar pedido | Pendiente |
 | 3 | Comparables privados para precios | 2 | Herramienta acotada consulta antecedentes del mismo propietario, distingue precios propuestos/aceptados/pagados y explica diferencias; sin comparables informa su ausencia | Pendiente |
 | 4 | Renegociación asistida y grafo de revisiones | 2 y 3 | Feedback real y adjuntos se comparan con versión enviada; alternativas revisables; Neo4j enlaza respuesta, documentos y revisión nueva sin heredar aceptación | Pendiente |

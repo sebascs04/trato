@@ -2,6 +2,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {installProposalWorkspace} from '../proposal-workspace.mjs';
 
+function documentFixture(){return {visibilityState:'visible',addEventListener(){},removeEventListener(){},querySelector(){return null;},body:{append(){},classList:{add(){},remove(){}}},createElement(){return {open:false,setAttribute(){},addEventListener(){},close(){this.open=false;},remove(){}};}};}
+
 test('switching projects clears pending proposal loading and Gmail evidence before the new project loads',async()=>{
  let finishOriginalLoad;
  const originalLoad=new Promise(resolve=>{finishOriginalLoad=resolve;});
@@ -16,7 +18,7 @@ test('switching projects clears pending proposal loading and Gmail evidence befo
    if(path.endsWith('/proposals'))return Promise.resolve([]);
    if(path.endsWith('/request-status'))return Promise.resolve({can_register:true,closures:[]});
    throw new Error('Unexpected request: '+path);
-  },document:{visibilityState:'visible',addEventListener(){}}
+  },document:documentFixture()
  };
  installProposalWorkspace(cloud);
  cloud.projectId='project-b';cloud.epoch=5;
@@ -37,7 +39,7 @@ function openProposalWorkspace(loadReplies){
  const cloud={
   active:true,projectId:'project-a',epoch:1,historyGeneration:0,requestId:'request-a',tab:'gestion',
   modal:{open:false},renderDocuments(){},loadProject(){},renderChangeReview(){},requestRows(){},
-  click(){},submit(){},reset(){},notify(){},document:{visibilityState:'visible',addEventListener(){}},
+  click(){},submit(){},reset(){},notify(){},document:documentFixture(),
   request(path){
    if(path.endsWith('/proposals'))return Promise.resolve([{id:'proposal-a',request_document_id:'request-a',current_revision_id:'revision-a'}]);
    if(path.endsWith('/request-status'))return Promise.resolve({can_register:false,closures:[]});

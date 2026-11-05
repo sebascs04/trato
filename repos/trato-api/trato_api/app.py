@@ -155,6 +155,10 @@ def create_app(settings=None, services=None, repository_factory=None, *, gmail_s
     app.include_router(build_reference_tools_router(settings))
     app.include_router(build_ai_router(settings,require_user,repository_factory))
     app.include_router(build_project_assistant_router(settings,require_user,repository_factory))
+    from .case_assistant import build_case_assistant_router
+    app.include_router(build_case_assistant_router(settings,require_user,repository_factory))
+    from .change_proposal import build_change_proposal_router
+    app.include_router(build_change_proposal_router(settings,require_user,repository_factory))
     app.include_router(build_vector_router(settings,require_user,repository_factory))
     app.include_router(build_vector_job_router(settings))
     app.include_router(build_public_vector_router(settings,require_user,repository_factory))

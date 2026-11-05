@@ -47,6 +47,9 @@ class Repo:
     def operation(self, project, key):
         self.calls.append(('operation',project,key)); return {'state':'unconfirmed'}
 
+    def queue_document(self, document_id):
+        self.calls.append(('queue',document_id));return {'thread_id':uid(90),'status':'queued'}
+
 
 class RefundApiTests(unittest.TestCase):
     def setUp(self):
@@ -54,7 +57,8 @@ class RefundApiTests(unittest.TestCase):
         self.workflow_calls=[]
         def invoke(name):
             def call(*args,**kwargs):
-                self.workflow_calls.append((name,args,kwargs));return {'settlement':{'id':uid(10)}}
+                self.workflow_calls.append((name,args,kwargs));return {'settlement':{'id':uid(10)},
+                    **({'artifact':{'document_id':uid(40)}} if name=='pdf' else {})}
             return call
         self.workflow=SimpleNamespace(**{name:invoke(name) for name in ['pdf','preview','send','register_initial','reconcile_send','sync']})
         with patch('trato_api.app.RefundWorkflow',return_value=self.workflow):

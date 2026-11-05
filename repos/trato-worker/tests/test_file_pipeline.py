@@ -19,11 +19,10 @@ class ModelDouble:
             segment = payload['segments'][0]
             return {'detected_category': payload['expected_category'], 'relevance': 'supported',
                     'reason': 'El texto describe lo acordado.',
-                    'evidence': [{'segment_id': segment['segment_id'], 'quote': schema['$defs']['Evidence']['properties']['quote']['enum'][0]}],
+                    'evidence': [{'reference_id': payload['source_catalog'][0]['reference_id']}],
                     'observations': [], 'clarification_questions': []}
         unit = payload['units'][0]
-        citation = ({'chunk_id': unit['chunk_id'], 'quote': schema['properties']['citations']['items']['properties']['quote']['enum'][0]}
-                    if payload['stage'] == 'map' else unit['citations'][0])
+        citation = {'reference_id': payload['source_catalog'][0]['reference_id']}
         return {'summary': 'Acuerdo sobre una web y sus entregables.',
                 'topics': ['Entregables'], 'citations': [citation]}
 

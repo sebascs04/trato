@@ -38,7 +38,16 @@ def source(repo, owner, project, file_id):
     if (doc['project_id'] != project['id'] or doc['owner_id'] != owner or project['owner_id'] != owner):
         raise ApiError('DOCUMENT_NOT_FOUND', 404)
     if not extraction or extraction['status'] != 'ready' or not segments:
-        raise ApiError('VECTOR_SOURCE_NOT_READY', 409)
+        error = ApiError('VECTOR_SOURCE_NOT_READY', 409)
+        job_id = extraction.get('worker_thread_id') if extraction else None
+        failed = bool(extraction and (extraction['status'] == 'error' or extraction['status'] == 'ready' and not segments))
+        error.source_readiness = {
+            'extraction_status': 'error' if failed else 'queued' if job_id else 'not_requested',
+            'extraction_job_id': job_id,
+            'extraction_error_code': (extraction.get('error_code') or
+                ('EXTRACTION_TEXT_MISSING' if extraction['status'] == 'ready' else 'EXTRACTION_FAILED')) if failed else None,
+        }
+        raise error
     canonical = []
     for segment in segments:
         kind = segment['locator_kind']
@@ -237,7 +246,8 @@ class VectorGateway:
             except ApiError as error:
                 if error.code != 'VECTOR_SOURCE_NOT_READY':
                     raise
-                files.append({**doc, 'status': 'source_pending', 'generation': None})
+                files.append({**doc, 'status': 'source_pending', 'generation': None,
+                    **getattr(error, 'source_readiness', {})})
                 continue
             receipt = self.receipt(owner, doc['id'])
             ready = (receipt and receipt.get('status') == 'ready' and
@@ -275,6 +285,7 @@ class VectorGateway:
         if not isinstance(query, str) or not query.strip() or len(query.encode()) > 4096:
             raise ApiError('EMBEDDING_INPUT_LIMIT', 422)
         project, files = self.snapshot(repo, owner, project_id)
+        documents_total = len(files)
         if file_ids is not None:
             wanted={uuid(i) for i in file_ids}
             if not wanted or not wanted.issubset({f['id'] for f in files}):raise ApiError('DOCUMENT_NOT_FOUND',404)
@@ -315,17 +326,24 @@ class VectorGateway:
                 results[-1]['document_summary']=summaries[f['id']]
         # Changes/deletions/archiving during retrieval invalidate the whole answer.
         _, after = self.snapshot(repo, owner, project_id)
+        documents_total = len(after)
         if file_ids is not None:after=[f for f in after if f['id'] in wanted]
         if [(f['id'], f['generation'], f['status']) for f in files] != [(f['id'], f['generation'], f['status']) for f in after]:
             raise ApiError('VECTOR_SOURCE_CHANGED', 409)
-        return {'matches': results, 'documents_checked': len(files), 'complete_inventory': True,
+        return {'matches': results, 'documents_checked': len(files), 'documents_total': documents_total,
+                'selected_document_ids': [f['id'] for f in files], 'complete_inventory': len(files) == documents_total,
                 'exhaustive_evidence': False, 'embedding_identity': PROFILE_ID,
                 'hybrid_alpha': 0.7, 'fusion': 'relativeScoreFusion'}
 
 
-    def search_summaries(self,repo,owner,project_id,query,limit=8):
+    def search_summaries(self,repo,owner,project_id,query,limit=8,file_ids=None):
         if not isinstance(query,str) or not query.strip() or len(query.encode())>4096:raise ApiError('EMBEDDING_INPUT_LIMIT',422)
         project,files=self.snapshot(repo,owner,project_id)
+        documents_total=len(files)
+        if file_ids is not None:
+            wanted={uuid(i) for i in file_ids}
+            if not wanted or not wanted.issubset({f['id'] for f in files}):raise ApiError('DOCUMENT_NOT_FOUND',404)
+            files=[f for f in files if f['id'] in wanted]
         if not files:raise ApiError('VECTOR_NO_SOURCES',409)
         summaries={};allowed=[]
         for f in files:
@@ -335,19 +353,25 @@ class VectorGateway:
             summaries[f['id']]=summary
             allowed.append({'id':f['id'],'generation':summary_record(owner,project,f['id'],f['generation'],summary)['properties']['generation']})
         rows=self.store.search_summaries(owner,project['client_id'],project_id,allowed,query,limit)
+        if not isinstance(rows,list) or len(rows)>limit:raise ApiError('VECTOR_RESULT_INVALID',502)
         by_id={f['id']:f for f in files};results=[]
         for row in rows:
+            if not isinstance(row,dict) or not isinstance(row.get('properties'),dict):raise ApiError('VECTOR_RESULT_INVALID',502)
             props=row.get('properties',{});f=by_id.get(props.get('file_id'))
             if f is None or row.get('properties')!=summary_record(owner,project,f['id'],f['generation'],summaries[f['id']])['properties'] or row.get('id')!=summary_record(owner,project,f['id'],f['generation'],summaries[f['id']])['id'] or type(row.get('score')) not in (float,int) or not math.isfinite(row['score']):raise ApiError('VECTOR_RESULT_INVALID',502)
             results.append({'file_id':f['id'],'title':f['title'],'generation':f['generation'],
                 'summary_fingerprint':summaries[f['id']]['summary_fingerprint'],'text':props['chunk_text'],
                 'source_kind':'summary','score':row['score']})
         _,after=self.snapshot(repo,owner,project_id)
+        documents_total=len(after)
+        if file_ids is not None:after=[f for f in after if f['id'] in wanted]
         if [(f['id'],f['generation'],f['status']) for f in files]!=[(f['id'],f['generation'],f['status']) for f in after]:raise ApiError('VECTOR_SOURCE_CHANGED',409)
         for f in after:
             current=self.summary(repo,f)
             if current is None or current['summary_fingerprint']!=summaries[f['id']]['summary_fingerprint']:raise ApiError('FILE_SUMMARY_CHANGED',409)
-        return {'matches':results,'documents_checked':len(files),'complete_inventory':True,'exhaustive_evidence':False,'embedding_identity':PROFILE_ID,'hybrid_alpha':0.7}
+        return {'matches':results,'documents_checked':len(files),'documents_total':documents_total,
+                'selected_document_ids':[f['id'] for f in files],'complete_inventory':len(files)==documents_total,
+                'exhaustive_evidence':False,'embedding_identity':PROFILE_ID,'hybrid_alpha':0.7}
 
 
 def summary_record(owner,project,file_id,generation,summary):

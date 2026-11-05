@@ -36,9 +36,9 @@ class BackendToolClient:
     def from_env(cls):
         return cls(os.environ.get('TRATO_API_URL', ''), os.environ.get('TRATO_WORKER_TOKEN', ''))
 
-    def request(self, method, path, **kwargs):
+    def request(self, method, path, *, timeout=30, **kwargs):
         try:
-            with httpx.Client(timeout=30, follow_redirects=False, transport=self.transport) as client:
+            with httpx.Client(timeout=httpx.Timeout(timeout, connect=5), follow_redirects=False, transport=self.transport) as client:
                 with client.stream(method, self.api_url + path,
                                    headers={'Authorization': 'Bearer ' + self.worker_token}, **kwargs) as response:
                     parts, size = [], 0

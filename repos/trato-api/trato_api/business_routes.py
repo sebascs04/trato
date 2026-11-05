@@ -182,7 +182,8 @@ def build_business_router(settings, services, require_user, repository_factory=N
     def retry(document_id: str, repo=Depends(repository)):
         doc = repo.document(uuid(document_id))
         current = repo.extraction(doc['id'])
-        if current['extraction']['status'] == 'ready':
+        if current['extraction'] and current['extraction']['status'] == 'ready':
+            if not current['segments']:raise ApiError('EXTRACTION_TEXT_MISSING',409)
             return reply(current)
         result = repo.queue_document(doc['id'])
         return reply(result, 202)

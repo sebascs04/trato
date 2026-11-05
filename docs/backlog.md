@@ -25,7 +25,8 @@ TRATO-13, TRATO-14, TRATO-15 y TRATO-16: **implementados y validados en el alcan
 
 ## Nuevo lote: IA en expedientes — 3 de noviembre de 2026
 
-Requerimiento ampliado: asistentes para cambios, precios con antecedentes, renegociaciones y devoluciones; trazabilidad documental en Neo4j e interfaz conversacional con actividad real. Ver [backlog por tandas](backlog-ia-expedientes.md) y [plan de tanda 1](tanda-1-ia-expedientes-plan.md). Estado: análisis y planificación; pendiente de validación del usuario antes de implementar. Cada tanda exige pruebas de código, integración real en la app y validación antes de continuar.
+Requerimiento ampliado: asistentes para cambios, precios con antecedentes, renegociaciones y devoluciones; trazabilidad documental en Neo4j e interfaz conversacional con actividad real. Ver [backlog por tandas](backlog-ia-expedientes.md) y [plan de tanda 1](tanda-1-ia-expedientes-plan.md). Estado: plan de tanda 1 aprobado e implementación realizada; pruebas y validación real en curso según [acta](tanda-1-ia-expedientes-validacion.md). Cada tanda exige pruebas de código, integración real en la app y validación antes de continuar.
+
 ## Hallazgos de pruebas de devoluciones — 3 de noviembre de 2026
 
 Dos tareas nuevas reportadas por el usuario durante sus pruebas. Estado: **Por hacer**, sin responsable asignado. Son pendientes del producto; el cierre Sandbox de TRATO-13 a 16 no acredita que estas capacidades estén resueltas.

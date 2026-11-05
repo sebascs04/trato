@@ -13,10 +13,10 @@ class BackendFileClient:
     def authorize(self, thread):
         return self.client.request('POST', '/internal/file-processing/authorize', json=thread)
 
-    def execute(self, manifest, tool, params):
+    def execute(self, manifest, tool, params, *, timeout=30):
         return self.client.request('POST', '/internal/file-processing/execute', json={
             'workflow': 'process_file', 'thread_id': manifest['thread_id'], 'lease_id': manifest['lease_id'],
-            'tool': tool, 'params': params})
+            'tool': tool, 'params': params}, timeout=timeout)
 
     def revalidate(self, manifest):
         return self.execute(manifest, 'revalidate_file', {})
@@ -38,4 +38,7 @@ class BackendFileClient:
             'stage': stage, 'cache_key': cache_key, 'artifact': artifact})
 
     def publish_projection(self, manifest, projection):
-        return self.execute(manifest, 'index_file_chunks', {'projection': projection})
+        # The API validates sources, then performs separate chunk and summary
+        # writes, each with a processor deadline of 180s. Let the coordinator
+        # receive that result instead of abandoning a still-running index at 30s.
+        return self.execute(manifest, 'index_file_chunks', {'projection': projection}, timeout=480)

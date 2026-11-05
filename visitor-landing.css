@@ -271,3 +271,14 @@
 .land-question-progress:after{content:"";display:block;width:100%;height:100%;background:#8060b0;transform-origin:left;animation:land-step-time 4s linear both}
 .land-paused .land-question-progress:after{animation-play-state:paused}
 @media(prefers-reduced-motion:reduce){.land-question-progress:after{animation:none;transform:scaleX(1)}}
+
+/* The same visible-time clock drives both progress and stage changes. */
+.land-narrative-trail>button.is-selected:after,.land-question-progress:after{animation:none;transform:scaleX(var(--story-progress,0));transition:none}
+
+/* The three situations share the same compact horizontal entry. */
+.land-story-tabs{grid-template-columns:repeat(3,minmax(0,1fr))}
+@media(max-width:680px){.land-story-tabs{grid-template-columns:1fr}}
+
+/* Pausing the walkthrough stops its clock, never the entrance of its text. */
+.land-story-paused .land-narrator>.land-story-mascot{animation-play-state:paused}
+.land-story-paused .land-narrator-cloud,.land-story-paused .land-example-document,.land-story-paused .land-example-message{animation:none;opacity:1;transform:none}

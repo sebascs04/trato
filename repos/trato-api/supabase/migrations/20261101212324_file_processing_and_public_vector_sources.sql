@@ -127,3 +127,4 @@ end $$;
 revoke all on function public.reputation_vector_receipt(uuid,jsonb) from public,anon,authenticated;
 grant execute on function public.reputation_vector_receipt(uuid,jsonb) to service_role;
 commit;
+;

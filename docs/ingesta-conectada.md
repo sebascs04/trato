@@ -21,7 +21,7 @@ Implementación del 26 de octubre de 2026. Esta entrega conecta extracción PDF 
 - Threads visibles sólo al propietario y proyecto activo, con columnas limitadas. Outbox/inbox sin permisos de usuario ni políticas de acceso de usuario por diseño; sólo funciones de servidor. El linter informa RLS sin políticas en esas dos tablas, coherente con su uso cerrado. No abrirlas para suprimir ese aviso.
 - Streams conectados `trato:connected:thread:commands`, `trato:connected:thread:events`. Los inválidos se apartan sin exponer su contenido en `trato:connected:thread:rejected-events`.
 - Streams de demostración conservan el prefijo `trato:simulation`. Ninguna indisponibilidad conecta ambos modos.
-- Redis propio local en 6380, loopback, contraseña privada, AOF y `noeviction`; archivo `.local/redis/redis.conf` y datos ignorados. AOF cada segundo no equivale a garantía de pérdida cero ni sustituye copias de seguridad. Redis no comparte procesos, archivos ni recursos con QAMAQ.
+- Redis propio local en 6380, loopback, contraseña privada, AOF y `noeviction`; archivo `.local/redis/redis.conf` y datos ignorados. AOF cada segundo no equivale a garantía de pérdida cero ni sustituye copias de seguridad. Redis no comparte procesos, archivos ni recursos con otros proyectos locales.
 - API 8100, file processor 8101, web 5173. El worker y el publicador/consumidor backend no abren otro puerto HTTP.
 
 Configuración inicial privada, sin imprimir credenciales ni activar IA:
@@ -35,7 +35,7 @@ El configurador no reemplaza credenciales existentes. El supervisor comprueba pu
 
 ## Gemini, no OpenAI
 
-Sebastian aclaró que OpenAI fue una confusión; el proveedor acordado sigue siendo Gemini en Google Cloud. Se retiró el adaptador OpenAI que se había preparado y nunca se utilizó para llamadas reales.
+el responsable del proyecto aclaró que OpenAI fue una confusión; el proveedor acordado sigue siendo Gemini en Google Cloud. Se retiró el adaptador OpenAI que se había preparado y nunca se utilizó para llamadas reales.
 
 `trato_worker/gemini_simulation.py` usa el SDK Google Gen AI instalado, configurado explícitamente para Vertex con proyecto/modelo de prueba y credencial ficticia. Su HTTP pasa obligatoriamente por `httpx.MockTransport`. Esto comprueba la serialización real de `generateContent`, `systemInstruction`, `contents`, `generationConfig.responseMimeType=application/json` y `responseJsonSchema`, así como la lectura de candidates, finishReason, bloqueos y usageMetadata. El proyecto/modelo ficticios no representan recursos activados ni disponibilidad comercial.
 

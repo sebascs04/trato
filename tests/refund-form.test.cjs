@@ -3,7 +3,7 @@ const assert=require('node:assert/strict');
 // Minimal dialog fixture for controller/state tests; visual behavior is tested in app.
 function installWithDialog(install,cloud){
  const dialog={innerHTML:'',open:false,setAttribute(){},addEventListener(){},close(){this.open=false;},showModal(){this.open=true;},contains(){return false;},querySelector(){return {set outerHTML(value){},innerHTML:'',focus(){}};},querySelectorAll(){return [];},insertAdjacentHTML(where,html){this.innerHTML+=html;}};
- cloud.document={activeElement:null,body:{append(){}},createElement(){return dialog;}};cloud.modal={addEventListener(){}};cloud.projects=[];install(cloud);return dialog;
+ cloud.document={activeElement:null,body:{append(){},classList:{add(){},remove(){}}},createElement(){return dialog;},addEventListener(){},removeEventListener(){},querySelector(){return null;}};cloud.modal={addEventListener(){}};cloud.projects=[];install(cloud);return dialog;
 }
 const form=()=>import('../refund-form.mjs');
 test('USD parsing rejects rounding, grouping, signs, exponent notation and unsafe amounts',async()=>{

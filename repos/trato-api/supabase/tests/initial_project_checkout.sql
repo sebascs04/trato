@@ -1,0 +1,36 @@
+begin;
+do $$
+declare u uuid; c uuid:=gen_random_uuid(); p uuid:=gen_random_uuid(); p2 uuid:=gen_random_uuid(); v jsonb; again jsonb; n int;
+begin
+ select id into u from auth.users where email=current_setting('trato.test_owner_email');
+ if u is null then raise exception 'Missing approved test identity';end if;
+ insert into public.clients(id,owner_id,name,contact_email) values(c,u,'Initial checkout contract test','buyer@example.com');
+ insert into public.projects(id,owner_id,client_id,name,status) values(p,u,c,'Initial checkout contract test','draft'),(p2,u,c,'Second checkout contract test','draft');
+ v:=public.initial_checkout_backend(u,'prepare',jsonb_build_object('project_id',p,'request_key',gen_random_uuid(),'amount_minor',12345,'conditions','First payment','output_language','es','merchant_id','MERCHANT12345','payer_email','buyer@example.com','token',repeat('a',43)));
+ again:=public.initial_checkout_backend(u,'prepare',jsonb_build_object('project_id',p,'request_key',gen_random_uuid(),'amount_minor',12345,'conditions','First payment','output_language','es','merchant_id','MERCHANT12345','payer_email','buyer@example.com','token',repeat('b',43)));
+ if v->>'id'<>again->>'id' then raise exception 'Duplicate checkout';end if;
+ begin perform public.initial_checkout_backend(gen_random_uuid(),'get',jsonb_build_object('project_id',p));raise exception 'Wrong owner accepted';exception when sqlstate 'PT404' then null;end;
+ begin perform public.initial_checkout_backend(u,'prepare',jsonb_build_object('project_id',p,'request_key',gen_random_uuid(),'amount_minor',12346,'conditions','First payment','output_language','es'));raise exception 'Changed amount accepted';exception when sqlstate 'PT409' then null;end;
+ perform public.initial_checkout_backend(u,'claim_create',jsonb_build_object('id',v->>'id'));
+ begin perform public.initial_checkout_backend(u,'claim_create',jsonb_build_object('id',v->>'id'));raise exception 'Concurrent create accepted';exception when sqlstate 'PT409' then null;end;
+ perform public.initial_checkout_backend(u,'apply',jsonb_build_object('id',v->>'id','status','pending_approval','order_id','ORDERTEST12345','amount_minor',12345,'currency','USD','merchant_id','MERCHANT12345'));
+ select count(*) into n from public.project_received_payments where project_id=p;
+ if n<>0 then raise exception 'Pending request recorded as received';end if;
+ perform public.initial_checkout_backend(u,'apply',jsonb_build_object('id',v->>'id','status','approved','order_id','ORDERTEST12345','amount_minor',12345,'currency','USD','merchant_id','MERCHANT12345'));
+ perform public.initial_checkout_backend(u,'claim_capture',jsonb_build_object('id',v->>'id'));
+ begin perform public.initial_checkout_backend(u,'claim_capture',jsonb_build_object('id',v->>'id'));raise exception 'Concurrent capture accepted';exception when sqlstate 'PT409' then null;end;
+ perform public.initial_checkout_backend(u,'apply',jsonb_build_object('id',v->>'id','status','completed','order_id','ORDERTEST12345','capture_id','CAPTURETEST12345','amount_minor',12345,'currency','USD','merchant_id','MERCHANT12345'));
+ perform public.initial_checkout_backend(u,'apply',jsonb_build_object('id',v->>'id','status','completed','order_id','ORDERTEST12345','capture_id','CAPTURETEST12345','amount_minor',12345,'currency','USD','merchant_id','MERCHANT12345'));
+ select count(*) into n from public.project_received_payments where project_id=p;
+ if n<>1 then raise exception 'Duplicate received money';end if;
+ select count(*) into n from public.project_initial_checkout_events where checkout_id=(v->>'id')::uuid and kind='paid';
+ if n<>1 then raise exception 'Duplicate paid event';end if;
+ again:=public.initial_checkout_backend(u,'prepare',jsonb_build_object('project_id',p2,'request_key',gen_random_uuid(),'amount_minor',12345,'conditions','First payment','output_language','es','merchant_id','MERCHANT12345','payer_email','buyer@example.com','token',repeat('c',43)));
+ begin perform public.initial_checkout_backend(u,'apply',jsonb_build_object('id',again->>'id','status','completed','order_id','ORDERSECOND12345','capture_id','CAPTURETEST12345','amount_minor',12345,'currency','USD','merchant_id','MERCHANT12345'));raise exception 'Capture reused across projects';exception when sqlstate 'PT409' then null;end;
+ update public.projects set status='closed' where id=p2;
+ begin perform public.initial_checkout_backend(u,'claim_create',jsonb_build_object('id',again->>'id'));raise exception 'Closed project accepted';exception when sqlstate 'PT409' then null;end;
+ if has_function_privilege('anon','public.initial_checkout_backend(uuid,text,jsonb)','execute') or has_function_privilege('authenticated','public.initial_checkout_backend(uuid,text,jsonb)','execute') then raise exception 'Public write access';end if;
+ if has_table_privilege('authenticated','public.project_initial_checkouts','update') then raise exception 'Direct payment modification';end if;
+end $$;
+select 'Initial checkout database contracts passed; all test records rolled back' as result;
+rollback;

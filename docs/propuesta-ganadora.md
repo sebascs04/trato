@@ -1,6 +1,6 @@
 # Trato — propuesta para el PayPal AI Hackathon
 
-Propuesta de trabajo para Sebastian y Mariam · 23 de octubre de 2026
+Propuesta de trabajo para el responsable del proyecto y una colaboradora · 23 de octubre de 2026
 
 ## La idea en una frase
 
@@ -141,7 +141,7 @@ Fuentes principales:
 
 Buscamos una demo sin gasto obligatorio: PayPal sandbox para pagos de prueba y opciones locales o planes gratuitos para datos, alojamiento y modelos. No asumir que PayPal cubre todos los gastos ni que una base de datos gratuita incluye inferencia de IA. Verificar cuotas, condiciones y disponibilidad antes de elegir servicios; evitar activar consumo pago por defecto.
 
-Reparto propuesto, por acordar: Sebastian se concentra en recuperación, IA, alternativas y evaluación; Mariam en backend, autenticación, datos e integración PayPal; ambos comparten frontend e integración completa. El editor prepara el video cuando el recorrido sea reproducible. Es una propuesta de responsabilidades, no una asignación ya aceptada.
+Reparto propuesto, por acordar: el responsable del proyecto se concentra en recuperación, IA, alternativas y evaluación; una colaboradora en backend, autenticación, datos e integración PayPal; ambos comparten frontend e integración completa. El editor prepara el video cuando el recorrido sea reproducible. Es una propuesta de responsabilidades, no una asignación ya aceptada.
 
 El criterio de éxito de la primera demo es sencillo: **una solicitud conflictiva termina en un acuerdo explícito y un pago sandbox confirmado, con evidencia consultable en cada paso.**
 

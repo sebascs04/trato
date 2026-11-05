@@ -17,7 +17,7 @@ El 31 de octubre de 2026 se verificaron respuestas estructuradas con el adaptado
 
 La primera llamada a Argon fallo, pero la comprobacion posterior estructurada fue correcta; ya esta habilitado. Gemini 2.5 Pro devolvio404 y figura retirado desde20oct2026. Este catalogo contiene modelos de texto comprobados para agentes, no modelos especializados de imagen/audio/embeddings ni todos los productos de Model Garden. Una respuesta correcta de conexion no garantiza la calidad de todos los flujos.
 
-P3 recomienda 3.8 Flash MEDIUM como aproximacion funcional a GPT-6 Luna medio, sin equivalencia demostrada ni prueba head-to-head. Debe evaluarse conversacion, citas y consistencia con casos reales de Trato. La tarifa Cloud y el credito son independientes de las tarifas de OpenAI. Fuentes: https://docs.cloud.google.com/gemini-enterprise-agent-platform/models/thinking y https://cloud.google.com/model-garden/pricing
+el equipo recomienda 3.8 Flash MEDIUM como aproximacion funcional a GPT-6 Luna medio, sin equivalencia demostrada ni prueba head-to-head. Debe evaluarse conversacion, citas y consistencia con casos reales de Trato. La tarifa Cloud y el credito son independientes de las tarifas de OpenAI. Fuentes: https://docs.cloud.google.com/gemini-enterprise-agent-platform/models/thinking y https://cloud.google.com/model-garden/pricing
 
 
 Referencias: https://docs.cloud.google.com/gemini-enterprise-agent-platform/models/model-versions y https://docs.cloud.google.com/free/docs/free-cloud-features
@@ -68,7 +68,7 @@ Fuentes directas:
 - https://artificialanalysis.ai/models/gemini-3-8-flash-medium
 - https://artificialanalysis.ai/models/gemini-3-5-flash-lite
 
-El enlace compartido por Sebastian compara GPT5.6 Luna LOW con GPT5mini MEDIUM; es un ejemplo del comparador y no una medicion de GPT6 Luna MEDIUM. Precio por token no equivale a costo por caso: contar texto de entrada, salida y razonamiento facturado.
+El enlace compartido por el responsable del proyecto compara GPT5.6 Luna LOW con GPT5mini MEDIUM; es un ejemplo del comparador y no una medicion de GPT6 Luna MEDIUM. Precio por token no equivale a costo por caso: contar texto de entrada, salida y razonamiento facturado.
 
 ## Arranque de los flujos integrados
 

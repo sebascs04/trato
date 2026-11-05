@@ -90,11 +90,49 @@ class GeminiTests(unittest.TestCase):
         self.assertNotIn('synthetic-secret', str(caught.exception))
         self.assertIsNone(model.last_usage)
 
+    def test_failure_code_survives_pipeline_and_diagnostics_exclude_provider_content(self):
+        model = GeminiLangChainModel(self.config(), client_factory=lambda **kw: StubClient(fail=True, **kw))
+        with self.assertLogs('trato_worker.gemini', level='WARNING') as logs:
+            with self.assertRaises(GeminiUnavailableError) as caught:
+                model.generate([], SCHEMA)
+        self.assertEqual(caught.exception.code, 'MODEL_REQUEST_FAILED')
+        self.assertIn('RuntimeError', logs.output[0])
+        self.assertNotIn('synthetic-secret', ''.join(logs.output))
+        self.assertNotIn('provider accidentally', ''.join(logs.output))
+        self.assertEqual(model._client.calls, 1)
+
     def test_refusal_or_truncated_output_never_becomes_an_analysis(self):
         for response in [{'parsed': None, 'parsing_error': None}, {'parsed': RESULT, 'parsing_error': ValueError('bad schema')}]:
             model = GeminiLangChainModel(self.config(), client_factory=lambda **kw: StubClient(result=response, **kw))
             with self.assertRaises(GeminiUnavailableError):
                 model.generate([], SCHEMA)
+
+    def test_invalid_response_diagnostics_preserve_safe_finish_reason_only(self):
+        response = {'parsed': None, 'parsing_error': ValueError('synthetic-secret'),
+                    'raw': SimpleNamespace(response_metadata={'finish_reason': 'MAX_TOKENS', 'content': 'synthetic-secret'})}
+        model = GeminiLangChainModel(self.config(), client_factory=lambda **kw: StubClient(result=response, **kw))
+        with self.assertLogs('trato_worker.gemini', level='WARNING') as logs:
+            with self.assertRaises(GeminiUnavailableError) as caught:
+                model.generate([], SCHEMA)
+        self.assertEqual(caught.exception.code, 'MODEL_INVALID_RESPONSE')
+        self.assertIn('MAX_TOKENS', ''.join(logs.output))
+        self.assertNotIn('synthetic-secret', ''.join(logs.output))
+        self.assertEqual(model._client.calls, 1)
+
+    def test_provider_status_survives_wrapping_without_exposing_messages(self):
+        class ProviderError(Exception):
+            code = 400
+        wrapped = RuntimeError('synthetic-secret')
+        wrapped.__cause__ = ProviderError('private-provider-message')
+        model = GeminiLangChainModel(self.config(), client_factory=StubClient)
+        with patch.object(model._client, 'invoke', side_effect=wrapped):
+            with self.assertLogs('trato_worker.gemini', level='WARNING') as logs:
+                with self.assertRaises(GeminiUnavailableError) as caught:
+                    model.generate([], SCHEMA)
+        self.assertEqual(caught.exception.code, 'MODEL_REQUEST_REJECTED')
+        self.assertIn('400', ''.join(logs.output))
+        self.assertNotIn('synthetic-secret', ''.join(logs.output))
+        self.assertNotIn('private-provider-message', ''.join(logs.output))
 
     def test_installed_sdk_can_construct_and_bind_schema_without_network(self):
         with patch('socket.socket.connect', side_effect=AssertionError('No network in this test')):

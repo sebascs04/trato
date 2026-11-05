@@ -58,3 +58,15 @@ No se cambió el estado OAuth ni se publicó la aplicación desde este trabajo. 
 - https://support.google.com/cloud/answer/15549945
 - https://developers.google.com/identity/protocols/oauth2/web-server#offline
 - https://support.google.com/cloud/answer/13464323
+
+## Revisión de integración con el MVP de cambios — 4 de noviembre
+
+La rama de trabajo del MVP incorporó main d740d30 conservando los cambios locales. Se mantiene el propietario del envío mientras el transporte resuelve las credenciales del buzón central; el agente prepara campos, y guardar/enviar continúa siendo una acción humana en el flujo existente. Devoluciones manuales conserva ese mismo servicio de transporte, aunque su agente esté deshabilitado.
+
+Se corrigieron dos defectos reproducidos con transporte de pruebas: comparación del remitente sensible a mayúsculas que rechazaba la misma dirección, y aceptación de respuestas a otra revisión por encontrar una referencia ancestral. Se conserva la identidad/dirección guardada y se valida el destino inmediato de la respuesta (In-Reply-To o última References cuando no hay cabecera directa), como en devoluciones. Se añadieron seis regresiones; 45 pruebas de envío/recepción/devolución manual aprobadas sin correos reales ni cambios OAuth.
+
+La configuración privada del entorno de esta revisión todavía usa GMAIL_DELIVERY_MODE=personal y no contiene GMAIL_TRATO_ACCOUNT_OWNER/EMAIL. Esto no acredita disponibilidad del correo central local: hay que indicar sus identidades, configurar explícitamente trato y autorizar el buzón desde su cuenta administradora. No se eligió una cuenta por inferencia ni se copiaron tokens o datos privados. Tampoco se probó un envío central real ni se migraron hilos personales históricos.
+
+Después de recibir las identidades indicadas por el responsable, se verificó la cuenta administradora directamente en Supabase Auth: UUID único, correo confirmado, activa y no anónima. Se configuró el entorno privado local en modo trato con ese UUID y el buzón solicitado, conservando un respaldo privado. La validación de configuración pasó. El vault local no tiene autorización de ese buzón (sin permisos de envío/lectura guardados); la administración debe completar Conectar el correo de Trato en Perfil y consentir con la cuenta central. Esto no acredita un envío/recepción reales ni configuración del entorno publicado. No se solicitó contraseña ni se publicaron identidades o credenciales en este documento.
+
+Comprobaciones finales de la actualización: 435 pruebas API, 121 frontend aprobadas; worker 187 ejecutadas (176 aprobadas y 11 omitidas); sintaxis, 3196 claves ES/EN y diff --check aprobados. La prueba de portada se actualizó al intervalo de cuatro segundos ya cambiado en main, conservando su comprobación de pausa/navegación. Se mantuvo el stash de respaldo del MVP; los conflictos del backlog y package.json quedaron resueltos sin descartar funciones de main o del agente. No se publicó la rama ni se creó un PR.

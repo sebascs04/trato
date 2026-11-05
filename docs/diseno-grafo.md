@@ -24,7 +24,7 @@ Tres pruebas Chromium aprobadas: interacciones/fuente PDF, fallo de carga visibl
 
 ## Proyecto con devolución
 
-Ampliación solicitada por Sebastian. El selector superior permite alternar **Con un cambio** (SP-001 / Luna Studio) y **Con una devolución** (SP-003 / Casa Oliva), sin cruzar información entre proyectos. También puede abrirse directamente `/grafo.html?scenario=refund`.
+Ampliación solicitada por el responsable del proyecto. El selector superior permite alternar **Con un cambio** (SP-001 / Luna Studio) y **Con una devolución** (SP-003 / Casa Oliva), sin cruzar información entre proyectos. También puede abrirse directamente `/grafo.html?scenario=refund`.
 
 El segundo escenario usa REF-SP-003, su solicitud REQ-SP-003, el pago INV-SP-003-BASE y el mensaje MSG-SP-003-3 de la fixture existente. El cobro original USD90 conserva estado Pagado; la devolución USD90 conserva estado solicitado/pendiente, sin fecha o referencia de ejecución inventada. El mensaje de cancelación se muestra como texto fuente, no como un PDF genérico de otra temática. El acuerdo de reserva conserva acceso a su PDF.
 

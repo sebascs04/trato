@@ -1,13 +1,13 @@
-# PayPal sandbox — adaptador y contrato con P2
+# PayPal sandbox — adaptador y contrato con el equipo
 
 24 de octubre de 2026. Implementación aislada del adaptador; no representa una
 integración activa ni una transacción sandbox completada.
 
 ## Reparto acordado
 
-P1 mantiene `backend/paypal/` y `backend/test_paypal.py`. P2 mantiene las
+el equipo mantiene `backend/paypal/` y `backend/test_paypal.py`. el equipo mantiene las
 migraciones, el repositorio `backend/repositories/payments.py`, identidad Supabase
-y el montaje HTTP en `backend/api.py`. El contrato compartido lo mantiene P2 en
+y el montaje HTTP en `backend/api.py`. El contrato compartido lo mantiene el equipo en
 `docs/contrato-api-integracion-v1.md`.
 
 No se han cambiado archivos compartidos para montar estas rutas. El frontend
@@ -41,7 +41,7 @@ correo y no implementa onboarding de múltiples freelancers o reparto de fondos.
 - `service.py`: operaciones de negocio independientes de FastAPI. Las entradas
   monetarias del navegador no forman parte de `create`.
 - `repository.py`: protocolo de datos y operaciones transaccionales a implementar
-  por P2. No ofrece un almacén en memoria para producción.
+  por el equipo. No ofrece un almacén en memoria para producción.
 - `test_paypal.py`: pruebas con transporte falso y repositorio de prueba, sin
   credenciales ni llamadas externas.
 
@@ -74,7 +74,7 @@ Si crear orden queda incierto sin guardar `order_id`, solo se puede reclamar y
 reintentar con el MISMO `create_request_id` dentro de la ventana de retención
 válida del proveedor que configuremos. Fuera de esa ventana debe bloquearse y
 conciliarse: no generar otra orden. El servicio conserva la reserva y no inventa
-una segunda identidad. Esta recuperación depende de la implementación de P2.
+una segunda identidad. Esta recuperación depende de la implementación del equipo.
 
 El repositorio debe generar y persistir IDs por operación admitidos por PayPal;
 las pruebas no verifican concurrencia de una base real. No mantener una
@@ -130,7 +130,7 @@ Código preparado:
   modo sin cifrado solo para un capturador local en loopback. No hay configuración
   ni envío habilitados por defecto.
 - `backend/paypal/notifications.py`: protocolo de outbox separado y servicio
-  independiente del framework. P2 debe revisar e implementar su persistencia.
+  independiente del framework. el equipo debe revisar e implementar su persistencia.
 - `payment-api.js`: cliente HTTP para la API acordada, con JWT e idempotencia,
   sin enviar importes ni destinatarios arbitrarios en la solicitud de cobro/email.
 - `payment-panel.js`: vista previa explícitamente simulada, accesible al terminar
@@ -155,7 +155,7 @@ El proveedor SMTP puede tener cuotas/costos propios; no se presupone envío grat
 
 Estado: 13 pruebas unitarias de PayPal/correo con dobles; pruebas del cliente HTTP
 sin backend real. No hubo envío SMTP, cobro, configuración de Gmail ni alta de
-proveedor. Faltan outbox/rutas de P2, credenciales y prueba end-to-end autorizada.
+proveedor. Faltan outbox/rutas del equipo, credenciales y prueba end-to-end autorizada.
 
 La vista previa de cobro conserva su estado por solicitud en el guardado local
 IndexedDB del prototipo. Tras completar el pago de prueba muestra Ver pago,
@@ -168,8 +168,8 @@ son payment-api.js y payment-panel.js.
 
 `backend/paypal/routes.py` ofrece
 `build_router(payment_service, notification_service, require_user)`, usando la
-dependencia de usuario validado que provea P2. No está montado en el servidor
-Node ni en la aplicación de P2 por añadir este archivo. P2 controla el montaje y
+dependencia de usuario validado que proveal equipo. No está montado en el servidor
+Node ni en la aplicación del equipo por añadir este archivo. el equipo controla el montaje y
 la configuración real del repositorio. Si no hay servicio configurado devuelve
 503, sin sustituirlo por uno falso. CORS deberá admitir `Idempotency-Key`.
 
@@ -204,8 +204,8 @@ aceptación, persistencia, checkout, captura ni webhooks end-to-end.
 ## Refuerzo posterior al primer snapshot polyrepo
 
 Archivos a portar desde el original al paquete de trato-api: `client.py`,
-`service.py`, nuevo `config.py` y `backend/test_paypal.py`. P2 fue avisado; no se
-editaron sus repositorios ni esquema desde P1.
+`service.py`, nuevo `config.py` y `backend/test_paypal.py`. el equipo fue avisado; no se
+editaron sus repositorios ni esquema desdel equipo.
 
 - El transporte no sigue redirecciones HTTP que puedan reenviar credenciales.
 - OAuth exige respuesta estructurada y expiración positiva finita.
@@ -235,7 +235,7 @@ Validación local: `python -m unittest discover -s backend -p 'test_payment_docu
 
 ## Dos correos y revisión humana explícita
 
-Decisión de producto confirmada por Sebastian: el análisis de IA no envía mensajes. El freelancer revisa la alternativa, importe, fecha y PDF; solo después elige «Enviar adenda al cliente». El primer envío contiene una **propuesta de adenda pendiente de aceptación**, no un cambio ya aceptado ni una solicitud de pago. El cliente puede aceptar, pedir ajustes o rechazar; modificar la propuesta requiere una nueva revisión, conservando la anterior.
+Decisión de producto confirmada por el responsable del proyecto: el análisis de IA no envía mensajes. El freelancer revisa la alternativa, importe, fecha y PDF; solo después elige «Enviar adenda al cliente». El primer envío contiene una **propuesta de adenda pendiente de aceptación**, no un cambio ya aceptado ni una solicitud de pago. El cliente puede aceptar, pedir ajustes o rechazar; modificar la propuesta requiere una nueva revisión, conservando la anterior.
 
 1. `ProposalEmail` contiene alcance revisado, adicional (puede ser USD0.00), fecha propuesta, referencia y PDF. No tiene campo de enlace de pago. Solicita devolver el documento firmado o indicar ajustes por correo.
 2. `ProposalNotificationService` exige propuesta conectada, revisión humana previa (`ready_for_review`) y documento del mismo dueño/proyecto/revisión. Reserva en una outbox específica de propuesta antes del transporte. Enviar no crea aceptación ni pago.
@@ -248,15 +248,15 @@ Archivos originales que deben trasladarse coordinadamente a API: `email.py`, `no
 
 ## Punto de continuación · 25 de octubre de 2026
 
-Sebastian priorizó continuar la configuración de PayPal sandbox. Aún no hay valores PAYPAL_CLIENT_ID, CLIENT_SECRET, MERCHANT_ID, WEBHOOK_ID, RETURN_URL ni CANCEL_URL en la configuración privada de API. Siguiente paso con él: acceder al Developer Dashboard y seleccionar Sandbox en Apps & Credentials. Guiar un paso por vez; guardar secretos localmente, nunca pedir pegarlos en chat.
+el responsable del proyecto priorizó continuar la configuración de PayPal sandbox. Aún no hay valores PAYPAL_CLIENT_ID, CLIENT_SECRET, MERCHANT_ID, WEBHOOK_ID, RETURN_URL ni CANCEL_URL en la configuración privada de API. Siguiente paso con él: acceder al Developer Dashboard y seleccionar Sandbox en Apps & Credentials. Guiar un paso por vez; guardar secretos localmente, nunca pedir pegarlos en chat.
 
-La migración `repos/trato-api/supabase/migrations/20261025165753_proposal_lifecycle.sql` es un **borrador local en preparación, no aplicado ni validado**. No hay todavía rutas/repositorio de dominio montados para esas tablas. El diseño fue coordinado con P2: revisión inmutable y fuentes exactas, cabeza/generación de acuerdo solo avanza por aceptación explícita, sin confundir una fuente inicial con contrato aceptado.
+La migración `repos/trato-api/supabase/migrations/20261025165753_proposal_lifecycle.sql` es un **borrador local en preparación, no aplicado ni validado**. No hay todavía rutas/repositorio de dominio montados para esas tablas. El diseño fue coordinado con el equipo: revisión inmutable y fuentes exactas, cabeza/generación de acuerdo solo avanza por aceptación explícita, sin confundir una fuente inicial con contrato aceptado.
 
 Regla nueva persistida en AGENTS.md: ningún fallback sin autorización explícita. Fallar visiblemente en vez de sustituir proveedor/modelo/transporte/datos o usar simulación como respaldo.
 
 ### Credenciales sandbox guardadas y autenticación real comprobada
 
-25 de octubre de 2026. Sebastian completó el JSON privado `.local/paypal-sandbox-credentials.json`; se importaron PAYPAL_CLIENT_ID/PAYPAL_CLIENT_SECRET y PAYPAL_ENVIRONMENT=sandbox a `.env` de API con permisos0600, conservando Gmail y otras variables. No se mostraron valores secretos.
+25 de octubre de 2026. el responsable del proyecto completó el JSON privado `.local/paypal-sandbox-credentials.json`; se importaron PAYPAL_CLIENT_ID/PAYPAL_CLIENT_SECRET y PAYPAL_ENVIRONMENT=sandbox a `.env` de API con permisos0600, conservando Gmail y otras variables. No se mostraron valores secretos.
 
 Se llamó exclusivamente `POST https://api-m.sandbox.paypal.com/v1/oauth2/token`: HTTP200, token con expiración válida. No se imprimió ni guardó el token y no se crearon órdenes, capturas o envíos. Este resultado acredita credenciales aceptadas por sandbox; no acredita integración de cobros completa.
 
@@ -264,18 +264,19 @@ Siguiente con el usuario: revisar los nombres de campos de Sandbox account info 
 
 ### Identidad de vendedor sandbox configurada
 
-Sebastian proporcionó el Account ID de su cuenta Business sandbox. Se guardó PAYPAL_MERCHANT_ID en la configuración privada de API, manteniendo el resto y permisos0600. El saldo mostrado de USD5000 pertenece al entorno de prueba; no es dinero real. Faltan RETURN_URL, CANCEL_URL, WEBHOOK_ID y la persistencia/montaje del flujo. No se crearon órdenes ni capturas. Siguiente preparación con usuario: identificar cuenta Personal sandbox distinta para actuar como comprador.
+el responsable del proyecto proporcionó el Account ID de su cuenta Business sandbox. Se guardó PAYPAL_MERCHANT_ID en la configuración privada de API, manteniendo el resto y permisos0600. El saldo mostrado de USD5000 pertenece al entorno de prueba; no es dinero real. Faltan RETURN_URL, CANCEL_URL, WEBHOOK_ID y la persistencia/montaje del flujo. No se crearon órdenes ni capturas. Siguiente preparación con usuario: identificar cuenta Personal sandbox distinta para actuar como comprador.
 
-## Seguimiento único coordinado con P2 · 25 de octubre de 2026
+## Seguimiento único coordinado con el equipo · 25 de octubre de 2026
 
-Sebastian pidió expresamente no duplicar estados mientras P2 diseña la lista de cambios. La vista de negocio acordada es: Pedido guardado → Propuesta en preparación → Adenda en borrador → Esperando respuesta → Ajustes solicitados (si procede) → Aceptación por revisar → Pendiente de pago → Finalizado. Lista: título, estado, versión vigente y siguiente acción; detalle con historial de todas las revisiones.
+el responsable del proyecto pidió expresamente no duplicar estados mientras el equipo diseña la lista de cambios. La vista de negocio acordada es: Pedido guardado → Propuesta en preparación → Adenda en borrador → Esperando respuesta → Ajustes solicitados (si procede) → Aceptación por revisar → Pendiente de pago → Finalizado. Lista: título, estado, versión vigente y siguiente acción; detalle con historial de todas las revisiones.
 
 La integración PayPal aporta evidencia financiera; sus estados técnicos se guardan en el registro de pago y se proyectan a ese seguimiento, sin otra lista de negocio competidora. Pendiente de pago exige aceptación de la revisión exacta revisada por humano y adicional>0. Solo captura COMPLETED verificada por PayPal (referencia/importe/moneda/merchant correctos) finaliza un cambio con adicional. Una aceptación revisada de importe0 finaliza sin crear cobro. PENDING, timeout, cancelación o volver del checkout no finalizan ni prueban pago. PDF recibido por sí solo sigue en Aceptación por revisar.
 
+Usuario autorizó una prueba sandbox de USD0.10. A esta altura solo se verificó OAuth; no se creó orden ni se aprobó/capturó pago. Antes de modificar UI o persistencia de estados, coordinar con el equipo y respetar su flujo único.
 
 ## Prueba explícita de conexión USD0.10 desde el perfil
 
-Se añadió `trato_api/sandbox_payment.py` y su router para una prueba técnica autorizada por Sebastian, independiente de propuestas/aceptaciones. No fabrica una aceptación ni marca ningún proyecto/cambio como pagado. El importe es fijo USD0.10 y el comprador debe aprobar en su cuenta Personal sandbox.
+Se añadió `trato_api/sandbox_payment.py` y su router para una prueba técnica autorizada por el responsable del proyecto, independiente de propuestas/aceptaciones. No fabrica una aceptación ni marca ningún proyecto/cambio como pagado. El importe es fijo USD0.10 y el comprador debe aprobar en su cuenta Personal sandbox.
 
 El perfil carga `sandbox-checkout.mjs`. Las rutas JWT `/api/v1/sandbox/paypal-test`, `/capture` y `/reconcile` usan un almacén SQLite local privado separado (`PAYPAL_TEST_STORE`), con una sola prueba por usuario y IDs de creación/captura estables. También conserva el resultado al recargar y evita crear otra orden si cambia la clave del navegador. No hay llamadas a correo.
 
@@ -283,9 +284,9 @@ Variables explícitas: `TRATO_PAYPAL_TEST_ENABLED=true`, `PAYPAL_TEST_RETURN_URL
 
 Es una herramienta local de prueba, proceso API único; no sustituye la persistencia contractual en Supabase ni habilita aceptar/finalizar adendas. Pruebas de dominio9 y navegador específico1 aprobadas con dobles. Validación OAuth previa realHTTP200. El resultado de crear/aprobar/capturar una orden real de sandbox se documentará aparte.
 
-### Verificación del recorrido técnico de sandbox
+### Verificacion sandbox
 
-Se comprobó el recorrido crear orden → aprobación humana en PayPal → captura del servidor → consulta y estado persistido. La documentación pública omite los identificadores de transacciones, referencias internas y asociaciones de cuentas usados durante las pruebas. El diagnóstico sigue separado de propuestas y aceptaciones; no acredita por sí solo el recorrido contractual ni cambia estados de negocio.
+Recorrido tecnico comprobado sin publicar identificadores personales de operaciones.
 
 ### Integración de adendas, 25/10/2026
 
@@ -293,3 +294,4 @@ Se aplicaron migraciones `proposal_pdf_artifacts` y `proposal_delivery_payments`
 
 La primera propuesta de RPC con secreto compartido accesible por roles públicos fue rechazada por revisión automática. Se reemplazó por funciones privadas y wrapper invoker ejecutables solo por `service_role`; no hay secreto compartido alternativo ni comandos financieros disponibles para anon/authenticated. Pruebas SQL con fixtures y rollback verifican reserva única, importe exacto, bloqueo durante pago, captura única y no regresión de un pago completado. No equivalen a una captura contractual real.
 
+Lectura actual de la cuenta conectada: no había propuestas guardadas ni cliente con `developer@example.com`. Por tanto, sigue pendiente preparar/revisar la adenda y enviarla; no se inventó aceptación para crear un cobro.

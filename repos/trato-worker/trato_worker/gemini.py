@@ -1,15 +1,17 @@
 """Explicit Gemini backend for the worker. No model/provider auto-selection."""
 import os
 import re
+import logging
+import json
 from dataclasses import dataclass, field
 
 
 class GeminiConfigurationError(ValueError):
-    pass
+    code = 'MODEL_CONFIGURATION_INVALID'
 
 
 class GeminiUnavailableError(RuntimeError):
-    pass
+    code = 'MODEL_REQUEST_FAILED'
 
 
 @dataclass(frozen=True)
@@ -78,6 +80,8 @@ class GeminiLangChainModel:
 
     def generate(self, messages, schema):
         self.last_usage = None
+        invalid_response = False
+        response = None
         try:
             from langsmith import tracing_context
             # No implicit transmission of project documents to a tracing service.
@@ -85,16 +89,57 @@ class GeminiLangChainModel:
                 response = self._client.with_structured_output(
                     schema=schema, method='json_schema', include_raw=True).invoke(messages)
             if response.get('parsing_error') or not isinstance(response.get('parsed'), dict):
+                invalid_response = True
                 raise ValueError('Invalid structured output')
             usage = getattr(response.get('raw'), 'usage_metadata', None)
             if isinstance(usage, dict):
                 self.last_usage = {key: usage[key] for key in ('input_tokens', 'output_tokens', 'total_tokens')
                                    if isinstance(usage.get(key), int) and usage[key] >= 0}
             return response['parsed']
-        except Exception:
+        except Exception as error:
+            code = 'MODEL_INVALID_RESPONSE' if invalid_response else 'MODEL_REQUEST_FAILED'
+            diagnostic = {'event': 'model_request_failed', 'error_code': code, 'exception_type': type(error).__name__}
+            if isinstance(response, dict):
+                raw = response.get('raw')
+                metadata = getattr(raw, 'response_metadata', {})
+                reason = metadata.get('finish_reason') if isinstance(metadata, dict) else None
+                if reason in ('STOP','MAX_TOKENS','SAFETY','RECITATION','OTHER'):
+                    diagnostic['finish_reason'] = reason
+                if response.get('parsing_error') is not None:
+                    diagnostic['parsing_error_type'] = type(response['parsing_error']).__name__
+            status = None
+            cause = error
+            for _ in range(4):
+                candidate = getattr(cause, 'status_code', None) or getattr(cause, 'code', None)
+                if type(candidate) is int:
+                    status = candidate
+                    break
+                cause = cause.__cause__ or cause.__context__
+                if cause is None: break
+            if status is None and type(error).__module__.startswith('langchain_google_genai'):
+                status = {'GoogleInvalidRequestError': 400, 'GoogleAuthenticationError': 401,
+                          'GooglePermissionDeniedError': 403, 'GoogleModelNotFoundError': 404,
+                          'GoogleRateLimitError': 429}.get(type(error).__name__)
+            if status == 400:
+                # Emit only fixed labels, never the provider's message or source text.
+                text = str(error).lower()
+                reasons = {'schema_complexity': ('too many states','too complex','complexity'),
+                           'schema_enum': ('enum',), 'schema_constraint': ('maxitems','minitems','maxlength','minlength'),
+                           'output_token_configuration': ('max_output_tokens','maxoutputtokens'),
+                           'thinking_configuration': ('thinking',), 'unsupported_field': ('not supported','unsupported')}
+                diagnostic['request_issue_hints'] = [name for name, markers in reasons.items() if any(marker in text for marker in markers)]
+            if type(status) is int:
+                diagnostic['status_code'] = status
+                if not invalid_response:
+                    code = {400:'MODEL_REQUEST_REJECTED',401:'MODEL_ACCESS_DENIED',403:'MODEL_ACCESS_DENIED',
+                            404:'MODEL_UNAVAILABLE',429:'MODEL_QUOTA_EXCEEDED'}.get(status, code)
+                    diagnostic['error_code'] = code
+            logging.getLogger(__name__).warning(json.dumps(diagnostic))
             # Do not expose provider messages, prompts, document text or API keys.
             # No retry, substitute response, alternate model or alternate backend.
-            raise GeminiUnavailableError('Gemini no pudo completar el análisis; conserva las fuentes y revisa el servicio.') from None
+            failure = GeminiUnavailableError('Gemini no pudo completar el análisis; conserva las fuentes y revisa el servicio.')
+            failure.code = code
+            raise failure from None
 
     def close(self):
         client = getattr(self._client, 'client', None)

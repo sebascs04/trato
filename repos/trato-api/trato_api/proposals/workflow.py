@@ -169,8 +169,11 @@ class ProposalWorkflow:
                         continue
                     in_reply_to=self.gmail._header(message,'In-Reply-To')[:998]
                     references=' '.join(self.gmail._header(message,'References').split())[:4000]
-                    reference_ids={self._normal_message_id(item) for item in re.findall(r'<[^<>\s]{1,500}>',in_reply_to+' '+references)}
-                    if sent_header not in reference_ids:continue
+                    immediate=[self._normal_message_id(item) for item in re.findall(r'<[^<>\s]{1,500}>',in_reply_to)]
+                    ancestors=[self._normal_message_id(item) for item in re.findall(r'<[^<>\s]{1,500}>',references)]
+                    # An older ancestor is not the revision being answered. Match
+                    # the direct reply, or the final reference when it is absent.
+                    if (immediate!=[sent_header] if immediate else not ancestors or ancestors[-1]!=sent_header):continue
                     candidates.append((message,received_at,from_addresses[0],to_addresses,in_reply_to,references))
                 known=self.backend().gmail_inbox(owner,'known',{'delivery_id':target['delivery_id'],
                     'provider_message_ids':[candidate[0]['id'] for candidate in candidates]})

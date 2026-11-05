@@ -16,6 +16,7 @@ from .persistence import Repository,uuid
 from .thread_store import ThreadStore
 from .vector_contract import digest,PROFILE_ID,PROFILE
 from .vector_routes import source,ProcessorChunks,VectorGateway,POLICY
+from .refund_file_context import document_refund_link,refund_context
 
 STAGES={'extraction','treatment','chunks','summary','outcome'}
 PURPOSES={'initial_agreement','change_request','addendum_adjustments','acceptance_evidence',
@@ -51,10 +52,19 @@ def purpose_context(repo,owner,project,value):
     if artifacts:purpose='generated_addendum';bindings={'revision_id':artifacts[0]['revision_id']}
     if acceptance:purpose='acceptance_evidence';bindings={'revision_id':acceptance[0]['revision_id']}
     if feedback:purpose='addendum_adjustments';bindings={'revision_id':feedback[0]['id']}
+    refund_link=None
+    if not (artifacts or acceptance or feedback) and doc['kind'] in ('reference','addendum'):
+        refund_link=document_refund_link(repo,owner,project,doc)
+        if refund_link:
+            purpose=refund_link['purpose'];bindings=refund_link['bindings']
     if option.get('purpose'):
         if option['purpose'] not in PURPOSES or option['purpose']=='training_material':
             raise ApiError('FILE_PURPOSE_CONTEXT_INVALID',422)
-        purpose=option['purpose'];bindings=option['bindings']
+        if refund_link:
+            if (option['purpose']!=purpose or any(bindings.get(key)!=value for key,value in option['bindings'].items()
+                if key!='payment_id')):raise ApiError('FILE_PURPOSE_CONTEXT_INVALID',409)
+            bindings={**bindings,**option['bindings']}
+        else:purpose=option['purpose'];bindings=option['bindings']
     if bindings.get('revision_id'):
         revisions=repo.rows('proposal_revisions',{'select':'id,proposal_id,scope_summary,conditions,additional_minor,deadline',
                            'id':'eq.'+uuid(bindings['revision_id']),**common})
@@ -65,13 +75,8 @@ def purpose_context(repo,owner,project,value):
         bindings={'revision_id':revision['id'],'request_id':proposals[0]['request_document_id']};proof+=proposals
     reference={}
     if purpose in ('refund_request','refund_evidence'):
-        payment=bindings.get('payment_id')
-        if not payment:raise ApiError('FILE_PAYMENT_BINDING_REQUIRED',422)
-        payments=repo.rows('proposal_payments',{'select':'id,status,amount_minor,currency',
-            'id':'eq.'+uuid(payment),**common})
-        if len(payments)!=1 or payments[0]['status']!='completed':raise ApiError('FILE_PAYMENT_NOT_CONFIRMED',409)
-        if bindings.get('refund_case_id'):raise ApiError('FILE_REFUND_CASE_CONTEXT_NOT_CONFIGURED',503)
-        reference['case_description']=json.dumps(payments[0],ensure_ascii=False);proof+=payments
+        bindings,reference,refund_proof=refund_context(repo,owner,project,bindings,refund_link)
+        proof+=refund_proof
     if purpose=='change_request':
         head=repo.rows('project_agreement_heads',{'select':'generation,acceptance_id',**common});proof+=head
         baseline=[]

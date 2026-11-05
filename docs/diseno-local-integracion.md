@@ -14,7 +14,7 @@ El diseño aprobado se está trasladando a `connected-workspace.mjs` y `connecte
 - Revisar cambio conserva la comparación con fuentes reales del proyecto y del pedido. Si se abre desde seguimiento, vuelve al seguimiento; desde pedidos, vuelve a pedidos.
 - Gmail y la prueba PayPal del perfil permanecen en sus módulos actuales.
 
-## Puntos de integración para P1
+## Puntos de integración paral equipo
 
 `requestRows(requests)` genera la fila por pedido; `renderTracking(panel)` genera el detalle. Actualmente solo representan hechos disponibles en la API de documentos. Sustituir estado/versión/siguiente acción a partir del contrato real de propuestas cuando exista; no inferir aceptación de un archivo, ni pago a partir de un retorno de PayPal. No convertir la prueba técnica de USD 0.10 en un pago de adenda.
 
@@ -40,7 +40,7 @@ Actualización 25/10: el dominio de propuestas y sus migraciones ya están opera
 
 Comprobación sintáctica `npm run check`. Pruebas Playwright de espacio conectado, Gmail y prueba PayPal del perfil. Nueva comprobación del regreso seguimiento → comparación → seguimiento y fechas reales del pedido; comprobaciones existentes de aislamiento entre clientes/proyectos y ausencia de fixtures durante carga/fallo.
 
-## Integración de P1 aplicada
+## Integración del equipo aplicada
 
 - PDF privado inmutable por revisión; generación determinista sin LLM ni extracción del documento generado.
 - Revisión humana y vista previa de correo (remitente, destinatario, cuerpo y PDF) antes del envío explícito.
@@ -49,7 +49,7 @@ Comprobación sintáctica `npm run check`. Pruebas Playwright de espacio conecta
 - Pago: reserva única por aceptación, importe de la revisión, captura backend verificada, cambio finalizado de solo lectura. Retorno/cancelación no añade un estado de negocio.
 - Resultados de proveedores: RPC `proposal_backend` ejecutable exclusivamente por `service_role`; la clave `SUPABASE_SERVER_KEY` solo existe en el servidor.
 - Callback del comprador: `paypal-payment.html`, acceso acotado mediante token aleatorio del cobro; no necesita cuenta de Trato. En local, el enlace requiere acceso a localhost del equipo que ejecuta Trato.
-- La simulación de IA que desarrolla P2 es explícita y separada; no sustituye pagos, envíos o persistencia fallidos.
+- La simulación de IA que desarrollal equipo es explícita y separada; no sustituye pagos, envíos o persistencia fallidos.
 
 ### Vista previa de fuentes
 
@@ -61,7 +61,7 @@ Actualización 26/10: las tarjetas muestran título, fecha y estado, con versió
 
 ## Borradores editables y versiones para el cliente
 
-Aclaración de Sebastian, 26/10: editar un borrador no enviado conserva su número visible (v1). Cada guardado conserva una instantánea interna y su PDF; la interfaz de versiones agrupa las instantáneas por versión visible. `POST /proposals/{id}/draft` usa CAS por expected_revision_id y rechaza adendas enviadas, envíos inciertos, aceptaciones y pagos. La edición invalida la revisión del correo anterior, genera un PDF nuevo y requiere revisión otra vez. Historial presenta «Borrador vN actualizado», sin fingir una vN+1.
+Aclaración del responsable del proyecto, 26/10: editar un borrador no enviado conserva su número visible (v1). Cada guardado conserva una instantánea interna y su PDF; la interfaz de versiones agrupa las instantáneas por versión visible. `POST /proposals/{id}/draft` usa CAS por expected_revision_id y rechaza adendas enviadas, envíos inciertos, aceptaciones y pagos. La edición invalida la revisión del correo anterior, genera un PDF nuevo y requiere revisión otra vez. Historial presenta «Borrador vN actualizado», sin fingir una vN+1.
 
 Después de enviar aparece «Registrar ajustes del cliente», que exige PDF de respuesta y notas. `POST /proposals/{id}/revisions` exige feedback_document_id/feedback_notes y que la fuente figure entre las referencias de esa versión. El backend requiere un envío anterior confirmado; v2 no hereda envío ni aceptación. Cambios finalizados siguen solo consulta. Migración editable_proposal_drafts aplicada tras prueba PostgreSQL local y prueba Supabase con rollback; 110 tests API y 4 tests navegador específicos pasan.
 
@@ -97,7 +97,7 @@ Se corrigió la falta de actualización al completar el pago en otra pestaña: a
 
 ## Separación visual entre cambios y devoluciones
 
-26/10, por solicitud de Sebastian: navegación contextual del proyecto con tres secciones persistentes: Proyecto (acuerdo/fuentes), Cambios (alcance/precio/plazo) y Devoluciones (dinero de un pago recibido). Mantiene contexto del cliente/proyecto y una etiqueta accesible estable en escritorio/móvil. No se usa sólo color para distinguir la selección.
+26/10, por solicitud del responsable del proyecto: navegación contextual del proyecto con tres secciones persistentes: Proyecto (acuerdo/fuentes), Cambios (alcance/precio/plazo) y Devoluciones (dinero de un pago recibido). Mantiene contexto del cliente/proyecto y una etiqueta accesible estable en escritorio/móvil. No se usa sólo color para distinguir la selección.
 
 Se aplican las guías recogidas en investigacion-ux-trato-2026-10-25.md: espacio persistente separado de tareas, etiquetas según intención y recursos secundarios bajo demanda. La vista Cambios explica que solicitudes de dinero de vuelta corresponden a Devoluciones; ésta distingue cancelación del proyecto y existencia de un reembolso.
 

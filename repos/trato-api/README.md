@@ -23,13 +23,13 @@ Exporta las variables de `.env.example` en el proceso. No se lee `.env` automát
 - `GET /api/v1/documents/{id}/extraction` y `/file`: fragmentos y descarga privada con JWT; `POST /retry` reintenta desde el original.
 - `GET /api/v1/projects/{id}/events`: historial persistente.
 - `POST /api/v1/documents/extract?filename=archivo.docx`: archivo binario, MIME y JWT de usuario Supabase. Identidad verificada antes de procesar. Devuelve contenido con `persisted: false`.
-- `/api/v1/payments`, captura, conciliación y correo: router de P1 montado, sin servicio de pagos configurado. Devuelve errores de configuración; no simula cobros conectados ni usa una base en memoria.
+- `/api/v1/payments`, captura, conciliación y correo: router del equipo montado, sin servicio de pagos configurado. Devuelve errores de configuración; no simula cobros conectados ni usa una base en memoria.
 
 `require_user(request)` es la dependencia de identidad compartida. `app.state.services` contiene servicios inyectables para pruebas. La clave del procesador y los tokens Supabase no se devuelven en respuestas ni se registran.
 
 ## PayPal
 
-`paypal/` es una copia explícita del módulo de P1 al separar repositorios. La fuente original se conserva en `backend/paypal/` durante la transición. No sincronizar ni editar ambas copias en paralelo: antes del siguiente cambio, acordar con P1 el traslado de propiedad. El router fue copiado con sus pruebas.
+`paypal/` es una copia explícita del módulo del equipo al separar repositorios. La fuente original se conserva en `backend/paypal/` durante la transición. No sincronizar ni editar ambas copias en paralelo: antes del siguiente cambio, acordar con el equipo el traslado de propiedad. El router fue copiado con sus pruebas.
 
 ```bash
 .venv/bin/python -m unittest discover -s tests -v

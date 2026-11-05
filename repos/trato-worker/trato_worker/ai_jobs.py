@@ -63,6 +63,18 @@ class AIConsumer:
         self.redis.hset(key, 'execution_id', execution_id)
         def finish(status, field, value):
             self.redis.eval(FINISH, 1, key, execution_id, status, field, value)
+        data = {}
+        def archive(**outcome):
+            if data.get('case_context') is None:return
+            client=self.client if self.client is not None else BackendToolClient.from_env()
+            receipt=client.request('POST','/internal/case-assistant/'+job_id+'/complete',
+                json={'execution_id':execution_id,**outcome})
+            if receipt!={'stored':True}:raise ToolError('AI_CASE_ARCHIVE_FAILED')
+        def fail(code):
+            # Persist before changing the active lease; never repeat model inference.
+            try:archive(error_code=code)
+            except ToolError:code='AI_CASE_ARCHIVE_FAILED'
+            finish('failed','error_code',code)
         try:
             raw = self.redis.hget(key, 'input')
             data = json.loads(raw)
@@ -94,7 +106,10 @@ class AIConsumer:
                 if data.get('workflow')=='project_assistant':
                     from .project_assistant import run_project_assistant
                     client=self.client if self.client is not None else BackendToolClient.from_env()
-                    result=run_project_assistant(data,selected_model,client,job_id,execution_id)
+                    if data.get('action')=='draft_change':
+                        from .change_proposal import run_change_proposal
+                        result=run_change_proposal(data,selected_model,client,job_id,execution_id)
+                    else:result=run_project_assistant(data,selected_model,client,job_id,execution_id)
                 elif data.get('workflow')=='process_file':
                     if os.getenv('TRATO_FILE_PROCESSING_ENABLED')!='true':raise ToolError('FILE_PROCESSING_NOT_CONFIGURED')
                     from .file_pipeline.runtime import build_file_pipeline
@@ -124,13 +139,14 @@ class AIConsumer:
                     result = run_business_ai(data, selected_model)
             finally:
                 if temporary_model is not None: temporary_model.close()
+            archive(result=result)
             finish('completed', 'result', json.dumps(result, ensure_ascii=False))
         except ToolError as e:
-            finish('failed', 'error_code', e.code)
+            fail(e.code)
         except (GeminiUnavailableError, GeminiConfigurationError):
-            finish('failed', 'error_code', 'MODEL_REQUEST_FAILED')
+            fail('MODEL_REQUEST_FAILED')
         except (ValueError, KeyError, TypeError):
-            finish('failed', 'error_code', 'AI_FAILED')
+            fail('AI_FAILED')
         # Never retry a failed/incomplete model call automatically after recovery.
         self.redis.xack(STREAM, GROUP, entry_id)
         self.redis.xdel(STREAM, entry_id)

@@ -143,3 +143,15 @@
 
 .rep-analysis-guidance{margin-top:12px}
 .rep-analysis-guidance p{margin:12px 0 0;font-size:14px;line-height:1.85;white-space:pre-wrap;overflow-wrap:anywhere}
+.rep-author-review-count{font-size:12px;color:var(--muted);margin-right:auto}
+.rep-review-card footer{flex-wrap:wrap;gap:10px}
+.rep-author-experience-nav{display:flex;align-items:center;justify-content:space-between;gap:16px;margin:20px 32px 0;padding-bottom:18px;border-bottom:1px solid var(--line)}
+.rep-author-experience-nav>span{font-size:14px;color:var(--muted)}
+.rep-author-experience-nav .button{min-width:38px;min-height:38px;padding:8px}
+.rep-withdraw-dialog{width:min(540px,calc(100vw - 40px))}
+.rep-withdraw-content{padding:8px 30px 28px}
+.rep-withdraw-content>p{font-size:14px;line-height:1.8;color:var(--muted)}
+.rep-withdraw-content blockquote{margin:20px 0;padding:16px 18px;background:var(--purple-soft);border-radius:10px;font-size:14px;line-height:1.8;max-height:180px;overflow:auto;overflow-wrap:anywhere}
+.rep-withdraw-confirm{background:#96392f;border-color:#96392f;color:#fff}
+.rep-withdraw-content .rep-error{color:#96392f}
+.rep-withdraw-content .rep-error:empty{display:none}

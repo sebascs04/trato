@@ -1,8 +1,8 @@
 # Trato Web
 
-Cliente estático de integración para comprobar PDF/DOCX a través de Trato API. La interfaz de producto existente sigue en la raíz del proyecto original; aún no se ha migrado a este repositorio para no interferir con P1.
+Cliente estático de integración para comprobar PDF/DOCX a través de Trato API. La interfaz de producto existente sigue en la raíz del proyecto original; aún no se ha migrado a este repositorio para no interferir con el equipo.
 
-**La interfaz oficial elegida por Sebastian es la raíz en localhost:5173.** Este directorio conserva únicamente la herramienta técnica de 5174. La autenticación/persistencia se integraron en el perfil y Clientes del diseño original mediante connected-workspace.mjs; no sustituir ese diseño por esta herramienta.
+**La interfaz oficial elegida por el responsable del proyecto es la raíz en localhost:5173.** Este directorio conserva únicamente la herramienta técnica de 5174. La autenticación/persistencia se integraron en el perfil y Clientes del diseño original mediante connected-workspace.mjs; no sustituir ese diseño por esta herramienta.
 
 ```bash
 npm run dev

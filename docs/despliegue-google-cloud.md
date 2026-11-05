@@ -82,7 +82,7 @@ Revisar también vencimiento del crédito antes de crear recursos facturables.
 Preferir una identidad administrativa de despliegue separada del worker. El runtime
 web `trato-web` no recibe roles del proyecto; el worker solo recibe la credencial
 Vertex ya autorizada. No conceder Owner/Editor al worker por comodidad. Se puede
-aprovisionar desde Cloud Shell con la identidad de el responsable del proyecto, sin exportar su clave.
+aprovisionar desde Cloud Shell con la identidad del responsable del proyecto, sin exportar su clave.
 Quien ejecute necesita permisos para habilitar servicios, administrar instancias/
 redes/firewall, Cloud Run, Artifact Registry, crear el runtime service account y
 actuar como él. Consultar las guías oficiales de IAM antes de conceder esos roles.

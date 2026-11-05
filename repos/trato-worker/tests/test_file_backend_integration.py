@@ -18,13 +18,15 @@ from trato_worker.source_tools import BackendToolClient
 from test_file_pipeline import ModelDouble
 
 class Repo:
-    def __init__(self,kind='initial_agreement',purpose=None):
+    def __init__(self,kind='initial_agreement',purpose=None,refund=False):
         self.owner,self.client,self.project_id,self.file,self.extract_id,self.revision,self.proposal,self.request=[str(uuid4()) for _ in range(8)]
         self.doc={'id':self.file,'owner_id':self.owner,'project_id':self.project_id,'kind':kind,
                   'sha256':'a'*64,'original_filename':'source.pdf'}
         self.option={'output_language':'en','purpose':purpose,'bindings':{'revision_id':self.revision} if purpose else {}}
         self.text='The project includes a website. The client requests two additional sections.'
         self.artifacts=[]
+        self.refund=refund
+        self.case_id,self.snapshot_id,self.payment_id=[str(uuid4()) for _ in range(3)]
     def project(self,id):return {'id':self.project_id,'owner_id':self.owner,'client_id':self.client}
     def extraction(self,id):return {'document':deepcopy(self.doc),'extraction':{'id':self.extract_id,'status':'ready','parser':'test','parser_version':'1'},
         'segments':[{'id':'page-1','locator_kind':'page','locator_number':1,'text':self.text}]}
@@ -39,6 +41,14 @@ class Repo:
         if table=='proposal_revisions' and 'id' in params:
             return [{'id':self.revision,'proposal_id':self.proposal,'scope_summary':'A website','conditions':'Review','additional_minor':100,'deadline':'2026-12-01'}]
         if table=='change_proposals':return [{'id':self.proposal,'request_document_id':self.request}]
+        if self.refund:
+            if table=='refund_artifacts':return [{'settlement_id':self.case_id,'snapshot_id':self.snapshot_id}]
+            if table=='refund_settlements':return [{'id':self.case_id,'payment_id':self.payment_id,'scope':'project_closure',
+                'reason':'Client requests closure','requested_by':'customer','request_evidence':[]}]
+            if table=='refund_settlement_payments':return [{'payment_id':self.payment_id}]
+            if table=='project_received_payments':return [{'id':self.payment_id,'origin':'initial','amount_minor':20000,
+                'currency':'USD','verified_at':'2026-11-01T12:00:00Z'}]
+            if table=='refund_snapshots':return [{'id':self.snapshot_id,'settlement_id':self.case_id,'version_no':1,'content_sha256':'b'*64}]
         return []
     def call(self,method,path,**kwargs):
         row=deepcopy(kwargs['json']);self.artifacts.append(row);return row
@@ -65,8 +75,8 @@ class Gateway:
 
 @patch.dict(os.environ,{'TRATO_FILE_PROCESSING_ENABLED':'true','TRATO_WORKER_TOKEN':'worker'})
 class FileBackendIntegrationTests(unittest.TestCase):
-    def setup_graph(self,kind='initial_agreement',purpose=None,model=None):
-        repo=Repo(kind,purpose);jobs=Jobs();gateway=Gateway()
+    def setup_graph(self,kind='initial_agreement',purpose=None,model=None,refund=False):
+        repo=Repo(kind,purpose,refund);jobs=Jobs();gateway=Gateway()
         service=FileProcessing(None,jobs=jobs,repo=repo,gateway=gateway,chunks=Chunks())
         enqueue_processing(repo,jobs,repo.owner,repo.project_id,repo.file,'test-model')
         app=FastAPI();app.include_router(build_file_processing_router(None,lambda:repo.owner,service=service))
@@ -79,8 +89,28 @@ class FileBackendIntegrationTests(unittest.TestCase):
         client=BackendToolClient('http://backend','worker',transport=httpx.MockTransport(handler))
         pipeline=build_file_pipeline(BackendFileClient(client),model or ModelDouble(),model_identity='test-model',
                     maximum_input_bytes=100000,enabled_purposes=('initial_agreement','change_request','supporting_reference',
-                    'delivery_evidence','addendum_adjustments','acceptance_evidence'))
+                    'delivery_evidence','addendum_adjustments','acceptance_evidence','refund_request','refund_evidence'))
         return repo,jobs,gateway,service,client,pipeline
+    def test_refund_snapshot_round_trip_api_manifest_worker_and_finalization(self):
+        repo,jobs,gateway,service,client,pipeline=self.setup_graph(kind='reference',refund=True)
+        self.assertEqual(jobs.data['bindings']['snapshot_id'],repo.snapshot_id)
+        event=pipeline.run(jobs.data['thread'])
+        self.assertEqual(event['action'],'completed',event)
+        self.assertEqual(event['result']['status'],'processed')
+        self.assertEqual(gateway.calls,[repo.file])
+        self.assertEqual(service.finalize(jobs.data['thread']['thread_id'],jobs.lease,event),{'stored':True,'status':'processed'})
+        artifact=next(row['artifact'] for row in repo.artifacts if row['stage']=='treatment')
+        self.assertEqual(artifact['assessment']['detected_category'],'refund_evidence')
+
+    def test_snapshot_binding_cannot_be_used_outside_refund_case(self):
+        from pydantic import ValidationError
+        from trato_worker.file_pipeline.contracts import FileManifest
+        repo,jobs,gateway,service,client,pipeline=self.setup_graph(kind='reference',refund=True)
+        manifest=service.active(jobs.data['thread']['thread_id'],jobs.lease)[3]
+        FileManifest.model_validate(manifest)
+        for changes in [{'purpose':'supporting_reference'}, {'bindings':{'snapshot_id':repo.snapshot_id}}]:
+            with self.subTest(changes=changes),self.assertRaises(ValidationError):
+                FileManifest.model_validate({**manifest,**changes})
     def test_all_existing_project_entry_kinds_follow_real_tools_and_persist(self):
         for kind,purpose in [('initial_agreement',None),('email_request',None),('reference',None),('delivery',None),
                              ('reference','addendum_adjustments'),('addendum','acceptance_evidence')]:

@@ -1,6 +1,6 @@
 # PayPal AI Hackathon: bases y evaluación final de Trato
 
-Revisión documental: 28 de octubre de 2026. Solicitada por Sebastian para contrastar la entrega terminada. Esta guía resume requisitos; no sustituye las bases oficiales ni certifica cumplimiento. Casillas sin marcar hasta comprobar evidencia de la versión que se entregará.
+Revisión documental: 28 de octubre de 2026. Solicitada por el responsable del proyecto para contrastar la entrega terminada. Esta guía resume requisitos; no sustituye las bases oficiales ni certifica cumplimiento. Casillas sin marcar hasta comprobar evidencia de la versión que se entregará.
 
 ## Fuentes oficiales
 
@@ -27,7 +27,7 @@ Fuente: calendario y bases §1. Perú usa UTC−5; PST usa UTC−8 en estas fech
 
 El anuncio ofrece comprobación de elegibilidad y aviso de problemas, permitiendo continuar editando hasta el cierre. No promete calificación ni asesoría de producto. No publica hora del día 5.
 
-Consultas enviadas por correo y publicadas por Sebastian en Discord:
+Consultas enviadas por correo y publicadas por el responsable del proyecto en Discord:
 
 - [ ] Hora exacta y zona horaria del corte.
 - [ ] Confirmación de edición del mismo envío hasta el 12, sin bloqueo anticipado.

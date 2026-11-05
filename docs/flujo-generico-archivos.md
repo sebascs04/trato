@@ -1,6 +1,6 @@
 # Flujo común de archivos: núcleo implementado y contrato de integración
 
-29/10/2026. Acuerdo de diseño en revisión con Sebastian. La base del worker y el chunker están implementados como módulos; esto no activa la ingesta conectada, Weaviate ni el agente de planificación. Conserva los contratos actuales hasta su migración explícita.
+29/10/2026. Acuerdo de diseño en revisión con el responsable del proyecto. La base del worker y el chunker están implementados como módulos; esto no activa la ingesta conectada, Weaviate ni el agente de planificación. Conserva los contratos actuales hasta su migración explícita.
 
 ## Propósitos
 
@@ -49,7 +49,7 @@ Supabase/Storage conserva los originales y resultados canónicos; Weaviate es un
 
 Actualizado el 1 noviembre 2026: el consumidor `process_file` usa `BackendFileClient` y las rutas `/internal/file-processing/*` conectadas al trabajo activo y su lease. El backend resuelve proposito, contexto, fuente y generacion; el procesador sirve el texto preparado, fragmenta e indexa. Extraccion, tratamiento, chunks, resumen y outcome quedan como artefactos privados inmutables de Supabase. El resumen no sustituye el texto original ni se vectoriza como relleno.
 
-La migracion aplicada es `20261101212324_file_processing_and_public_vector_sources.sql`. Activacion explicita API/worker mediante `TRATO_FILE_PROCESSING_ENABLED`; ejemplos false hasta preparar el entorno. No se cambia a otro modo si falla. Fuentes seleccionadas al subir acuerdo/pedido/referencia/entrega y PDFs de adenda/devolucion del cliente ya tienen entradas; no confundir PDF devuelto de aceptacion con devolucion monetaria. Los casos monetarios de Flores necesitan su productor y vinculo real de expediente; los adjuntos de reputacion quedan privados y fuera del indice publico.
+La migracion aplicada es `20261101212324_file_processing_and_public_vector_sources.sql`. Activacion explicita API/worker mediante `TRATO_FILE_PROCESSING_ENABLED`; ejemplos false hasta preparar el entorno. No se cambia a otro modo si falla. Fuentes seleccionadas al subir acuerdo/pedido/referencia/entrega y PDFs de adenda/devolucion del cliente ya tienen entradas; no confundir PDF devuelto de aceptacion con devolucion monetaria. Los casos monetarios del responsable de cambios y devoluciones necesitan su productor y vinculo real de expediente; los adjuntos de reputacion quedan privados y fuera del indice publico.
 
 Contrato verificado con grafo real, rutas HTTP en proceso y dobles de modelo/DB/vector: fuentes/citas, aislamiento, cambio de contexto, resultados obsoletos y material ajeno. No se han ejecutado documentos de usuario ni inferencia real en esta comprobacion. Ver `busqueda-vectorial-conectada.md` y `configuracion-vectorial-colaboradores.md` para alcance y configuracion actuales.
 

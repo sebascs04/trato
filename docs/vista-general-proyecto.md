@@ -1,6 +1,6 @@
 # Vista general del proyecto
 
-27 de octubre de 2026. Pedido de Sebastian: Proyecto sirve como entrada y resumen de todos los apartados, además del acuerdo inicial.
+27 de octubre de 2026. Pedido del responsable del proyecto: Proyecto sirve como entrada y resumen de todos los apartados, además del acuerdo inicial.
 
 - Acuerdo inicial: conserva Añadir información y muestra las dos fuentes más recientes. El resto se consulta en Documentos.
 - Cambios: vista previa de los dos pedidos más recientes, con el estado de negocio ya recibido. Ver cambios abre la pestaña completa; no duplica alta, revisión ni edición de propuestas.

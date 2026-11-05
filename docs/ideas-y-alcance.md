@@ -124,6 +124,6 @@ No hace falta una base vectorial para comparar dos textos cortos. No desplegar n
 
 Ideas futuras y experimentos de diferenciación en `ideas-futuras.md`, separados del alcance comprometido del MVP.
 
-Sebastian cubre IA y parte del backend; Mariam cubre aplicación e integración; ambos verifican el recorrido completo. Editor para guion, captura y montaje. Reparto propuesto, sujeto a disponibilidad. Evaluar una incorporación solo si existe una parte concreta sin cubrir.
+el responsable del proyecto cubre IA y parte del backend; una colaboradora cubre aplicación e integración; ambos verifican el recorrido completo. Editor para guion, captura y montaje. Reparto propuesto, sujeto a disponibilidad. Evaluar una incorporación solo si existe una parte concreta sin cubrir.
 
 Preparar una demo de menos de tres minutos que explique para quién es Trato y muestre una conversación convirtiéndose en una propuesta y una operación sandbox verificable. Código público, licencia open source, instrucciones reproducibles y materiales en inglés o traducidos. El prototipo frontend actual todavía no satisface el requisito de aplicación funcional del hackathon.

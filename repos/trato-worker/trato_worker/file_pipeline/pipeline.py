@@ -154,20 +154,47 @@ class FilePipeline:
             if missing:
                 return {'status': 'needs_clarification', 'treatment': {'decision': 'needs_clarification',
                         'reason': 'PURPOSE_BINDING_REQUIRED', 'missing_bindings': missing, 'human_review_required': True}}
-            treatment = Treatment.model_validate(self.handlers[manifest.purpose](manifest.model_copy(deep=True), deepcopy(state['extraction'])))
+            handler = self.handlers[manifest.purpose]
+            identity = getattr(handler, 'cache_identity', None)
+
+            def cache_key(identity):
+                return fingerprint([state['source_fingerprint'], manifest.purpose,
+                                    manifest.output_language, *identity])
+
+            def validate_treatment(raw):
+                treatment = Treatment.model_validate(raw)
+                if identity is not None and (treatment.model_identity, treatment.prompt_fingerprint) != identity:
+                    raise PipelineError('TREATMENT_IDENTITY_MISMATCH')
+                from .treatment import CATEGORIES
+                by_id = {segment['segment_id']: segment['text'] for segment in state['extraction']['segments']}
+                if treatment.coverage != {'status': 'all_segments_processed', 'segment_ids': list(by_id)}:
+                    raise PipelineError('TREATMENT_COVERAGE_INVALID')
+                refs = [*treatment.assessment.evidence, *(ref for obs in treatment.assessment.observations for ref in obs.evidence)]
+                if any(ref.segment_id not in by_id or ref.quote not in by_id[ref.segment_id] for ref in refs):
+                    raise PipelineError('TREATMENT_INVALID_CITATION')
+                if treatment.decision == 'continue' and treatment.assessment.detected_category != CATEGORIES[manifest.purpose]:
+                    raise PipelineError('TREATMENT_INCONSISTENT_RESPONSE')
+                return treatment
+
+            cached = self.backend.load_artifact(manifest.model_dump(), 'treatment', cache_key(identity)) if identity else None
+            raw = cached if cached is not None else handler(manifest.model_copy(deep=True), deepcopy(state['extraction']))
+            treatment = validate_treatment(raw)
+            key = cache_key((treatment.model_identity, treatment.prompt_fingerprint))
             value = treatment.model_dump()
-            from .treatment import CATEGORIES
-            by_id = {segment['segment_id']: segment['text'] for segment in state['extraction']['segments']}
-            if value['coverage'] != {'status': 'all_segments_processed', 'segment_ids': list(by_id)}:
-                raise PipelineError('TREATMENT_COVERAGE_INVALID')
-            refs = [*treatment.assessment.evidence, *(ref for obs in treatment.assessment.observations for ref in obs.evidence)]
-            if any(ref.segment_id not in by_id or ref.quote not in by_id[ref.segment_id] for ref in refs):
-                raise PipelineError('TREATMENT_INVALID_CITATION')
-            if treatment.decision == 'continue' and treatment.assessment.detected_category != CATEGORIES[manifest.purpose]:
-                raise PipelineError('TREATMENT_INCONSISTENT_RESPONSE')
-            key = fingerprint([state['source_fingerprint'], manifest.purpose, manifest.output_language,
-                               treatment.model_identity, treatment.prompt_fingerprint])
-            receipt = store(manifest, 'treatment', key, value)
+            try:
+                receipt = store(manifest, 'treatment', key, value)
+            except Exception as error:
+                if getattr(error, 'code', None) != 'FILE_ARTIFACT_CONFLICT':
+                    raise
+                # Another execution may have saved the same analysis while this one was running.
+                saved = self.backend.load_artifact(manifest.model_dump(), 'treatment', key)
+                if saved is None:
+                    raise
+                treatment = validate_treatment(saved)
+                if cache_key((treatment.model_identity, treatment.prompt_fingerprint)) != key:
+                    raise PipelineError('TREATMENT_IDENTITY_MISMATCH')
+                value = treatment.model_dump()
+                receipt = store(manifest, 'treatment', key, value)
             # Full observations/citations stay in authorized canonical storage, not the queue envelope.
             brief = {k: value[k] for k in ('decision', 'reason', 'human_review_required')}
             brief['detected_category'] = treatment.assessment.detected_category

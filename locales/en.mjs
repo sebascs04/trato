@@ -1,4 +1,8 @@
 export default {
+  "changeDraft.pricingTitle": "Calculate additional fee",
+  "changeDraft.additionalTotal": "Calculated fee",
+  "changeDraft.reasoning": "See how the effort was estimated",
+  "changeDraft.viewDocument": "View PDF",
   "changeDraft.title": "Change agent",
   "changeDraft.conversation": "Conversation about your change",
   "changeDraft.close": "Close agent",

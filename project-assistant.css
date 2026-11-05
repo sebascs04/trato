@@ -30,3 +30,41 @@ body.case-agent-open{overflow:hidden}
 /* Source scope is chosen explicitly and stays visible beside the conversation. */
 .case-agent-documents{margin:0 0 20px;padding:0}.case-agent-documents>header{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:12px}.case-agent-documents h4{font-size:14px;font-weight:550;margin:0}.case-agent-documents>header button{min-height:36px}
 [data-agent-document-choice],[data-agent-document-scope]{padding:12px 14px;margin:0 0 18px;border:1px solid var(--line,#e8e5ed);border-radius:12px;font-size:12px;line-height:1.7;background:var(--surface-soft,#f7f5fc)}[data-agent-document-choice]>p{margin:0 0 8px;color:var(--muted)}[data-agent-document-choice] summary,[data-agent-document-scope] summary{cursor:pointer;color:var(--purple)}[data-agent-document-choice] ul,[data-agent-document-scope] ul{margin:6px 0 12px;padding-left:18px;overflow-wrap:anywhere}[data-agent-document-choice] strong,[data-agent-document-scope] strong{font-size:11px;font-weight:550}[data-agent-document-choice] .button{margin-top:10px;font-size:12px;min-height:36px}[data-agent-document-scope]>.text-button{margin-top:8px;font-size:11px}
+
+.project-assistant > .project-assistant-preparation { position: static; width: 100%; max-height: none; overflow: visible; box-shadow: none; }
+
+.change-draft-result { display: grid; gap: 14px; }
+.change-draft-result h3, .change-draft-result h4 { margin: 0; }
+.change-draft-terms { display: grid; gap: 6px; }
+.change-draft-terms p, .change-draft-detail p { margin: 0 0 8px; font-size: 13px; line-height: 1.6; }
+.change-draft-calculation {
+  display: grid;
+  gap: 12px;
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: var(--surface-soft);
+}
+.change-draft-effort { margin: 0; color: var(--muted); font-size: 12px; }
+[data-change-draft-price] { display: grid; gap: 12px; }
+.change-draft-inputs { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+.change-draft-inputs .field { margin: 0; font-size: 12px; }
+.change-draft-inputs .context-box { min-height: 44px; padding: 8px 10px; }
+[data-change-draft-price] > .button { justify-self: start; min-height: 40px; }
+.change-draft-total {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--line);
+}
+.change-draft-total p { display: grid; gap: 2px; margin: 0; }
+.change-draft-total span { color: var(--muted); font-size: 12px; }
+.change-draft-total strong { color: var(--purple); font-size: 24px; font-variant-numeric: tabular-nums; }
+.change-draft-detail { padding: 8px 0; border-top: 1px solid var(--line); }
+.change-draft-detail summary { cursor: pointer; color: var(--purple); font-size: 13px; }
+.change-draft-detail p { margin-top: 8px; }
+.change-draft-composer .dialog-actions { margin: 0; gap: 8px; }
+.change-draft-composer textarea.context-box { min-height: 64px; }

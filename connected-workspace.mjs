@@ -465,7 +465,13 @@ export class ConnectedWorkspace {
   renderChangeReview(panel) {
     const comparison=this.comparison;
     if(!comparison || comparison.projectId!==this.projectId) {this.renderRequests(panel); return;}
-    const source=data=>`<article class="cloud-comparison-source"><h4>${escape(data.document.title)}</h4>${data.segments.map(segment=>`<section><p class="cloud-client-meta">${segment.locator_kind==='page'?uiText("Página"):uiText("Párrafo")} ${segment.locator_number}</p><p class="cloud-fragment">${escape(segment.text)}</p></section>`).join('') || ("<p class=\"cloud-notice\">"+uiText("Este archivo todavía no tiene texto para consultar. Puedes reintentar su lectura desde los archivos del proyecto.")+"</p>")}<button class="text-button" data-cloud-action="download" data-cloud-id="${data.document.id}">${uiText("Descargar original ↗")}</button></article>`;
+    const source=data=>{
+      const text=data.segments[0]?.text.trim().replace(/\s+/g,' ')||'';
+      const excerpt=text.length>240?text.slice(0,240).trimEnd()+'…':text;
+      return `<article class="cloud-comparison-source"><h4>${escape(data.document.title)}</h4>
+        <p class="cloud-fragment">${escape(excerpt||uiText("Este archivo todavía no tiene texto para consultar. Puedes reintentar su lectura desde los archivos del proyecto."))}</p>
+        <button type="button" class="text-button" data-cloud-action="text" data-cloud-id="${escape(data.document.id)}">${uiIcon('file-text')}${uiText('changeDraft.viewDocument')}</button></article>`;
+    };
     panel.innerHTML=`<section class="workspace-panel cloud-change-review"><button class="text-button" data-cloud-action="tab" data-cloud-tab="${comparison.returnTab||'solicitudes'}">${uiText("← Volver a los pedidos")}</button><div class="cloud-section-note"><span class="eyebrow">${uiText("REVISAR EL CAMBIO")}</span><h3>${escape(comparison.request.title)}</h3><p>${uiText("Compara lo que habían conversado con lo que está pidiendo ahora. Revisa si cambia el trabajo incluido, el costo o las fechas.")}</p></div>${comparison.loading?this.renderSkeleton('project',uiText("Cargando fuentes del proyecto y del pedido…")):comparison.error?`<button class="button secondary" data-cloud-action="review-change" data-cloud-id="${comparison.id}">${uiText("Volver a intentar")}</button>`:`<div class="cloud-comparison-grid"><section aria-label="${uiText("Información inicial")}"><span class="eyebrow">${uiText("LO CONVERSADO AL INICIO")}</span>${comparison.sources.map(source).join('')}</section><section aria-label="${uiText("Pedido nuevo")}"><span class="eyebrow">${uiText("LO QUE PIDE AHORA")}</span>${source(comparison.requestSource)}</section></div>`}</section>`;
   }
   renderSkeleton(kind='list',label=uiText("Cargando información…")) {

@@ -63,6 +63,7 @@ class PurposeAgent:
         def assess(manifest, extraction):
             if manifest.purpose != purpose: raise PipelineError('FILE_PURPOSE_HANDLER_MISMATCH')
             return self.assess(manifest, extraction)
+        assess.cache_identity = (self.model_identity, treatment_prompt_fingerprint(purpose))
         return assess
 
     def assess(self, manifest, extraction):
@@ -110,10 +111,14 @@ class PurposeAgent:
         decision = {'supported': 'continue', 'unclear': 'needs_clarification', 'unrelated': 'rejected'}[result.relevance]
         return {'decision': decision, 'reason': result.reason, 'human_review_required': True,
                 'assessment': result.model_dump(), 'model_identity': self.model_identity,
-                'prompt_fingerprint': fingerprint([PROMPT, purpose_definition(manifest.purpose)]),
+                'prompt_fingerprint': treatment_prompt_fingerprint(manifest.purpose),
                 'coverage': {'status': 'all_segments_processed', 'segment_ids': list(segments)}}
 
 
 def purpose_definition(purpose):
     """Version the supplied criteria too, so a corrected assessment has a new artifact key."""
     return {'purpose': purpose, 'expected_category': CATEGORIES[purpose], 'purpose_criteria': CRITERIA[purpose]}
+
+
+def treatment_prompt_fingerprint(purpose):
+    return fingerprint([PROMPT, purpose_definition(purpose)])

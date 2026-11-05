@@ -1,4 +1,8 @@
 export default {
+  "changeDraft.pricingTitle": "Calcular adicional",
+  "changeDraft.additionalTotal": "Adicional calculado",
+  "changeDraft.reasoning": "Ver cómo se estimó el esfuerzo",
+  "changeDraft.viewDocument": "Ver PDF",
   "changeDraft.title": "Agente de cambios",
   "changeDraft.conversation": "Conversación sobre tu cambio",
   "changeDraft.close": "Cerrar agente",

@@ -3,6 +3,8 @@ async function bootTrato() {
   try {
     const {localizeStaticDocument,installLanguagePreference,uiText}=await import('/i18n.mjs');
     localizeStaticDocument(document);
+    const {captureAuthReturn}=await import('/auth-return.mjs');
+    const authReturn=captureAuthReturn();
     document.title=uiText('app.title');
     const response = await fetch('/data/demo.json', { cache: 'no-store' });
     if (!response.ok) throw new Error(`No se pudieron cargar los datos (${response.status}).`);
@@ -18,10 +20,8 @@ async function bootTrato() {
     mountIcons(document);
     try {
       const {createConnectedWorkspace} = await import('/connected-workspace.mjs');
-      window.TratoCloud = createConnectedWorkspace();
+      window.TratoCloud = createConnectedWorkspace({authReturn});
       installLanguagePreference(window.TratoCloud);
-      const {installProjectGrid}=await import('/project-grid.mjs');
-      installProjectGrid(window.TratoCloud);
       const {installPracticeWorkspace}=await import('/practice-workspace.mjs');
       installPracticeWorkspace(window.TratoCloud);
       const {installReputationWorkspace}=await import('/reputation-workspace.mjs');

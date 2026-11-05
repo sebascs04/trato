@@ -27,7 +27,12 @@ export class AIJobClient {
  accept(job){
   if(!['queued','running','completed','failed'].includes(job.status))throw Error('AI_JOB_INVALID');
   this.state.status=job.status;this.state.error=null;
-  if(job.status==='completed'){if(!job.result||typeof job.result!=='object')throw Error('AI_JOB_INVALID');this.state.result=job.result;}
+  if(job.status==='completed'){
+   if(!job.result||typeof job.result!=='object')throw Error('AI_JOB_INVALID');
+   if(job.completed_at!==undefined&&(typeof job.completed_at!=='string'||!Number.isFinite(Date.parse(job.completed_at))))throw Error('AI_JOB_INVALID');
+   if(job.source_reviews!==undefined&&(!Array.isArray(job.source_reviews)||job.source_reviews.some(s=>!s||typeof s.id!=='string'||!s.id||!Number.isInteger(s.version)||s.version<1)))throw Error('AI_JOB_INVALID');
+   this.state.result=job.result;this.state.completedAt=job.completed_at??null;this.state.sourceReviews=job.source_reviews??null;
+  }
   if(job.status==='failed')this.state.error=job.error_code||'AI_REQUEST_FAILED';
   this.publish();
  }

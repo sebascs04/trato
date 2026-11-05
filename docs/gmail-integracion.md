@@ -1,10 +1,12 @@
 # Gmail en Trato: implementación y configuración
 
+Estado vigente, 4 de noviembre de 2026: el responsable del proyecto eligió correo central de Trato para envío y recepción, con registro por cualquier proveedor. Ver [correo central de Trato](correo-central-trato.md). Los apartados siguientes conservan la evolución anterior por buzón personal.
+
 25 de octubre de 2026.
 
 ## Estado y reparto
 
-P1 implementa correo, propuesta de adenda, puente de aceptación y PayPal. P2 mantiene acuerdo inicial, fuentes, extracción, IA, análisis y alternativas. El freelancer revisa explícitamente antes de enviar. La propuesta de adenda se envía primero; solo una aceptación real registrada habilitará crear un cobro adicional.
+el equipo implementa correo, propuesta de adenda, puente de aceptación y PayPal. el equipo mantiene acuerdo inicial, fuentes, extracción, IA, análisis y alternativas. El freelancer revisa explícitamente antes de enviar. La propuesta de adenda se envía primero; solo una aceptación real registrada habilitará crear un cobro adicional.
 
 Ya hay código de conexión OAuth Gmail montado en la API y el perfil de la interfaz oficial5173. **No hay cliente OAuth de Google configurado todavía; no se autorizó una cuenta Gmail ni se enviaron mensajes reales.** El usuario confirmó que necesita crear ese cliente, y pidió guía paso a paso.
 
@@ -87,7 +89,6 @@ Supervisor actualizado en sesión exec74195: web5173, API8000, procesador8001. V
 
 ### Actualización de configuración local
 
-El usuario descargó el JSON de su cliente OAuth web. Se importó el archivo local correspondiente al proyecto esperado y al redirect exacto a `repos/trato-api/.env`, con permisos0600 y clave Fernet local generada. No se imprimieron las credenciales. Se comprobó que `.env` y `.local/gmail/vault.sqlite3` están ignorados por Git. Se reiniciaron los servicios para cargar la configuración. Quedan pendientes añadir la cuenta de prueba en Google si corresponde y completar personalmente el consentimiento desde el perfil. Esta actualización sustituye la afirmación anterior de que faltaba un cliente OAuth, pero no acredita una cuenta Gmail conectada ni un envío real.
 
 ### Conexión Gmail real verificada · 25 de octubre de 2026
 

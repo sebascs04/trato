@@ -1,6 +1,6 @@
 # Fuentes de Ensayos: contexto directo y recuperación
 
-Investigación del 28/10/2026 solicitada por Sebastian. Propuesta de arquitectura; no instala Weaviate, no cambia proveedor, no activa inferencia ni modifica el recorrido contractual del compañero. Rama compartida: `feature/trato-next-iteration`.
+Investigación del 28/10/2026 solicitada por el responsable del proyecto. Propuesta de arquitectura; no instala Weaviate, no cambia proveedor, no activa inferencia ni modifica el recorrido contractual del compañero. Rama compartida: `feature/trato-next-iteration`.
 
 ## Qué significa responder teniendo en cuenta una fuente
 
@@ -74,7 +74,7 @@ Weaviate estaba previsto en [arquitectura-ia-trato.md](arquitectura-ia-trato.md)
 
 Dos fuentes de coaching revisadas: [Seven Elements of Effective Negotiations](https://hms.harvard.edu/sites/default/files/Departments/Ombuds%20Office/files/SEVEN%20ELEMENTS%20OF%20EFFECTIVE%20NEGOTIATIONS.pdf), documento de formación de 2008; y [Principled Negotiation](https://www.pon.harvard.edu/daily/negotiation-skills-daily/principled-negotiation-focus-interests-create-value/), artículo de PON. Orientan escucha, intereses y opciones; no constituyen una escala validada para freelancers. Su selección y aplicación a Trato deben documentarse como adaptación propia. La URL de escucha del adaptador no pudo verificarse en esta consulta por timeout y no se marca como revisada.
 
-Catálogo concreto revisado: [fuentes-evaluador-ensayos.md](fuentes-evaluador-ensayos.md). La decisión posterior de Sebastian es un conjunto fijo de archivos por IDs y lectura obligatoria, según [herramientas-archivos-agentes.md](herramientas-archivos-agentes.md). No se requiere Weaviate para seleccionar esas guías ni una nueva gestión de versiones documentales. Pendientes incorporación, medición del contexto y pruebas del evaluador; no interferir con Reputación ni el recorrido contractual.
+Catálogo concreto revisado: [fuentes-evaluador-ensayos.md](fuentes-evaluador-ensayos.md). La decisión posterior del responsable del proyecto es un conjunto fijo de archivos por IDs y lectura obligatoria, según [herramientas-archivos-agentes.md](herramientas-archivos-agentes.md). No se requiere Weaviate para seleccionar esas guías ni una nueva gestión de versiones documentales. Pendientes incorporación, medición del contexto y pruebas del evaluador; no interferir con Reputación ni el recorrido contractual.
 
 ## Actualizacion de integracion, 1 noviembre 2026
 

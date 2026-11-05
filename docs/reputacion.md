@@ -1,6 +1,6 @@
 # Reputación de clientes
 
-28/10/2026. Implementación autorizada por Sebastian como sección propia, debajo de Ensayos. No se crean PR ni se hace merge sin una orden expresa.
+28/10/2026. Implementación autorizada por el responsable del proyecto como sección propia, debajo de Ensayos. No se crean PR ni se hace merge sin una orden expresa.
 
 ## Recorrido
 
@@ -37,11 +37,10 @@ SQL real con dos usuarios y ROLLBACK: comunidad compartida, datos privados no ex
 
 Siete pruebas API; 19 navegador con dobles explícitos de API (Reputación, Ensayos y vista general) aprobadas; se añadieron regresiones para reporte y conservación de borrador ante error de publicación. 35 pruebas Node y npm run check aprobados. Capturas de la vista vacía y ficha inspeccionadas con datos de prueba solo en el transporte del navegador. No se automatizó una publicación mediante una sesión real de usuario en navegador.
 
-Advisors de seguridad: INFO intencionales por tablas privadas con RLS y sin políticas de acceso directo; aviso preexistente de protección de contraseñas filtradas sin modificar. Los recursos del módulo responden200 y el API real rechaza peticiones sin sesión401.
 
 ## Coordinación
 
-Rama remota preparada feature/client-reputation desde main 5ea5028, sin subir estos cambios, sin crear PR y sin merge. El workspace compartido no tiene checkout Git operativo en su raíz; no modificar la rama local de API de P1 (feature/local-rehearsal-qwen). Coordinar un snapshot de alcance o checkout separado antes de cualquier publicación autorizada.
+Rama remota preparada feature/client-reputation desde main 5ea5028, sin subir estos cambios, sin crear PR y sin merge. El workspace compartido no tiene checkout Git operativo en su raíz; no modificar la rama local de API del equipo (feature/local-rehearsal-qwen). Coordinar un snapshot de alcance o checkout separado antes de cualquier publicación autorizada.
 
 
 Cierre: seis pruebas propias de Reputación aprobadas, incluidas reportar sin editar una reseña ajena y conservar el borrador ante error. SQL ampliado confirma rechazo de usuarios eliminados y republicación de reseña retirada. Migración adicional20261028160219_reputation_foreign_key_indexes.sql cubre las dos FK nuevas señaladas por Advisors; no se modifica el índice pendiente preexistente de worker_threads.
@@ -85,7 +84,6 @@ La paginación ofrece25registros por página; un agente futuro debe consultar to
 - Navegador:9pruebas aprobadas del recorrido y errores;2regresiones adicionales aprobadas de homónimos/búsqueda exacta y texto literal/largo sin ejecución. Son pruebas con transporte Auth/API controlado, no sesiones reales de dos freelancers.
 - SQL real en Supabase, con2usuarios y3proyectos sintéticos dentro de transacción con ROLLBACK: ficha compartida, agregado correcto, edición/retirada/republicación, reportes idempotentes, consentimiento, correo privado no expuesto, normalización, alias de correo preservados, homónimos separados y edición ajena rechazada. Conteo final comunitario0; no se publicaron testimonios reales para probar.
 - Comprobación de sintaxis y1230clavesES/EN aprobada. Añadido únicamente el icono Lucide lock-keyhole mediante icons:build.
-- API real en funcionamiento: health200 y lecturas/búsqueda sin sesión401.
 - Advisors sin hallazgos nuevos del cambio: persisten las tablas privadas cerradas y el aviso previo de protección de contraseñas filtradas; rendimiento mantiene el índice ajeno a este bloque pendiente en worker_threads. No se amplía alcance para modificarlos.
 
 No se dispone de dos sesiones reales autorizadas de navegador para un E2E conectado completo; esa comprobación sigue pendiente. Los adjuntos se implementaron en la continuación siguiente, con publicación expresamente confirmada por su autor.
@@ -93,13 +91,13 @@ No se dispone de dos sesiones reales autorizadas de navegador para un E2E conect
 Migraciones aplicadas y alineadas con el historial del servidor: `20261029010557_reputation_public_email.sql` y `20261029010728_reputation_review_identity_guard.sql`. Archivos fuente de migraciones generados con CLI; la fecha del nombre es UTC.
 
 
-### Precisión de alcance comunicada por Sebastian
+### Precisión de alcance comunicada por el responsable del proyecto
 
 El propósito visible de Reputación se enfoca en aportar antecedentes cuando ese cliente solicite un trabajo: un perfil basado en experiencias disponibles, posibles riesgos de pago y propuestas de entregas/cobros por etapas. No anuncia una conversación con el cliente real ni presenta Ensayos como ese recorrido. El número de etapas es un ejemplo revisable, no una regla universal. Las experiencias no permiten garantizar un pago ni inventar probabilidades; las recomendaciones futuras deben conservar fuentes y límites. No se ha activado ese agente mediante el cambio de texto.
 
 ## Continuación: archivos de respaldo
 
-Sebastian autorizó compartir hasta tres archivos con otros usuarios registrados de Trato después de revisar y confirmar su publicación. Se aceptan PDF de hasta10MiB cada uno. Los adjuntos seleccionados se muestran en la revisión final antes del consentimiento; los documentos privados del proyecto nunca se adjuntan automáticamente.
+el responsable del proyecto autorizó compartir hasta tres archivos con otros usuarios registrados de Trato después de revisar y confirmar su publicación. Se aceptan PDF de hasta10MiB cada uno. Los adjuntos seleccionados se muestran en la revisión final antes del consentimiento; los documentos privados del proyecto nunca se adjuntan automáticamente.
 
 Los archivos pendientes permanecen privados. Al publicar, cualquier cuenta permanente autenticada puede consultar los adjuntos elegidos. Al retirar la experiencia o confirmar una edición que quite un archivo, ese respaldo deja de ser compartido; las versiones internas conservan su referencia. Quitar un archivo de una edición aún no confirmada solo cambia la selección del borrador.
 
@@ -136,7 +134,7 @@ El diálogo de eliminar proyecto se presenta con tarjeta de identidad, icono, te
 
 ## Identidad pública solo por correo · 29/10/2026
 
-Por indicación de Sebastian, el alta y las fichas de Reputación ya no solicitan ni muestran nombre público, ubicación o sitio web. El correo normalizado es el identificador visible; no se cambia la identidad privada de Clientes. El alias corresponde al freelancer que escribe la experiencia, no al cliente.
+Por indicación del responsable del proyecto, el alta y las fichas de Reputación ya no solicitan ni muestran nombre público, ubicación o sitio web. El correo normalizado es el identificador visible; no se cambia la identidad privada de Clientes. El alias corresponde al freelancer que escribe la experiencia, no al cliente.
 
 La migración `20261030040148_reputation_email_identity.sql` permite `name` histórico nullable. Los perfiles nuevos guardan únicamente la identidad explícita `public_email`, con nombre nulo y ubicación/web vacíos; no se inventan datos ni se copia el nombre privado. Se conservan los registros anteriores. La búsqueda comunitaria usa el correo y no pierde perfiles con `name` nulo. Los antecedentes de Plan de trabajo también muestran el correo.
 

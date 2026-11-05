@@ -17,6 +17,16 @@ export function reputationAnalysisChanged(sourceReviews,reviews,total){
  return (Number.isSafeInteger(total)&&total!==sourceReviews.length)||reviews.some(review=>versions.get(review.id)!==review.version);
 }
 
+export function groupReputationReviews(reviews){
+ const groups=new Map();
+ for(const review of reviews){
+  if(typeof review.author_key!=='string'||!review.author_key)throw new Error('REPUTATION_AUTHOR_KEY_REQUIRED');
+  if(!groups.has(review.author_key))groups.set(review.author_key,[]);
+  groups.get(review.author_key).push(review);
+ }
+ return [...groups.values()].map(items=>items.sort((a,b)=>b.created_at.localeCompare(a.created_at)||a.id.localeCompare(b.id)));
+}
+
 export function installReputationWorkspace(cloud){
  let owner='',data=null,search='',selected='',offset=0,more=false,loading=false,error='',notice='',epoch=0,options=null,dialog=null,busy=false,root=null,fileDialog=null,fileUrl=null,fileEpoch=0;
  let analysisDialog=null,analysisReturn=null,analysis=null,analysisScope='',analysisError='',usage=null,usageError='',usageBusy=false,usageLoading=false;
@@ -102,16 +112,24 @@ export function installReputationWorkspace(cloud){
   if(selected){renderDetail();return;}
   root.innerHTML=shell(`<div class="rep-directory-tools"><form data-rep-search role="search"><label for="rep-search" class="sr-only">${t('search')}</label><span aria-hidden="true">${icon('search')}</span><input id="rep-search" name="search" type="search" maxlength="254" value="${esc(search)}" placeholder="${t('searchPlaceholder')}"><button class="button secondary">${t('searchAction')}</button></form><span>${icon('users')}${t('private')}</span></div>${data.clients.length?`<div class="rep-directory" aria-label="${t('directory')}">${data.clients.map(client=>`<article class="rep-client-card"><header><span class="rep-client-avatar">${esc((client.public_email||'').slice(0,2).toUpperCase())}</span><div><span class="rep-client-label">${t('clientLabel')}</span><h3>${esc(emailLabel(client))}</h3></div></header><div class="rep-card-rating"><strong>${number(client.rating)}</strong>${stars(client.rating)}<span>${count(client.review_count)}</span></div>${client.latest_review?`<p class="rep-card-excerpt">“${esc(client.latest_review.excerpt)}”</p>`:''}<button class="text-button" data-rep-action="open" data-rep-id="${esc(client.id)}">${t('open')}${icon('arrow-right')}</button></article>`).join('')}</div>${more?`<button class="button secondary rep-more" data-rep-action="more" ${loading?'disabled':''}>${t('more')}</button>`:''}`:`<section class="rep-empty workspace-panel"><span class="rep-empty-icon">${icon('star')}</span><h3>${t(search?'noResults':'emptyTitle')}</h3>${!search?`<p>${t('emptyCopy')}</p>`:''}${search?`<button class="button secondary" data-rep-action="clear">${t('all')}</button>`:''}</section>`}<aside class="rep-community-note">${icon('users')}<div><strong>${t('opinion')}</strong><p>${t('privateCopy')}</p></div></aside>`);
  }
- function renderReviewCard(r){return `<article class="rep-review rep-review-card workspace-panel"><header><div class="rep-author"><span>${esc(r.alias.slice(0,2).toUpperCase())}</span><div><strong>${esc(r.alias)}</strong><small>${r.mine?t('own'):t('author')}</small></div></div><time datetime="${esc(r.created_at)}">${date(r.created_at)}</time></header><div class="rep-review-rating"><span role="img" aria-label="${t('rating',{value:r.rating})}">${stars(r.rating)}</span></div><p class="rep-review-copy rep-review-excerpt">${esc(r.body)}</p><footer>${r.attachments?.length?`<small class="rep-review-file-count">${icon('paperclip')}${t('filesShared',{count:r.attachments.length})}</small>`:'<span></span>'}<button type="button" class="text-button rep-review-open" data-rep-action="review" data-rep-id="${esc(r.id)}" aria-haspopup="dialog" aria-label="${esc(t('openReviewLabel',{alias:r.alias}))}">${t('openReview')}${icon('arrow-up-right')}</button></footer></article>`;}
+ function renderReviewCard(r,total=1){return `<article class="rep-review rep-review-card workspace-panel"><header><div class="rep-author"><span>${esc(r.alias.slice(0,2).toUpperCase())}</span><div><strong>${esc(r.alias)}</strong><small>${r.mine?t('own'):t('author')}</small></div></div><time datetime="${esc(r.created_at)}">${date(r.created_at)}</time></header><div class="rep-review-rating"><span role="img" aria-label="${t('rating',{value:r.rating})}">${stars(r.rating)}</span></div><p class="rep-review-copy rep-review-excerpt">${esc(r.body)}</p><footer>${r.attachments?.length?`<small class="rep-review-file-count">${icon('paperclip')}${t('filesShared',{count:r.attachments.length})}</small>`:'<span></span>'}<span class="rep-author-review-count">${count(total)}</span><button type="button" class="text-button rep-review-open" data-rep-action="review" data-rep-id="${esc(r.id)}" aria-haspopup="dialog" aria-label="${esc(t('openReviewLabel',{alias:r.alias}))}">${total>1?t('openExperiences'):t('openReview')}${icon('arrow-up-right')}</button></footer></article>`;}
  function renderReviewFull(r){return `<article class="rep-review rep-review-full"><header><div class="rep-author"><span>${esc(r.alias.slice(0,2).toUpperCase())}</span><div><strong>${esc(r.alias)}</strong><small>${r.mine?t('own'):t('author')}</small></div></div><time datetime="${esc(r.created_at)}">${date(r.created_at)}</time></header><div class="rep-review-rating"><span aria-label="${t('rating',{value:r.rating})}">${stars(r.rating)}</span><span class="rep-project-badge" title="${t('linkedHelp')}">${icon('file-text')}${t('linked')}</span></div><p class="rep-review-copy">${esc(r.body)}</p>${filesMarkup(r.attachments)}<div class="rep-review-facts"><span>${t('communication')}: ${r.communication}/5</span>${r.collaboration!=null?`<span>${t('collaboration')}: ${r.collaboration}/5</span>`:''}</div><footer>${r.updated_at!==r.created_at?`<small>${t('updated',{date:date(r.updated_at)})}</small>`:'<span></span>'}<div>${r.mine?`<button class="text-button" data-rep-action="edit" data-rep-id="${esc(r.id)}">${icon('pencil')}${t('edit')}</button><button class="text-button" data-rep-action="withdraw" data-rep-id="${esc(r.id)}">${t('withdraw')}</button>`:`<button class="text-button" data-rep-action="report" data-rep-id="${esc(r.id)}">${icon('flag')}${t('report')}</button>`}</div></footer></article>`;}
  function openReview(id){
   const review=data?.reviews?.find(item=>item.id===id);if(!review)return;
-  const current=openDialog(t('reviewDetail'),renderReviewFull(review));current.classList.add('rep-review-dialog');
+  const items=groupReputationReviews(data.reviews).find(group=>group[0].author_key===review.author_key);
+  let index=items.findIndex(item=>item.id===id);
+  const current=openDialog(items.length>1?t('openExperiences'):t('reviewDetail'),'');current.classList.add('rep-review-dialog');
+  const body=cloud.document.createElement('div');current.append(body);
+  function paint(){
+   body.innerHTML=`${items.length>1?`<nav class="rep-author-experience-nav" aria-label="${t('openExperiences')}"><button type="button" class="button secondary" data-author-prev ${index===0?'disabled':''} aria-label="${t('previousExperience')}" title="${t('previousExperience')}">${icon('arrow-left')}</button><span>${t('experiencePosition',{current:index+1,total:items.length})}</span><button type="button" class="button secondary" data-author-next ${index===items.length-1?'disabled':''} aria-label="${t('nextExperience')}" title="${t('nextExperience')}">${icon('arrow-right')}</button></nav>`:''}${renderReviewFull(items[index])}`;
+  }
+  body.addEventListener('click',event=>{if(event.target.closest('[data-author-prev]')&&index>0){index--;paint();}else if(event.target.closest('[data-author-next]')&&index<items.length-1){index++;paint();}});
+  paint();
   current.addEventListener('click',event=>{if(event.target!==current)return;const box=current.getBoundingClientRect();if(event.clientX<box.left||event.clientX>box.right||event.clientY<box.top||event.clientY>box.bottom)close();});
  }
  function renderDetail(){
   const c=data.client;prepareAnalysis();
-  root.innerHTML=shell(`${usagePanel()}<button class="text-button rep-back" data-rep-action="back">${icon('arrow-left')}${t('back')}</button><section class="rep-profile workspace-panel"><div class="rep-profile-identity"><span class="rep-client-avatar">${esc((c.public_email||'').slice(0,2).toUpperCase())}</span><div><span class="rep-client-label">${t('clientLabel')}</span><h2>${esc(emailLabel(c))}</h2></div></div><div class="rep-profile-score"><strong>${number(c.rating)}</strong>${stars(c.rating)}<span>${count(c.review_count)}</span></div><div class="rep-score-breakdown"><div><span>${t('communication')}</span><strong>${number(c.communication)}<small> / 5</small></strong></div><div><span>${t('collaboration')}</span><strong>${number(c.collaboration??null)}<small> / 5</small></strong></div></div></section><div class="rep-analysis-launch"><button type="button" class="button secondary" data-rep-action="ai-open" aria-haspopup="dialog">${icon('sparkles')}${t(analysis?.state.status==='idle'?'ai.start':'ai.open')}</button></div><div class="rep-review-list">${data.reviews.map(r=>renderReviewCard(r)).join('')}</div>${more?`<button class="button secondary rep-more" data-rep-action="more" ${loading?'disabled':''}>${t('more')}</button>`:''}<p class="rep-evidence-note">${t('linkedHelp')}</p>`);
+  root.innerHTML=shell(`${usagePanel()}<button class="text-button rep-back" data-rep-action="back">${icon('arrow-left')}${t('back')}</button><section class="rep-profile workspace-panel"><div class="rep-profile-identity"><span class="rep-client-avatar">${esc((c.public_email||'').slice(0,2).toUpperCase())}</span><div><span class="rep-client-label">${t('clientLabel')}</span><h2>${esc(emailLabel(c))}</h2></div></div><div class="rep-profile-score"><strong>${number(c.rating)}</strong>${stars(c.rating)}<span>${count(c.review_count)}</span></div><div class="rep-score-breakdown"><div><span>${t('communication')}</span><strong>${number(c.communication)}<small> / 5</small></strong></div><div><span>${t('collaboration')}</span><strong>${number(c.collaboration??null)}<small> / 5</small></strong></div></div></section><div class="rep-analysis-launch"><button type="button" class="button secondary" data-rep-action="ai-open" aria-haspopup="dialog">${icon('sparkles')}${t(analysis?.state.status==='idle'?'ai.start':'ai.open')}</button></div><div class="rep-review-list">${groupReputationReviews(data.reviews).map(items=>renderReviewCard(items[0],items.length)).join('')}</div>${more?`<button class="button secondary rep-more" data-rep-action="more" ${loading?'disabled':''}>${t('more')}</button>`:''}<p class="rep-evidence-note">${t('linkedHelp')}</p>`);
   paintAnalysis();
  }
  async function load(append=false){
@@ -150,10 +168,10 @@ export function installReputationWorkspace(cloud){
    const profile=review?data.client:null;
    let step=review?2:1,lookupBusy=false,matchingProjects=[];
    const draft={client:profile,email:profile?.public_email||(!review&&selected?data.client.public_email||'':''),alias:options.alias||'',project_id:ownProject?.id||'',rating:review?.rating||0,communication:review?.communication||'',collaboration:review?.collaboration||'',body:review?.body||'',attachments:[...(review?.attachments||[])],pending:[],filesError:'',uploading:false,filesLoading:false,filesLoadedFor:'',fileRun:0,uploadKeys:new Map()};
-   const stage=cloud.document.createElement('div');stage.className='rep-write-stage';current.querySelector('.rep-modal-status').replaceWith(stage);
+   const stage=cloud.document.createElement('div');stage.className='rep-write-stage';
    const identity=()=>`<section class="rep-write-identity"><span class="rep-client-avatar">${esc((draft.email||'').slice(0,2).toUpperCase())}</span><div><span class="rep-client-label">${t('clientLabel')}</span><strong>${esc(draft.email||t('emailNotPublished'))}</strong></div></section>`;
    function drawStep(){
-    const progress=`<ol class="rep-write-steps" aria-label="${t('writeSteps')}">${[1,2].map(n=>`<li class="${n<step?'is-complete':''}" ${step===n?'aria-current="step"':''}><span class="rep-step-number" aria-hidden="true">${n<step?icon('check'):n}</span><span>${t('step'+n)}</span></li>`).join('')}</ol>`;
+    const progress=review?'':`<ol class="rep-write-steps" aria-label="${t('writeSteps')}">${[1,2].map(n=>`<li class="${n<step?'is-complete':''}" ${step===n?'aria-current="step"':''}><span class="rep-step-number" aria-hidden="true">${n<step?icon('check'):n}</span><span>${t('step'+n)}</span></li>`).join('')}</ol>`;
     if(step===1){
      stage.innerHTML=`${progress}<form data-rep-identify><p class="rep-form-hint">${t('emailFirst')}</p><label class="field" for="rep-public-email">${t('publicEmail')}</label><select class="context-box" id="rep-public-email" name="public_email" required aria-describedby="rep-email-help"><option value="">${t('selectClient')}</option>${clientEmails.map(email=>`<option value="${esc(email)}" ${email===draft.email?'selected':''}>${esc(email)}</option>`).join('')}</select><p class="rep-field-help" id="rep-email-help">${t('emailHelp')}</p><p class="rep-error" role="alert" data-rep-error></p><div class="rep-form-actions"><button type="submit" class="button">${t('continue')}${icon('arrow-right')}</button></div></form>`;
      const form=stage.querySelector('form');form.addEventListener('submit',event=>{event.preventDefault();lookup();});
@@ -226,6 +244,7 @@ export function installReputationWorkspace(cloud){
    function capture(){const form=stage.querySelector('form');draft.alias=form.elements.alias.value;draft.body=form.elements.body.value;draft.rating=Number(form.elements.rating.value);draft.communication=form.elements.communication.value;draft.collaboration=form.elements.collaboration.value;draft.project_id=ownProject?.id||form.elements.project_id.value;}
    if(review&&!await loadClientProjects())return;
    drawStep();
+   current.querySelector('.rep-modal-status').replaceWith(stage);
   }catch(issue){if(current===dialog){const status=current.querySelector('.rep-modal-status');if(status)status.outerHTML=`<div class="rep-empty" role="alert"><p>${esc(message(issue))}</p><button class="button secondary" data-rep-close>${t('close')}</button></div>`;}}
  }
  async function mutate(form,operation,done){
@@ -265,9 +284,13 @@ export function installReputationWorkspace(cloud){
    case 'edit':write(data.reviews.find(r=>r.id===id&&r.mine));break;
    case 'report':report(id);break;
    case 'withdraw':{
-    if(!window.confirm(t('withdrawConfirm')))break;
-    action.disabled=true;
-    try{await cloud.request('/api/v1/reputation/reviews/withdraw',{method:'POST',body:JSON.stringify({review_id:id})});notice=t('withdrawn');close();selected='';offset=0;load();}catch(issue){notice=message(issue);render();}break;
+    const review=data?.reviews?.find(item=>item.id===id&&item.mine);if(!review||busy)break;
+    const current=openDialog(t('withdraw'),`<div class="rep-withdraw-content"><p>${t('withdrawHelp')}</p><blockquote>${esc(review.body)}</blockquote><p class="rep-error" role="alert" data-withdraw-error></p><div class="rep-form-actions"><button type="button" class="button secondary" data-rep-close>${t('cancel')}</button><button type="button" class="button rep-withdraw-confirm" data-withdraw-confirm>${t('withdrawAction')}</button></div></div>`);current.classList.add('rep-withdraw-dialog');
+    current.querySelector('[data-withdraw-confirm]').addEventListener('click',async()=>{
+     if(busy)return;busy=true;current.querySelectorAll('button').forEach(button=>button.disabled=true);
+     try{await cloud.request('/api/v1/reputation/reviews/withdraw',{method:'POST',body:JSON.stringify({review_id:id})});busy=false;notice=t('withdrawn');close();offset=0;await load();}
+     catch(issue){busy=false;if(dialog===current){current.querySelector('[data-withdraw-error]').textContent=message(issue);current.querySelectorAll('button').forEach(button=>button.disabled=false);}}
+    });break;
    }
   }
  });

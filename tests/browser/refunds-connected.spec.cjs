@@ -134,11 +134,17 @@ async function draft(page,amount){
 for(const amount of ['', '120','300'])test(`connected proposal ${amount||'full'} saves and reloads exact snapshot`,async({page})=>{
  const {model,errors}=await setup(page);await create(page);const form=await draft(page,amount);
  await form.locator('button[type="submit"]').click();
+ await expect(page.locator('[data-case-assistant]')).toHaveCount(1);
+ await expect(page.locator('[data-case-action="toggle"]')).toBeVisible();
+ await page.locator('.refund-wizard-steps [data-step="2"]').click();
  await expect(page.locator('.refund-history button')).toHaveCount(1);
  expect(model.snapshots[0].terms.proposed_refund_minor).toBe(30000-Number(amount||0)*100);
  expect(model.writes[1].body.expected_snapshot_id).toBe(null);
  await page.reload();await expect(page.locator('.refund-workspace')).toBeVisible();
  await page.locator('[data-refund-action="open"]').click();
+ await expect(page.locator('[data-case-assistant]')).toHaveCount(1);
+ await expect(page.locator('[data-case-action="toggle"]')).toBeVisible();
+ await page.locator('.refund-wizard-steps [data-step="2"]').click();
  await expect(page.locator('.refund-history button')).toHaveCount(1);
  expect(errors).toEqual([]);
 });

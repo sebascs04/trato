@@ -1,5 +1,6 @@
 # Flujo interno del evaluador de Ensayos
 
+Diseño acordado con el responsable del proyecto el 28/10/2026. Rama compartida: `feature/trato-next-iteration`. Especificación para implementar; no implica que el worker, las fuentes o la interfaz ya estén conectados.
 
 ## Entradas y responsabilidades
 

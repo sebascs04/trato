@@ -1,6 +1,6 @@
 # Investigación: entregué y todavía no me pagan
 
-27/10/2026. Investigación solicitada por Sebastian antes de decidir una automatización. No implica implementación, envíos, activación de seguimiento, contratación ni cambios en pagos.
+27/10/2026. Investigación solicitada por el responsable del proyecto antes de decidir una automatización. No implica implementación, envíos, activación de seguimiento, contratación ni cambios en pagos.
 
 ## Evidencia y límites
 
@@ -22,7 +22,7 @@ El valor candidato es seguimiento contextual: distinguir falta de datos administ
 5. Antes de cada gestión, volver a consultar estado de pago y revisar respuestas; detener ante pago confirmado y pedir revisión ante disputa, pago externo no conciliado o incertidumbre. No duplicar recordatorios nativos de PayPal y Gmail.
 6. Preparar expediente de evidencias para revisión humana si se decide escalar; no contactar terceros ni iniciar acciones legales automáticamente.
 
-Automatizar cálculos de fechas, consulta, preparación y organización es separable de autorizar mensajes o dinero. Sebastian no ha aprobado una cadencia ni destinatarios para envíos automáticos por esta investigación.
+Automatizar cálculos de fechas, consulta, preparación y organización es separable de autorizar mensajes o dinero. el responsable del proyecto no ha aprobado una cadencia ni destinatarios para envíos automáticos por esta investigación.
 
 Ejemplo ilustrativo: saldo acordado300; cliente dice que falta su referencia interna para procesarlo. Trato propone pedirla al contacto confirmado, incorporar la referencia revisada y preparar la solicitud de pago. Cliente promete viernes; el estado sigue pendiente hasta verificación. Si paga, se detienen gestiones; si no, se propone seguimiento de esa fecha en lugar de otro mensaje genérico.
 

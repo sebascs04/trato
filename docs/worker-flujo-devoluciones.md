@@ -1,6 +1,6 @@
 # Devoluciones: recorrido simulado con evidencia y fuentes PayPal
 
-26 de octubre de 2026. Autorizado por Sebastian para probar el flujo mientras no hay agente conectado. No ejecuta devoluciones reales o sandbox, no envía correos, no firma documentos ni escribe estados financieros de Supabase. Los datos del proyecto del ejemplo no proceden del proyecto conectado que esté abierto.
+26 de octubre de 2026. Autorizado por el responsable del proyecto para probar el flujo mientras no hay agente conectado. No ejecuta devoluciones reales o sandbox, no envía correos, no firma documentos ni escribe estados financieros de Supabase. Los datos del proyecto del ejemplo no proceden del proyecto conectado que esté abierto.
 
 ## Acceso y recorrido
 
@@ -54,7 +54,7 @@ El flujo no arbitra disputas, determina derechos legales ni modifica la solicitu
 ## Validación
 
 - 10 pruebas unitarias nuevas del flujo: importes/comisiones, devolución parcial anterior, datos faltantes, plazo excedido, revisiones, pausas obsoletas, aislamiento, persistencia/reentrega, importe cero y resultado fallido.
-- Suite del worker: 62 pruebas descubiertas, 56 aprobadas y 6 de Redis omitidas por requerir su entorno específico. No se modificó el transporte Redis ni se usó el de otros proyectos.
+- Suite del worker: 62 pruebas descubiertas, 56 aprobadas y 6 de Redis omitidas por requerir su entorno específico. No se modificó el transporte Redis ni se usó el de otros proyectos locales.
 - Pruebas Chromium con la pasarela y el worker locales reales: recorrido completo, resultado pendiente/fallido, reanudación, versiones, servicio indisponible, aislamiento de sesión y separación entre estado real/simulado. Las API de negocio se doblan explícitamente en las pruebas del navegador; no hay cargos, correos o reembolsos reales.
 
 ## Conexiones del recorrido — 27/10/2026

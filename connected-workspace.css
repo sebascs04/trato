@@ -466,3 +466,78 @@ body.cloud-design{--bg:#faf9fc;--paper:#fff;--surface:#fff;--surface-soft:#f7f5f
 
 
 .cloud-error.cloud-auth-confirmation{color:var(--purple);background:var(--purple-soft);padding:14px 16px;border-radius:10px;line-height:1.7}
+
+/* Client and project directories: one readable card per workspace. */
+.cloud-design .cloud-directory-list,.cloud-design .cloud-project-directory-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:18px}
+.cloud-design .cloud-client-directory,.cloud-design .cloud-project-directory{background:transparent;border:0;padding:0}
+.cloud-design .cloud-client-directory>.library-header{border:0;padding:0;margin-bottom:22px}
+.cloud-design .cloud-client-directory .cloud-client-row,.cloud-design .cloud-project-directory-grid>.cloud-client-row{display:flex;flex-direction:column;align-items:stretch;justify-content:space-between;gap:24px;padding:24px;border:1px solid var(--line);border-radius:16px;background:var(--surface);min-width:0;transition:border-color .15s,box-shadow .15s}
+.cloud-design .cloud-client-directory .cloud-client-row:hover,.cloud-design .cloud-project-directory-grid>.cloud-client-row:hover{border-color:#cbbce4;box-shadow:0 6px 24px #45336708}
+.cloud-directory-identity{display:flex;align-items:flex-start;gap:14px;min-width:0}
+.cloud-directory-identity>div{min-width:0}
+.cloud-directory-avatar{display:grid;place-items:center;flex:none;width:46px;height:46px;border-radius:13px;background:var(--purple-soft);color:var(--purple);font-size:16px;font-weight:500}
+.cloud-design .cloud-client-directory .cloud-client-row strong,.cloud-design .cloud-project-directory-grid>.cloud-client-row strong{font-size:18px;line-height:1.5;font-weight:500}
+.cloud-design .cloud-client-directory .cloud-client-meta{font-size:14px;margin:3px 0 0;overflow-wrap:anywhere}
+.cloud-directory-count{display:block;font-size:12px;color:var(--muted);margin-top:10px}
+.cloud-design .cloud-client-directory .cloud-client-actions,.cloud-design .cloud-project-directory-grid .cloud-client-actions{justify-content:space-between;gap:12px;padding-top:16px;border-top:1px solid var(--line)}
+.cloud-design .cloud-project-directory>h3{margin:0 0 20px;font-size:21px}
+.cloud-design .cloud-project-directory>.eyebrow{display:none}
+.cloud-design .cloud-project-directory-grid>.cloud-client-row>div:first-child{min-height:48px}
+.cloud-design .cloud-project-directory-grid>.cloud-skeleton,.cloud-design .cloud-directory-list>.cloud-section-note,.cloud-design .cloud-project-directory-grid>p{grid-column:1/-1}
+@media(max-width:800px){.cloud-design .cloud-directory-list,.cloud-design .cloud-project-directory-grid{grid-template-columns:1fr}}
+@media(prefers-reduced-motion:reduce){.cloud-design .cloud-client-directory .cloud-client-row,.cloud-design .cloud-project-directory-grid>.cloud-client-row{transition:none}}
+.cloud-design .cloud-clients-empty{grid-column:1/-1;text-align:center;padding:40px 24px 48px;border:1px dashed #d8cce9;border-radius:18px;background:linear-gradient(145deg,var(--surface),var(--purple-soft))}
+.cloud-clients-empty img{display:block;object-fit:contain;margin:0 auto 16px}
+.cloud-design .cloud-clients-empty h3{font-size:24px;margin:0 0 10px}
+.cloud-design .cloud-clients-empty p{font-size:15px;max-width:400px;margin:auto;line-height:1.8}
+
+/* Keep desktop sidebar labels on one shared left edge at every viewport width. */
+@media(min-width:601px){
+ .cloud-design .sidebar nav a{justify-content:flex-start;text-align:left;width:100%;gap:11px}
+ .cloud-design .sidebar nav a>span:first-child{width:20px;flex:0 0 20px;display:inline-flex;align-items:center;justify-content:center}
+}
+
+/* Projects are compact rows; client cards keep their separate directory layout. */
+.cloud-design .cloud-project-directory-grid{grid-template-columns:minmax(0,1fr);gap:12px}
+.cloud-design .cloud-project-directory-grid>.cloud-client-row{flex-direction:row;align-items:center;gap:20px;padding:18px 22px;border-radius:12px}
+.cloud-design .cloud-project-directory-grid>.cloud-client-row>div:first-child{min-height:0;min-width:0;flex:1}
+.cloud-design .cloud-project-directory-grid>.cloud-client-row strong{font-size:16px}
+.cloud-design .cloud-project-directory-grid .cloud-client-actions{flex-shrink:0;justify-content:flex-end;border:0;padding:0;gap:12px}
+@media(max-width:600px){.cloud-design .cloud-project-directory-grid>.cloud-client-row{align-items:flex-start;flex-direction:column;gap:14px}.cloud-design .cloud-project-directory-grid .cloud-client-actions{width:100%;justify-content:space-between}}
+.cloud-project-counts{display:flex;align-items:center;flex-wrap:wrap;gap:8px 16px;margin-top:9px;color:var(--muted);font-size:12px}
+.cloud-project-counts:empty{display:none}
+.cloud-project-counts>span{white-space:nowrap}
+
+/* Project summary: the original agreement leads; only actual open work follows. */
+.cloud-summary-heading{display:flex;align-items:center;justify-content:space-between;gap:20px;margin:4px 0 20px}
+.cloud-summary-heading h3{font-size:21px;font-weight:500;margin:0;letter-spacing:-.4px}
+.cloud-summary-heading>span{font-size:12px;color:var(--muted)}
+.cloud-design .cloud-summary .cloud-agreement{padding:28px 30px;border-radius:16px;border-top:3px solid #bca5df}
+.cloud-design .cloud-summary .cloud-agreement .cloud-panel-heading h3{font-size:24px;margin-top:6px}
+.cloud-summary-agreement-help{max-width:650px;margin:14px 0 0}
+.cloud-summary .cloud-source-list{margin-top:22px}
+.cloud-summary .cloud-source-list .cloud-client-row{padding:18px 0}
+.cloud-summary-attention{display:flex;align-items:center;gap:18px;margin-top:20px;padding:22px 26px;border:1px solid var(--line);border-radius:14px;background:var(--surface)}
+.cloud-summary-symbol{display:grid;place-items:center;width:42px;height:42px;flex:none;border-radius:12px;background:var(--purple-soft);color:var(--purple)}
+.cloud-summary-attention>div{flex:1;min-width:0}
+.cloud-summary-attention h4{margin:5px 0 0;font-size:16px;font-weight:500;overflow-wrap:anywhere}
+.cloud-summary-attention p{margin:6px 0 0;color:var(--muted);font-size:13px}
+.cloud-summary-attention>.button{display:flex;align-items:center;gap:9px;flex-shrink:0}
+@media(max-width:650px){.cloud-summary-heading{align-items:flex-start;flex-direction:column;gap:6px}.cloud-design .cloud-summary .cloud-agreement{padding:22px}.cloud-summary-attention{flex-wrap:wrap;padding:20px}.cloud-summary-attention>.button{margin-left:60px}}
+.cloud-summary-totals{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:18px;margin:0 0 24px;padding:20px 24px;border:1px solid var(--line);border-radius:14px;background:var(--surface)}
+.cloud-summary-totals>div{display:flex;align-items:baseline;gap:12px;min-width:0}
+.cloud-summary-totals strong{font-size:27px;line-height:1.4;font-weight:500;color:var(--ink)}
+.cloud-summary-totals span{font-size:13px;color:var(--muted)}
+@media(max-width:700px){.cloud-summary-totals{gap:14px;padding:18px}.cloud-summary-totals>div{flex-direction:column;gap:3px}.cloud-summary-totals span{font-size:12px}}
+
+/* Shared loading presentation for document previews. */
+.cloud-file-loading{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;min-height:260px;padding:32px;text-align:center;background:var(--surface,#fff);border-radius:12px}
+.cloud-file-loading-icon{display:grid;place-items:center;width:58px;height:64px;border-radius:14px;background:var(--purple-soft);color:var(--purple)}
+.cloud-file-loading-icon>.ui-icon{width:27px;height:27px}
+.cloud-file-loading strong{font-size:16px;font-weight:500;color:var(--ink)}
+.cloud-file-loading-name{font-size:13px;color:var(--muted);max-width:360px;overflow-wrap:anywhere}
+.cloud-file-loading-track{display:block;width:150px;height:4px;overflow:hidden;background:var(--purple-soft);border-radius:4px;margin-top:8px}
+.cloud-file-loading-track:after{content:'';display:block;width:45%;height:100%;border-radius:4px;background:var(--purple);animation:cloud-file-loading 1.4s ease-in-out infinite}
+.cloud-file-preview-stage{position:relative}.cloud-file-preview-stage>.cloud-file-loading{position:absolute;inset:0;z-index:1}
+@keyframes cloud-file-loading{0%{transform:translateX(-110%)}100%{transform:translateX(330%)}}
+@media(prefers-reduced-motion:reduce){.cloud-file-loading-track:after{animation:none;width:100%;opacity:.5}}

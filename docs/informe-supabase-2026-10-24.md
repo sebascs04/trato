@@ -44,7 +44,7 @@ RLS y privilegios SQL son controles complementarios: una política no concede po
 
 **Recomendación:** incorporar contactos y autorizaciones por proyecto, con capacidades separadas para solicitar, aprobar alcance y firmar; guardar vigencia y evidencia de su designación. Vincular cada aceptación con actor, versión exacta y verificación de identidad. Un correo extraído de un PDF es un dato declarado, no una autorización.
 
-Mantener un propietario individual para el primer MVP es suficiente si cada freelancer tiene su propio espacio. Si Sebastian y Mariam necesitan compartir datos como usuarios del producto, hace falta membresía de un espacio de trabajo; compartir el desarrollo no implica necesitar ese modelo. No usar cuentas o claves administrativas compartidas para simular colaboración.
+Mantener un propietario individual para el primer MVP es suficiente si cada freelancer tiene su propio espacio. Si el responsable del proyecto y una colaboradora necesitan compartir datos como usuarios del producto, hace falta membresía de un espacio de trabajo; compartir el desarrollo no implica necesitar ese modelo. No usar cuentas o claves administrativas compartidas para simular colaboración.
 
 ### 2. La condición de firma no garantiza integridad ni inmutabilidad — alta, antes de acuerdos reales
 

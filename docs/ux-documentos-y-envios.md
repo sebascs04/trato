@@ -1,6 +1,6 @@
 # Documentos y envío sin pasos repetidos
 
-Cambios solicitados por Sebastian el 27/10/2026.
+Cambios solicitados por el responsable del proyecto el 27/10/2026.
 
 - Archivos del proyecto se agrupa por `email_request`: pedido, adendas, respuestas del cliente y aceptaciones, con número de versión. Pedidos con actividad reciente primero; documentos recientes primero dentro de cada grupo. Acuerdo inicial y referencias generales permanecen aparte.
 - La relación procede de las FK existentes de artifacts, acceptances y feedback hacia la revisión y su propuesta. `list_documents` añade `request_links` en la misma consulta de metadatos; no descarga textos ni carga cada versión con solicitudes adicionales. No hay migración, modificación de RLS ni dependencia de Neo4j.

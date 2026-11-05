@@ -7,12 +7,12 @@ export function entryPresentation(cloud){
  if(['anonymous','error'].includes(cloud.state))return 'visitor';
  return 'loading';
 }
-export const landingFlows=Object.freeze({change:['messages-square','sparkles','pencil','credit-card'],start:['file-text','star','wallet','check-check'],practice:['messages-square','user-round','send','lightbulb']});
+export const landingFlows=Object.freeze({change:['messages-square','sparkles','pencil','credit-card'],start:['file-text','star','wallet','check-check'],practice:['messages-square','user-round','send','lightbulb'],refund:['wallet','file-text','check-check','credit-card']});
 export function installVisitorLanding(cloud){
  const doc=cloud.document,root=doc.querySelector('#visitor-landing');
  let mounted=false,shown=false,frame=0,paused=window.matchMedia('(prefers-reduced-motion: reduce)').matches,phase=-1,pointerX=0,pointerY=0;
  let story='change',storyStep=-1,storyTimer=0,storyVisible=false;
- const storyKeys=['change','start'];
+ const storyKeys=['change','start','refund'];
  const motion=window.matchMedia('(prefers-reduced-motion: reduce)');
  const percent=value=>new Intl.NumberFormat(uiLocale(),{style:'percent',maximumFractionDigits:1}).format(value);
  const revealObserver=new IntersectionObserver(entries=>{for(const entry of entries)if(entry.isIntersecting){entry.target.classList.add('land-revealed');revealObserver.unobserve(entry.target);}},{threshold:.14});
@@ -21,7 +21,7 @@ export function installVisitorLanding(cloud){
  const practiceText=key=>t('practiceDemo'+key[0].toUpperCase()+key.slice(1));
  // Original character illustration; decorative artwork, not an action icon.
  const portrait=mood=>`<svg class="land-person land-person-${mood}" viewBox="0 0 280 300" fill="none" aria-hidden="true"><ellipse cx="140" cy="278" rx="110" ry="18" fill="currentColor" opacity=".08"/><path d="M38 285C40 218 77 202 140 202S240 220 242 285" fill="${mood==='upset'?'#8a668b':mood==='unsure'?'#7f91ad':'#8a9c8e'}"/><path d="M115 186V219Q140 241 165 219V186" fill="#dcae94"/><g class="land-person-head"><path d="M69 116C52 33 102 19 143 20C198 17 221 61 210 124" fill="#493d51"/><ellipse cx="73" cy="132" rx="12" ry="19" fill="#e6bfa5"/><ellipse cx="207" cy="132" rx="12" ry="19" fill="#e6bfa5"/><path d="M76 98Q78 60 140 55Q202 60 204 98V153C201 190 171 210 140 211C106 210 79 188 76 153Z" fill="#f0ccb1"/><path d="M73 100Q59 43 117 34Q162 10 201 53L211 104Q174 90 157 63Q117 100 73 100Z" fill="#493d51"/><g class="land-person-eyes"><ellipse cx="111" cy="126" rx="4" ry="6" fill="#493d51"/><ellipse cx="168" cy="126" rx="4" ry="6" fill="#493d51"/></g><path d="M138 132L134 151H144" stroke="#c48e79" stroke-width="3" stroke-linecap="round"/><path class="land-person-brows" d="${mood==='upset'?'M99 107L120 116M159 116L180 107':mood==='unsure'?'M99 108L120 103M159 109L180 113':'M99 109Q110 103 122 109M158 109Q169 103 181 109'}" stroke="#493d51" stroke-width="4" stroke-linecap="round"/><path d="${mood==='upset'?'M120 178Q140 167 160 178':mood==='unsure'?'M127 176L156 171':'M119 171Q140 190 161 171'}" stroke="#a96f65" stroke-width="4" stroke-linecap="round"/>${mood==='unsure'?'<g stroke="#71607d" stroke-width="3"><rect x="91" y="115" width="41" height="29" rx="10"/><rect x="148" y="115" width="41" height="29" rx="10"/><path d="M132 124H148"/></g>':''}</g><path d="M86 248L106 285M194 248L174 285" stroke="#fff" stroke-opacity=".2" stroke-width="2"/></svg>`;
- function practiceContent(){return `<section class="land-practice land-reveal" id="land-practice"><div class="land-practice-copy"><span class="land-eyebrow">${practiceText('eyebrow')}</span><h2>${practiceText('title').split('\n').join('<br>')}</h2><p>${practiceText('copy')}</p><div class="land-temperaments" role="group" aria-label="${practiceText('label')}">${moods.map(mood=>`<button type="button" data-land-mood="${mood}" aria-pressed="${mood===practiceMood}"><span>${portrait(mood)}</span>${practiceText(mood)}</button>`).join('')}</div></div><div class="land-practice-stage" data-practice-stage><div class="land-practice-halo" aria-hidden="true"></div><div class="land-practice-person" data-practice-portrait>${portrait(practiceMood)}</div><div class="land-practice-conversation" aria-live="off"><article class="land-client-bubble"><span>${practiceText('client')} · <b data-practice-name>${practiceText(practiceMood)}</b></span><p data-practice-message>${practiceText(practiceMood+'Message')}</p></article><article class="land-you-bubble"><span>${practiceText('you')}</span><p data-practice-reply>${practiceText(practiceMood+'Reply')}</p></article></div><button class="land-motion land-practice-motion" data-land-motion aria-label="${t(paused?'resume':'pause')}" title="${t(paused?'resume':'pause')}" aria-pressed="${paused}"><span aria-hidden="true">${icon(paused?'play':'pause')}</span></button><p class="land-practice-foot">${practiceText('foot')}</p></div></section>`;}
+ function practiceContent(){return `<section class="land-practice land-reveal" id="land-practice"><div class="land-practice-copy"><span class="land-eyebrow">${practiceText('eyebrow')}</span><h2>${practiceText('title').split('\n').join('<br>')}</h2><p>${practiceText('copy')}</p><div class="land-temperaments" role="group" aria-label="${practiceText('label')}">${moods.map(mood=>`<button type="button" data-land-mood="${mood}" aria-pressed="${mood===practiceMood}"><span>${portrait(mood)}</span>${practiceText(mood)}</button>`).join('')}</div></div><div class="land-practice-stage" data-practice-stage><div class="land-practice-halo" aria-hidden="true"></div><div class="land-practice-person" data-practice-portrait>${portrait(practiceMood)}</div><div class="land-practice-conversation" aria-live="off"><article class="land-client-bubble"><span>${practiceText('client')} · <b data-practice-name>${practiceText(practiceMood)}</b></span><p data-practice-message>${practiceText(practiceMood+'Message')}</p></article><article class="land-you-bubble"><span>${practiceText('you')}</span><p data-practice-reply>${practiceText(practiceMood+'Reply')}</p></article></div><p class="land-practice-foot">${practiceText('foot')}</p></div></section>`;}
  function selectMood(mood){
   practiceMood=mood;const stage=root.querySelector('[data-practice-stage]');
   if(!stage)return;stage.dataset.mood=mood;
@@ -29,19 +29,31 @@ export function installVisitorLanding(cloud){
   for(const [name,key] of [['name',mood],['message',mood+'Message'],['reply',mood+'Reply']])root.querySelector(`[data-practice-${name}]`).textContent=practiceText(key);
   for(const button of root.querySelectorAll('[data-land-mood]'))button.setAttribute('aria-pressed',String(button.dataset.landMood===mood));
  }
- function stopStory(){clearTimeout(storyTimer);storyTimer=0;}
+ const storyDuration=5500;
+ let storyElapsed=0,storyStarted=0;
+ function stopStory(){
+  if(storyTimer){storyElapsed+=performance.now()-storyStarted;cancelAnimationFrame(storyTimer);storyTimer=0;}
+ }
  function startStory(){
-  stopStory();if(!shown||!storyVisible||paused||doc.hidden)return;
-  storyTimer=setTimeout(()=>{
-   selectStory(storyStep===3?storyKeys[(storyKeys.indexOf(story)+1)%storyKeys.length]:story,storyStep===3?-1:storyStep+1);
-  },4000);
+  if(!shown||!storyVisible||paused||doc.hidden){stopStory();return;}
+  if(storyTimer)return;
+  storyStarted=performance.now();
+  function tick(now){
+   const elapsed=storyElapsed+now-storyStarted;
+   root.style.setProperty('--story-progress',String(Math.min(1,elapsed/storyDuration)));
+   if(elapsed>=storyDuration){
+    storyTimer=0;storyElapsed=0;
+    selectStory(storyStep===3?storyKeys[(storyKeys.indexOf(story)+1)%storyKeys.length]:story,storyStep===3?-1:storyStep+1);
+   }else storyTimer=requestAnimationFrame(tick);
+  }
+  storyTimer=requestAnimationFrame(tick);
  }
  const storyObserver=new IntersectionObserver(entries=>{storyVisible=entries[0].isIntersecting;startStory();},{threshold:.2});
  function stopPractice(){clearTimeout(practiceTimer);practiceTimer=0;}
- function startPractice(){stopPractice();if(!practiceVisible||!shown||paused)return;practiceTimer=setTimeout(()=>{selectMood(moods[(moods.indexOf(practiceMood)+1)%moods.length]);startPractice();},7500);}
+ function startPractice(){stopPractice();if(!practiceVisible||!shown||motion.matches||doc.hidden)return;practiceTimer=setTimeout(()=>{selectMood(moods[(moods.indexOf(practiceMood)+1)%moods.length]);startPractice();},7500);}
  const practiceObserver=new IntersectionObserver(entries=>{practiceVisible=entries[0].isIntersecting;startPractice();},{threshold:.3});
  function syncMotion(){
-  root.classList.toggle('land-paused',paused);root.classList.toggle('land-motion-enabled',!paused);
+  root.classList.toggle('land-paused',motion.matches);root.classList.toggle('land-story-paused',paused);root.classList.toggle('land-motion-enabled',!motion.matches);
   for(const button of root.querySelectorAll('[data-land-motion]')){button.setAttribute('aria-label',t(paused?'resume':'pause'));button.title=t(paused?'resume':'pause');button.setAttribute('aria-pressed',String(paused));button.querySelector('span').innerHTML=icon(paused?'play':'pause');}
   startPractice();startStory();schedule();
  }
@@ -54,17 +66,18 @@ export function installVisitorLanding(cloud){
   const text=(field,n)=>t(['flow',story,n===undefined?field:n+'.'+field].join('.'));
   const narration=field=>t(['narration',story,field].join('.'));
   const glyph=intro?'messages-square':landingFlows[story][storyStep];
-  return `<div class="land-narrative" data-narrative-stage="${storyStep}"><div class="land-narrator"><div class="land-narrator-cloud"><span>${t(intro?'narration.questionLabel':'narration.solutionLabel')}</span><p>${narration(intro?'question':storyStep)}</p></div><img class="land-story-mascot" src="/assets/mascot/trato-guide.png" alt="TeTrato" width="240" height="240"></div><div class="land-narrative-scene" data-narrative-case="${story}"><div class="land-scene-symbol">${icon(glyph)}</div>${intro?`<div class="land-example-message">${icon('messages-square')}<p>${narration('example')}</p></div>`:`<article class="land-example-document"><span class="land-example-step">0${storyStep+1} / 04</span><h3>${text('title',storyStep)}</h3><span class="land-example-tag">${icon(story==='change'&&storyStep===3?'credit-card':storyStep===2?'sparkles':'check')}${story==='change'&&storyStep===3?'PayPal Sandbox':t(storyStep===2?'flowAi':'flowHuman')}</span></article>`}${intro?'<span class="land-question-progress" aria-hidden="true"></span>':''}<div class="land-narrative-trail" role="group" aria-label="${t('flowSteps')}">${landingFlows[story].map((_,n)=>`<button type="button" data-land-story-step="${n}" aria-label="${text('title',n)}" aria-pressed="${n===storyStep}" class="${n===storyStep?'is-selected':n<storyStep?'is-past':''}"><span>0${n+1}</span></button>`).join('')}</div><div class="land-story-controls"><button type="button" data-land-motion aria-label="${t(paused?'resume':'pause')}" title="${t(paused?'resume':'pause')}" aria-pressed="${paused}"><span>${icon(paused?'play':'pause')}</span></button><button type="button" data-land-story-prev aria-label="${t('flowPrevious')}" title="${t('flowPrevious')}" ${intro?'disabled':''}>${icon('arrow-left')}</button><button type="button" data-land-story-next aria-label="${t('flowNext')}" title="${t('flowNext')}" ${storyStep===3?'disabled':''}>${icon('arrow-right')}</button></div></div></div>`;
+  return `<div class="land-narrative" data-narrative-stage="${storyStep}"><div class="land-narrator"><div class="land-narrator-cloud"><span>${t(intro?'narration.questionLabel':'narration.solutionLabel')}</span><p>${narration(intro?'question':storyStep)}</p></div><img class="land-story-mascot" src="/assets/mascot/trato-guide.png" alt="TeTrato" width="240" height="240"></div><div class="land-narrative-scene" data-narrative-case="${story}"><div class="land-scene-symbol">${icon(glyph)}</div>${intro?`<div class="land-example-message">${icon('messages-square')}<p>${narration('example')}</p></div>`:`<article class="land-example-document"><span class="land-example-step">0${storyStep+1} / 04</span><h3>${text('title',storyStep)}</h3><span class="land-example-tag">${icon((story==='change'||story==='refund')&&storyStep===3?'credit-card':storyStep===2&&story!=='refund'?'sparkles':'check')}${(story==='change'||story==='refund')&&storyStep===3?'PayPal Sandbox':t(storyStep===2&&story!=='refund'?'flowAi':'flowHuman')}</span></article>`}${intro?'<span class="land-question-progress" aria-hidden="true"></span>':''}<div class="land-narrative-trail" role="group" aria-label="${t('flowSteps')}">${landingFlows[story].map((_,n)=>`<button type="button" data-land-story-step="${n}" aria-label="${text('title',n)}" aria-pressed="${n===storyStep}" class="${n===storyStep?'is-selected':n<storyStep?'is-past':''}"><span>0${n+1}</span></button>`).join('')}</div><div class="land-story-controls"><button type="button" data-land-motion aria-label="${t(paused?'resume':'pause')}" title="${t(paused?'resume':'pause')}" aria-pressed="${paused}"><span>${icon(paused?'play':'pause')}</span></button><button type="button" data-land-story-prev aria-label="${t('flowPrevious')}" title="${t('flowPrevious')}" ${intro?'disabled':''}>${icon('arrow-left')}</button><button type="button" data-land-story-next aria-label="${t('flowNext')}" title="${t('flowNext')}" ${storyStep===3?'disabled':''}>${icon('arrow-right')}</button></div></div></div>`;
  }
  function selectStory(key,stage=-1){
   if(!storyKeys.includes(key)||!Number.isInteger(stage)||stage< -1||stage>3)return;
+  stopStory();storyElapsed=0;root.style.setProperty('--story-progress','0');
   story=key;storyStep=stage;
   for(const tab of root.querySelectorAll('[data-land-story]')){const selected=tab.dataset.landStory===key;tab.setAttribute('aria-selected',String(selected));tab.tabIndex=selected?0:-1;}
   const panel=root.querySelector('#land-story-panel');panel.setAttribute('aria-labelledby','story-tab-'+key);panel.innerHTML=storyPanel();startStory();schedule();
  }
  function mount(){
   root.innerHTML=`<a class="land-skip" href="#land-content">${t('skip')}</a><header class="land-nav"><button class="land-brand" data-land-scroll="top" aria-label="${t('backTop')}">${brand}</button><div class="land-nav-actions"><label class="land-language"><span class="sr-only">${t('language')}</span><select data-land-language aria-label="${t('language')}"><option value="es" ${uiLanguage()==='es'?'selected':''}>ES</option><option value="en" ${uiLanguage()==='en'?'selected':''}>EN</option></select></label><button class="land-login" data-land-auth="login">${t('login')}</button><button class="land-button land-button-small" data-land-auth="signup">${t('signup')}${icon('arrow-up-right')}</button></div></header><p class="land-connection-error" role="alert" hidden data-land-error><span data-land-error-message>${t('connectError')}</span> <button data-land-retry>${t('retry')}</button></p><main id="land-content" tabindex="-1"><section class="land-journey" data-land-journey><div class="land-hero-copy"><span class="land-eyebrow"><span></span>${t('eyebrow')}</span><h1>${t('headline')}<br><em>${t('headlineAccent')}</em></h1><p>${t('intro')}</p><div class="land-integration-line"><span>${t('ai')}</span><i></i><strong class="land-paypal">Pay<span>Pal</span></strong><small>${t('integrationLine')}</small></div><section class="land-research" aria-label="${t('researchContext')}"><span>${t('researchContext')}</span><div><article><strong>${percent(.675)}</strong><p>${t('lateStat')}</p></article><article><strong>${percent(.264)}</strong><p>${t('unpaidStat')}</p></article></div><p>${uiText('landing.researchSource',{count:new Intl.NumberFormat(uiLocale()).format(1013)})} <a href="https://www.leapers.co/research/2025/report/" target="_blank" rel="noopener noreferrer">${t('researchLink')}${icon('arrow-up-right')}</a></p></section></div></section>${storyContent()}${practiceContent()}<section class="land-tools" id="land-tools"><div class="land-section-heading"><span class="land-eyebrow">${t('toolsEyebrow')}</span><h2>${t('toolsTitle')}</h2><p>${t('toolsCopy')}</p></div><div class="land-tool-grid">${[['map','git-compare-arrows'],['practice','messages-square'],['reputation','star']].map(([name,glyph],index)=>`<article><span class="land-tool-number">0${index+1}</span><span class="land-tool-icon">${icon(glyph)}</span><h3>${t(name+'Title')}</h3><p>${t(name+'Copy')}</p></article>`).join('')}</div></section></main><footer class="land-footer"><button class="land-brand" data-land-scroll="top" aria-label="${t('backTop')}">${brand}</button><p>${t('footer')}</p><button data-land-scroll="top">${t('backTop')}${icon('arrow-up-right')}</button></footer>`;
-  mounted=true;root.classList.toggle('land-paused',paused);
+  mounted=true;root.classList.toggle('land-paused',motion.matches);root.classList.toggle('land-story-paused',paused);
   for(const element of root.querySelectorAll('.land-chapter,.land-section-heading,.land-stack-grid>article,.land-tool-grid>article,.land-impact,.land-cta,.land-practice')){element.classList.add('land-reveal');revealObserver.observe(element);}
   practiceObserver.observe(root.querySelector('#land-practice'));
   storyObserver.observe(root.querySelector('.land-stories'));
@@ -111,9 +124,7 @@ export function installVisitorLanding(cloud){
   if(scroll){const target=scroll.dataset.landScroll==='story'?'#land-step-1':scroll.dataset.landScroll==='tools'?'#land-tools':null;
    if(target)root.querySelector(target).scrollIntoView({behavior:paused?'instant':'smooth',block:'start'});else window.scrollTo({top:0,behavior:paused?'instant':'smooth'});return;
   }
-  if(event.target.closest('[data-land-motion]')){
-   paused=!paused;syncMotion();
-  }
+  if(event.target.closest('[data-land-motion]')){paused=!paused;syncMotion();}
   if(event.target.closest('[data-land-retry]'))cloud.restore();
  });
  root.addEventListener('keydown',event=>{

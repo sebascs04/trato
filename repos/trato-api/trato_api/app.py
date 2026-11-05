@@ -37,6 +37,7 @@ from .proposals.workflow import ProposalWorkflow
 from .gmail.service import GmailSettings, GmailConnectionService
 from .gmail.routes import build_gmail_router
 from .gmail.shared import TratoGmailService
+from .initial_payments.routes import build_initial_payment_router
 from .sandbox_payment import SandboxPaymentTest
 from .sandbox_payment_routes import build_sandbox_payment_router
 from paypal.config import SandboxSettings
@@ -148,6 +149,7 @@ def create_app(settings=None, services=None, repository_factory=None, *, gmail_s
     # No fake repository: payment routes stay explicitly unavailable until persistence is ready.
     app.include_router(build_router(None, None, require_user))
     app.include_router(build_gmail_router(gmail_service, require_user))
+    app.include_router(build_initial_payment_router(settings,require_user,gmail=gmail_service))
     app.include_router(build_sandbox_payment_router(sandbox_test_service, require_user))
     app.include_router(build_business_router(settings, services, require_user, repository_factory))
     app.include_router(build_thread_router(settings))
@@ -155,6 +157,10 @@ def create_app(settings=None, services=None, repository_factory=None, *, gmail_s
     app.include_router(build_reference_tools_router(settings))
     app.include_router(build_ai_router(settings,require_user,repository_factory))
     app.include_router(build_project_assistant_router(settings,require_user,repository_factory))
+    from .case_assistant import build_case_assistant_router
+    app.include_router(build_case_assistant_router(settings,require_user,repository_factory))
+    from .change_proposal import build_change_proposal_router
+    app.include_router(build_change_proposal_router(settings,require_user,repository_factory))
     app.include_router(build_vector_router(settings,require_user,repository_factory))
     app.include_router(build_vector_job_router(settings))
     app.include_router(build_public_vector_router(settings,require_user,repository_factory))

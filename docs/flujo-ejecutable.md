@@ -97,7 +97,7 @@ localmente las migraciones/RLS y configurar autenticación.
 
 Pendientes inmediatos:
 
-- Elegir/crear el proyecto Supabase y configurar Auth para Sebastian y Mariam.
+- Elegir/crear el proyecto Supabase y configurar Auth para el responsable del proyecto y una colaboradora.
 - Probar/aplicar la migración en desarrollo.
 - Implementar CRUD autorizado y carga privada del PDF original.
 - Cambiar la fixture por proyectos reales de Supabase y registrar solicitudes

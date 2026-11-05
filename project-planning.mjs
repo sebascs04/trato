@@ -61,6 +61,7 @@ export function installProjectPlanning(cloud){
  }
  function renderSaved(){
   root.innerHTML=`<section class="project-planning"><button type="button" class="text-button" data-plan-action="back">${icon('arrow-left')}${t('returnSummary')}</button><section class="workspace-panel plan-editor">${savedPlanStatus==='loading'?renderAIActivity({label:t('loadingPlan'),compact:true}):savedPlanStatus==='failed'?`<p class="cloud-error" role="alert">${t('loadPlanFailed')}</p><button type="button" class="button secondary" data-plan-action="retry-plan">${t('retryBackground')}</button>`:savedPlanStatus==='none'?`<h3>${t('noSavedPlan')}</h3>`:`<header class="plan-heading"><span class="eyebrow">${t('savedAiPlan')}</span><h3>${esc(project().name)}</h3></header><p class="plan-brief">${esc(savedPlan.brief)}</p>${stages({budget:savedPlan.budget,stages:savedPlan.stages.map(st=>({title:st.title,body:st.deliverables,percent:st.percent,when:st.payment_condition}))},true)}<div class="plan-total"><span>${t('total')}</span><strong>${currency(Number(savedPlan.budget))}</strong></div>${analysisMarkup({summary:savedPlan.summary,observations:savedPlan.considerations,limitations:savedPlan.limitations})}`}</section></section>`;
+  cloud.renderInitialPayment?.(root,savedPlan);
  }
  async function loadSavedPlan(){
   const generation=++savedPlanGeneration,id=project().id,scope=currentKey;savedPlanStatus='loading';renderSaved();

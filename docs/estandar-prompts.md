@@ -1,6 +1,6 @@
 # Estándar de prompts de Trato
 
-Solicitado por Sebastian el 26 de octubre de 2026. Referencia leída: `<project-root>/Utiles/prompt-construction-guide.md`. Esta adaptación no modifica QAMAQ ni activa un modelo.
+Solicitado por el responsable del proyecto el 26 de octubre de 2026. Referencia leída: `<project-root>/Utiles/prompt-construction-guide.md`. Esta adaptación no modifica otros proyectos locales ni activa un modelo.
 
 ## Estructura
 
@@ -28,7 +28,7 @@ El primer agente evalúa si el texto extraído es una fuente del acuerdo inicial
 
 ## Idioma de instrucciones y respuestas
 
-Acuerdo de Sebastian, 27/10/2026:
+Acuerdo del responsable del proyecto, 27/10/2026:
 
 - Mantener una sola versión de las instrucciones de cada agente. El idioma acordado para las instrucciones canónicas es inglés; la interfaz sigue con catálogos ES/EN.
 - El backend proporciona `output_language`, validado como `es` o `en`, a partir del idioma configurado por el usuario. El idioma del documento no decide el idioma de la explicación generada.

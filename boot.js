@@ -28,6 +28,8 @@ async function bootTrato() {
       installReputationWorkspace(window.TratoCloud);
       const {installProjectPlanning}=await import('/project-planning.mjs');
       installProjectPlanning(window.TratoCloud);
+      const {installInitialPayments}=await import('/initial-payments.mjs');
+      installInitialPayments(window.TratoCloud);
       const {installVisitorLanding}=await import('/visitor-landing.mjs');
       installVisitorLanding(window.TratoCloud);
       const {installProposalWorkspace} = await import('/proposal-workspace.mjs');

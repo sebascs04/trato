@@ -12,6 +12,20 @@ Estado técnico y prioridades del 3 de noviembre de 2026. La asignación interna
 Detalles: [Ensayos](ensayos-busqueda-vectorial.md), [Reputación](reputacion-metricas.md), [integración de IA](integracion-ia-flujos.md) y [configuración vectorial](configuracion-vectorial-colaboradores.md).
 
 ## Prioridades por fases
+# Plan de trabajo y entrega
+
+Estado técnico y prioridades del 3 de noviembre de 2026. La asignación interna de personas y chats se conserva fuera de esta copia pública.
+
+## Funciones en verificación
+
+- Ensayos: conversación, investigación de referencias y evaluación con JSON validado.
+- Reputación: experiencias publicadas y métricas separadas de uso y utilidad.
+- Proyectos: planificación inicial, fuentes privadas y asistente documental.
+- Integración de cambios, aceptación, cobros y devoluciones: validar el recorrido completo; no equiparar una demo a una operación conectada.
+
+Detalles: [Ensayos](ensayos-busqueda-vectorial.md), [Reputación](reputacion-metricas.md), [integración de IA](integracion-ia-flujos.md) y [configuración vectorial](configuracion-vectorial-colaboradores.md).
+
+## Prioridades por fases
 
 
 Este reparto sustituye cualquier sugerencia anterior de ampliar estas ideas antes del preview. No autoriza publicaciones ni recursos facturables.

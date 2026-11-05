@@ -2,6 +2,22 @@
 
 Actualizado: 31 de octubre de 2026. Se incorpora el cierre del flujo de renegociación validado localmente por el usuario; las demás prioridades conservan el estado de la revisión del 26 de octubre. Este documento no activa servicios, gasto, modelos, correos ni operaciones financieras. Las asignaciones se acuerdan entre los integrantes humanos; no se presume que alguien ya tomó una tarea.
 
+## Opcional: verificación OAuth de Google para Gmail
+
+Añadido el 4 de noviembre de 2026. **Por hacer, si queda tiempo después de cerrar y probar los flujos principales.** No bloquea las pruebas autorizadas del buzón central del equipo.
+
+**Objetivo:** completar la revisión de Google para retirar el aviso de aplicación no verificada al autorizar el buzón de Trato. Publicar la app OAuth no equivale a verificarla. Los usuarios normales de Trato no deben conectar su Gmail personal.
+
+**Preparación:** revisar permisos mínimos de envío y lectura, excepciones aplicables al uso real, marca y contacto, dominio verificable, política de privacidad pública y video del consentimiento y uso de cada permiso. Presentar la solicitud desde Google Auth Platform y atender observaciones de Google.
+
+**Dependencia y costo:** la lectura de Gmail usa permisos restringidos. Confirmar si Google exige evaluación de seguridad y su costo antes de contratar o activar algo; cualquier compra requiere autorización del responsable del proyecto. No prometer fecha de aprobación ni eliminar el aviso mediante cambios de interfaz.
+
+**Mientras siga en Testing:** conservar el buzón central como usuario de prueba y revisar la vigencia de su autorización; Google establece siete días para autorizaciones de prueba con estos permisos. Si vence, reconectar explícitamente. No cambiar de transporte automáticamente.
+
+**Criterio de cierre:** Google aprueba los permisos y la autorización deja de mostrar el aviso, conservando envío, lectura y asociación de respuestas a sus proyectos.
+
+Referencias: [verificación de permisos restringidos](https://developers.google.com/identity/protocols/oauth2/production-readiness/restricted-scope-verification) y [audiencia y autorizaciones de prueba](https://support.google.com/cloud/answer/15549945).
+
 ## Lote del 4 de noviembre: terminado y en publicación
 
 - Ensayos: configuración simplificada, conversación y análisis, repetición con feedback y comparación de intentos. Diseño revisado por el usuario.
@@ -11,17 +27,29 @@ Actualizado: 31 de octubre de 2026. Se incorpora el cierre del flujo de renegoci
 - Inicio y demostraciones: navegación y botón de demostración corregidos, introducción y carga con mascota, máximo dos clientes en la vista general.
 - Publicación: preparar snapshot conjunto y desplegar sobre la infraestructura existente. No acreditar el recorrido financiero por pasar comprobaciones de arranque.
 
-### Investigación TRATO-19: siguiente implementación, todavía pendiente
+### TRATO-19: implementado localmente; pendiente de prueba manual Sandbox
 
 La ruta `POST /projects/{project_id}/initial-payments` registra una captura ya completada y verificada; no crea un checkout. `project_received_payments` exige captura única, importe positivo y verificación, por lo que no debe usarse para guardar solicitudes pendientes.
 
 Construir una solicitud de pago inicial persistente y separada de las revisiones de adenda. Reutilizar creación y verificación de órdenes PayPal, permisos, idempotencia y checkout, manteniendo referencia del proyecto y validaciones de pagador y comercio. Tras verificar la captura, registrar el dinero recibido para permitir devoluciones. No crear una adenda ficticia. Probar concurrencia, reintentos, propietario incorrecto, estado incierto y captura duplicada.
 
-TRATO-18 (cierre del proyecto) y TRATO-19 (checkout inicial) siguen por hacer. Primero publicar el lote terminado; después implementar el siguiente recorrido.
+TRATO-19 dispone de solicitud persistente, checkout independiente, verificación de orden y captura, correo central revisado e interfaz en resumen y plan. Las pruebas técnicas de permisos, idempotencia y estados pasaron; falta reiniciar los servicios locales con el nuevo código y validar manualmente el recorrido Sandbox completo. No está publicado ni desplegado. TRATO-18 (cierre del proyecto) sigue pendiente.
+
+Diseño: primera mejora local de Clientes y listado de proyectos mediante tarjetas, identidad legible y acciones separadas. El interior del proyecto se revisará por bloques con el responsable del proyecto; no se modificaron los flujos de cambios y devoluciones.
+
+## Asistente con memoria persistente — 4 de noviembre de 2026
+
+Implementado localmente: historial por propietario/proyecto en Supabase, resumen acumulado con corte por posición, contexto reciente exacto, herramienta para recuperar mensajes antiguos y checkpoints reales de LangGraph mediante el backend. Ya no depende de los últimos seis IDs del navegador ni de Redis para leer respuestas archivadas. Se conserva la evidencia documental y el aislamiento de Weaviate. No añade proveedor, servicio o dependencia. Ver [memoria del asistente](asistente-memoria-proyecto.md).
+
+Verificación técnica en curso; pendiente prueba manual de conversación real, compactación y documentos con Gemini. No marcar el flujo como probado E2E por pasar las pruebas unitarias o SQL.
 
 ## Cierre de devoluciones — 3 de noviembre de 2026
 
 TRATO-13, TRATO-14, TRATO-15 y TRATO-16: **implementados y validados en el alcance Sandbox aprobado, sin IA**. Dos recorridos manuales confirmados (cierre global parcial e individual total de adenda) y prueba conectada de entrega/deduplicación de eventos genuinos completados. Los apartados siguientes conservan el historial de tandas; sus pendientes históricos se resuelven en [el acta de cierre](cierre-validacion-devoluciones.md). La IA, un checkout inicial integrado y el uso Live no forman parte de este cierre. No se autoriza PR ni merge por publicar esta rama.
+
+## Nuevo lote: IA en expedientes — 3 de noviembre de 2026
+
+Requerimiento ampliado: asistentes para cambios, precios con antecedentes, renegociaciones y devoluciones; trazabilidad documental en Neo4j e interfaz conversacional con actividad real. Ver [backlog por tandas](backlog-ia-expedientes.md) y [plan de tanda 1](tanda-1-ia-expedientes-plan.md). Estado: plan de tanda 1 aprobado e implementación realizada; pruebas y validación real en curso según [acta](tanda-1-ia-expedientes-validacion.md). Cada tanda exige pruebas de código, integración real en la app y validación antes de continuar.
 
 ## Hallazgos de pruebas de devoluciones — 3 de noviembre de 2026
 

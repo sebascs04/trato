@@ -1,3 +1,4 @@
+import {installCaseAssistant} from './case-assistant.mjs';
 import {uiText,uiLocale,uiLanguage} from './i18n.mjs';
 import {icon} from './icons.mjs';
 import {renderRefundDocuments,renderInitialPayment,documentAction,documentInput,documentSubmit} from './refund-documents.mjs';
@@ -38,6 +39,7 @@ export function buildRefundTerms(editor,payment){
 }
 
 export function installRefundWorkspace(cloud){
+ installCaseAssistant(cloud);
  const originalReset=cloud.reset.bind(cloud);
  const wizard=cloud.document.createElement('dialog');wizard.className='refund-dialog';wizard.setAttribute('aria-label',t('wizard.title'));cloud.document.body.append(wizard);
  const releaseReader=s=>{if(s?.reader?.url)URL.revokeObjectURL(s.reader.url);if(s)s.reader=null;};
@@ -211,7 +213,7 @@ export function installRefundWorkspace(cloud){
   if(step===5||step===6)content=`${terminal?`<p class="refund-result" role="status">${t('status.'+parent.status)}</p>`:''}${renderRefundFinance(s,step)}${!s.financeData?`<p>${t('status.'+parent.status)}</p>`:''}<details><summary>${t('wizard.proposalDetails')}</summary>${saved}${history}${renderRefundDocuments(s,cloud,evidenceHtml,6)}</details>`;
   if(step===5&&s.financeData?.authorizations.some(a=>a.snapshot_id===s.snapshot?.id))content+=`<div class="refund-response-actions"><button type="button" class="button" data-refund-action="wizard-step" data-step="6">${t('wizard.toExecute')}</button></div>`;
   const close=parent.status==='draft'&&!s.editor?`<details class="refund-other-actions"><summary>${t('wizard.otherActions')}</summary><h4>${t('close')}</h4><form data-refund-form="close"><label>${t('closureReason')}<select name="reason">${['withdrawn','rejected'].map(k=>option(k,t('status.'+k),s.closure?.reason||'withdrawn')).join('')}</select></label><label>${t('notes')}<textarea name="notes" maxlength="4000" required>${esc(s.closure?.notes||'')}</textarea></label><label class="refund-checkbox"><input type="checkbox" name="confirmed" required>${t('closeConfirm')}</label><button class="button" type="submit">${t('confirmClose')}</button></form></details>`:'';
-  return `<section class="refund-stage">${content}</section>${close}`;
+  return `${cloud.renderCaseAssistant({project:s.project,kind:'refund',id:parent.id,revision:snap?.id||null,version:snap?.version_no})}<section class="refund-stage">${content}</section>${close}`;
  }
  async function action(s,a,target){
   if(a==='wizard-close'){s.wizardOpen=false;s.financeForm=null;s.emailPreview=null;if(s.workflowForm)s.workflowForm.confirmed=false;if(s.editor)s.editor.reviewed=false;releaseReader(s);wizard.close();return;}

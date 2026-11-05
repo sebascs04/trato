@@ -260,7 +260,7 @@ class GmailConnectionService:
         try:
             with self.lock:
                 connection=self.credentials(user)
-                if expected_sender is not None and connection['email']!=expected_sender:raise GmailError('GMAIL_SENDER_CHANGED',409)
+                if expected_sender is not None and connection['email'].casefold()!=expected_sender.casefold():raise GmailError('GMAIL_SENDER_CHANGED',409)
                 message=builder(connection['email'],item,notification_id)
                 # Keep indivisible Message-ID tokens intact and serialize RFC mail with CRLF.
                 raw=base64.urlsafe_b64encode(message.as_bytes(policy=policy.SMTP.clone(max_line_length=998))).decode()

@@ -2,7 +2,7 @@
 
 ## Pregunta
 
-Sebastian encuentra confusa la interfaz de cambios y pide investigar cómo resuelven productos profesionales la gestión de proyectos, documentos y aprobaciones. Esto es una propuesta de diseño, no una nueva especificación implementada.
+el responsable del proyecto encuentra confusa la interfaz de cambios y pide investigar cómo resuelven productos profesionales la gestión de proyectos, documentos y aprobaciones. Esto es una propuesta de diseño, no una nueva especificación implementada.
 
 ## Referencias primarias consultadas
 
@@ -45,7 +45,7 @@ Se entra desde el pedido guardado. Mantiene título y estado del pedido durante 
 2. Preparar propuesta: opciones y efectos en alcance, costo y plazo, revisados por el profesional.
 3. Revisar y enviar: vista de la propuesta/adenda y acción explícita de envío.
 
-Después del envío corresponde seguimiento de estados, no fingir que otra pantalla de lectura equivale a aceptación. Aceptación y cobro siguen las reglas de negocio acordadas con P1.
+Después del envío corresponde seguimiento de estados, no fingir que otra pantalla de lectura equivale a aceptación. Aceptación y cobro siguen las reglas de negocio acordadas con el equipo.
 
 Las fuentes completas se abren bajo demanda desde cada afirmación o en un panel de respaldo. Son comprobación y contexto; la vista de decisión necesita una síntesis revisable y referencias verificables. No mostrar una síntesis inventada mientras se conecta el análisis.
 
@@ -55,7 +55,7 @@ El usuario debe poder responder: dónde estoy, qué estoy revisando, qué debo d
 
 ## Validación propuesta
 
-Probar un esquema de tres vistas con las tareas que Sebastian ya describió:
+Probar un esquema de tres vistas con las tareas que el responsable del proyecto ya describió:
 
 - Crear cliente/proyecto, guardar dos fuentes y salir sin iniciar un cambio.
 - Volver al proyecto, consultar lo acordado e incorporar otra fuente.
@@ -65,7 +65,7 @@ Este documento recoge investigación y una hipótesis de diseño. Las fuentes no
 
 ## Ampliación: dirección visual ya acordada en el otro chat
 
-Se localizó la propuesta en `docs/ideas-futuras.md`, sección «Actualización de Sebastian · 24 de octubre de 2026», a partir de la línea87. La favorita registrada es Polpharma. Se trata de una portada cinematográfica: una escena continua cuyo objeto cambia de encuadre, posición y escala a medida que avanza la historia. Referencia conceptual: una estatua romana y movimientos de cámara, no solo una figura decorativa flotante.
+Se localizó la propuesta en `docs/ideas-futuras.md`, sección «Actualización del responsable del proyecto · 24 de octubre de 2026», a partir de la línea87. La favorita registrada es Polpharma. Se trata de una portada cinematográfica: una escena continua cuyo objeto cambia de encuadre, posición y escala a medida que avanza la historia. Referencia conceptual: una estatua romana y movimientos de cámara, no solo una figura decorativa flotante.
 
 El recorrido visual anotado para Trato era acuerdo → cláusula → correo de pedido → entregables afectados → alternativas → adenda → pago. El documento reserva este tratamiento a la presentación, manteniendo el espacio de trabajo legible. La petición del25octubre retoma la investigación de esta dirección; no se ha implementado una nueva portada ni sustituido la aplicación.
 

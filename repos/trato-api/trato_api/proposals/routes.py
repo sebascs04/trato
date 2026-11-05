@@ -142,7 +142,8 @@ def build_proposal_router(settings,require_user,repository_factory=None,workflow
         operation_key=key(request)
         content=await read_bytes(request,10485760)
         if not content.startswith(b'%PDF-'):raise ApiError('FORMAT_MISMATCH',422)
-        reservation=await run_in_threadpool(repo.reserve,snapshot['proposal']['project_id'],f"Aceptación de adenda v{snapshot['revision']['revision_no']}",'addendum',filename,'application/pdf',content,operation_key)
+        reservation=await run_in_threadpool(repo.reserve,snapshot['proposal']['project_id'],f"Aceptación de adenda v{snapshot['revision']['revision_no']}",'addendum',filename,'application/pdf',content,operation_key,
+            context={'purpose':'acceptance_evidence','revision_id':revision_id})
         document=reservation['document']
         await run_in_threadpool(repo.upload,document,content)
         from ..file_processing import remember_options

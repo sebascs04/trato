@@ -89,6 +89,7 @@ Supervisor actualizado en sesión exec74195: web5173, API8000, procesador8001. V
 
 ### Actualización de configuración local
 
+El usuario descargó el JSON de su cliente OAuth web. Se importó el archivo local correspondiente al proyecto esperado y al redirect exacto a `repos/trato-api/.env`, con permisos0600 y clave Fernet local generada. No se imprimieron las credenciales. Se comprobó que `.env` y `.local/gmail/vault.sqlite3` están ignorados por Git. Se reiniciaron los servicios para cargar la configuración. Quedan pendientes añadir la cuenta de prueba en Google si corresponde y completar personalmente el consentimiento desde el perfil. Esta actualización sustituye la afirmación anterior de que faltaba un cliente OAuth, pero no acredita una cuenta Gmail conectada ni un envío real.
 
 ### Conexión Gmail real verificada · 25 de octubre de 2026
 

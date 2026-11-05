@@ -45,6 +45,12 @@ export function installRefundWorkspace(cloud){
  const releaseReader=s=>{if(s?.reader?.url)URL.revokeObjectURL(s.reader.url);if(s)s.reader=null;};
  cloud.reset=function(){releaseReader(this.refundState);wizard.close();this.refundState=null;originalReset();};
  wizard.addEventListener('cancel',event=>{event.preventDefault();const s=cloud.refundState;if(s&&!s.busy){s.wizardOpen=false;s.financeForm=null;if(s.editor)s.editor.reviewed=false;wizard.close();notify(s);}});
+ function uploadContext(s){
+  const parent=s.detail?.settlement;
+  const payment=parent?.payment_id||s.request?.payment_id||(s.request?.scope==='project_closure'?[...s.payments].sort((a,b)=>a.id.localeCompare(b.id))[0]?.id:null);
+  return {purpose:parent?'refund_evidence':'refund_request',...(parent?.id?{refund_case_id:parent.id}:{}),
+   ...(s.snapshot?.id&&parent?{snapshot_id:s.snapshot.id}:{}),...(payment?{payment_id:payment}:{})};
+ }
  let uploadModal=null;
  function bindUploadModal(){
   if(uploadModal===cloud.modal)return;
@@ -229,7 +235,7 @@ export function installRefundWorkspace(cloud){
   }
   if(a==='retry-operation'){if(isFinancialAction(s.pending?.action))return;await sendPending(s);return;}
   if(await financialAction(s,cloud,a,target,{current,write,resend:sendPending,openDetail}))return;
-  if(await documentAction(s,cloud,a,target,{write,openDetail,load,current,acceptResult,preview:id=>previewDocument(s,id),upload:()=>{s.resumeAfterUpload=true;wizard.close();cloud.openSource('reference');}}))return;
+  if(await documentAction(s,cloud,a,target,{write,openDetail,load,current,acceptResult,preview:id=>previewDocument(s,id),upload:()=>{s.resumeAfterUpload=true;wizard.close();cloud.openSource('reference',uploadContext(s));}}))return;
   if(a==='download'){await previewDocument(s,target.dataset.document);return;}
   if(a==='new'){if(s.status?.can_register!==true||s.pending||s.storageError)return;s.request={scope:'payment_only',payments_reviewed:false,payment_id:'',reason:'',requested_by:'customer',evidence:[]};s.view='create';s.wizardOpen=true;s.step=null;}
   if(a==='open'){if(s.detail?.settlement.id===target.dataset.id&&s.editor)s.wizardOpen=true;else await openDetail(s,target.dataset.id);}
@@ -276,7 +282,7 @@ export function installRefundWorkspace(cloud){
   }
   panel.onclick=event=>{
    const upload=event.target.closest('[data-cloud-action="upload"], [data-cloud-action="tab"]');
-   if(upload&&s.wizardOpen){event.preventDefault();event.stopPropagation();s.resumeAfterUpload=true;wizard.close();cloud.openSource('reference');return;}
+   if(upload&&s.wizardOpen){event.preventDefault();event.stopPropagation();s.resumeAfterUpload=true;wizard.close();cloud.openSource('reference',uploadContext(s));return;}
    const target=event.target.closest('[data-refund-action]');if(!target||target.disabled||s.busy)return;event.preventDefault();void run(s,()=>action(s,target.dataset.refundAction,target));};
   panel.oninput=event=>{
    const el=event.target;

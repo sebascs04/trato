@@ -41,7 +41,15 @@ def remember_options(settings,repo,document,language,purpose=None,bindings=None)
 def purpose_context(repo,owner,project,value):
     doc=value['document'];common={'project_id':'eq.'+project['id'],'owner_id':'eq.'+owner}
     options=repo.rows('file_processing_options',{'select':'output_language,purpose,bindings','document_id':'eq.'+doc['id']})
-    option=options[0] if options else {'output_language':'es','purpose':None,'bindings':{}}
+    context=repo.rows('document_upload_contexts',{'select':'purpose,revision_id,refund_case_id,snapshot_id,payment_id',
+        'document_id':'eq.'+doc['id'],**common})
+    structural=context[0] if context else None
+    structural_bindings={k:structural[k] for k in ('revision_id','refund_case_id','snapshot_id','payment_id') if structural and structural.get(k)}
+    option=dict(options[0]) if options else {'output_language':'es','purpose':None,'bindings':{}}
+    if structural:
+        if option.get('purpose') and option['purpose']!=structural['purpose']:raise ApiError('FILE_PURPOSE_CONFLICT',409)
+        if any(k in option['bindings'] and option['bindings'][k]!=v for k,v in structural_bindings.items()):raise ApiError('FILE_PURPOSE_CONFLICT',409)
+        option['purpose']=structural['purpose'];option['bindings']={**structural_bindings,**option['bindings']}
     if option['output_language'] not in ('es','en'):raise ApiError('INVALID_OUTPUT_LANGUAGE',422)
     purpose={'initial_agreement':'initial_agreement','email_request':'change_request','reference':'supporting_reference',
              'addendum':'supporting_reference','delivery':'delivery_evidence'}.get(doc['kind'])

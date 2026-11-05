@@ -30,3 +30,50 @@ body.case-agent-open{overflow:hidden}
 /* Source scope is chosen explicitly and stays visible beside the conversation. */
 .case-agent-documents{margin:0 0 20px;padding:0}.case-agent-documents>header{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:12px}.case-agent-documents h4{font-size:14px;font-weight:550;margin:0}.case-agent-documents>header button{min-height:36px}
 [data-agent-document-choice],[data-agent-document-scope]{padding:12px 14px;margin:0 0 18px;border:1px solid var(--line,#e8e5ed);border-radius:12px;font-size:12px;line-height:1.7;background:var(--surface-soft,#f7f5fc)}[data-agent-document-choice]>p{margin:0 0 8px;color:var(--muted)}[data-agent-document-choice] summary,[data-agent-document-scope] summary{cursor:pointer;color:var(--purple)}[data-agent-document-choice] ul,[data-agent-document-scope] ul{margin:6px 0 12px;padding-left:18px;overflow-wrap:anywhere}[data-agent-document-choice] strong,[data-agent-document-scope] strong{font-size:11px;font-weight:550}[data-agent-document-choice] .button{margin-top:10px;font-size:12px;min-height:36px}[data-agent-document-scope]>.text-button{margin-top:8px;font-size:11px}
+
+.project-assistant-user-message{display:flex;flex-direction:row-reverse;align-items:flex-start;gap:10px;margin:0 0 12px;padding-left:38px}.project-assistant-user-message .project-assistant-question{margin:0;max-width:85%;min-width:0;overflow-wrap:anywhere;border-radius:14px 3px 14px 14px;background:var(--purple-soft)}.project-assistant-user-avatar{display:grid;place-items:center;flex-shrink:0;width:36px;height:36px;border-radius:50%;background:var(--purple);color:white;font-size:11px;font-weight:650}.project-assistant-user-avatar .ui-icon{width:18px;height:18px}.project-assistant-failure{display:flex;justify-content:flex-end;padding-right:46px}.project-assistant-retry{display:inline-flex;align-items:center;gap:7px;min-height:36px;font-size:12px;color:var(--muted)}.project-assistant-retry .ui-icon{width:14px;height:14px}
+
+/* Initial conversation loading: mascot and label share the same vertical center. */
+.project-assistant-loading{display:flex;align-items:center;justify-content:center;min-height:170px;padding:18px 0}
+.project-assistant-loading .ai-activity-compact{display:flex;align-items:center;justify-content:center;gap:18px;width:100%;min-height:120px;padding:24px;border:0;background:transparent;text-align:left}
+.project-assistant-loading .ai-activity-orbit{flex:0 0 64px;width:64px;height:64px;margin:0}
+.project-assistant-loading .ai-activity-mascot{width:64px;height:64px}
+.project-assistant-loading .ai-activity>strong{max-width:340px;margin:0;font-size:14px;font-weight:500;line-height:1.7}
+
+.project-assistant > .project-assistant-preparation { position: static; width: 100%; max-height: none; overflow: visible; box-shadow: none; }
+
+.change-draft-result { display: grid; gap: 14px; }
+.change-draft-result h3, .change-draft-result h4 { margin: 0; }
+.change-draft-terms { display: grid; gap: 6px; }
+.change-draft-terms p, .change-draft-detail p { margin: 0 0 8px; font-size: 13px; line-height: 1.6; }
+.change-draft-calculation {
+  display: grid;
+  gap: 12px;
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: var(--surface-soft);
+}
+.change-draft-effort { margin: 0; color: var(--muted); font-size: 12px; }
+[data-change-draft-price] { display: grid; gap: 12px; }
+.change-draft-inputs { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+.change-draft-inputs .field { margin: 0; font-size: 12px; }
+.change-draft-inputs .context-box { min-height: 44px; padding: 8px 10px; }
+[data-change-draft-price] > .button { justify-self: start; min-height: 40px; }
+.change-draft-total {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--line);
+}
+.change-draft-total p { display: grid; gap: 2px; margin: 0; }
+.change-draft-total span { color: var(--muted); font-size: 12px; }
+.change-draft-total strong { color: var(--purple); font-size: 24px; font-variant-numeric: tabular-nums; }
+.change-draft-detail { padding: 8px 0; border-top: 1px solid var(--line); }
+.change-draft-detail summary { cursor: pointer; color: var(--purple); font-size: 13px; }
+.change-draft-detail p { margin-top: 8px; }
+.change-draft-composer .dialog-actions { margin: 0; gap: 8px; }
+.change-draft-composer textarea.context-box { min-height: 64px; }

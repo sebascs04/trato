@@ -94,6 +94,18 @@ class FilePipelineTests(unittest.TestCase):
         self.assertEqual(set(result['artifacts']), {'extraction', 'treatment', 'chunks', 'summary'})
         self.assertEqual(self.backend.projections, [])
 
+    def test_resume_reuses_saved_analysis_without_another_model_call(self):
+        from unittest.mock import patch
+
+        first = self.pipeline(None).run(self.backend.thread)
+        self.assertEqual(first['result']['error_code'], 'EMBEDDING_NOT_CONFIGURED')
+        with patch.object(ModelDouble, 'generate', side_effect=AssertionError('unexpected inference')) as generate:
+            resumed = self.pipeline().run(self.backend.thread)
+        generate.assert_not_called()
+        self.assertEqual(resumed['action'], 'completed', resumed)
+        self.assertEqual(resumed['result']['status'], 'processed')
+        self.assertEqual(len(self.backend.projections), 1)
+
     def test_partial_index_is_not_success(self):
         self.backend.partial = True
         result = self.pipeline().run(self.backend.thread)

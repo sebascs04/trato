@@ -21,12 +21,13 @@ class ProposalModel:
  def generate(self,messages,schema):
   self.calls+=1
   if self.calls==1:return {'type':'tool_call','tool':'search_document_text','params':{'query':'original scope and requested payment module'}}
-  sources=json.loads(messages[-1]['content'])['tool_result']['data']['sources']
-  if self.request_only:sources=[s for s in sources if s['file_id']==REQUEST]
+  options=json.loads(messages[-1]['content'])['tool_result']['data']['citation_options']
+  roles=['request'] if self.request_only else ['agreement','request']
+  references=[next(option['reference_id'] for option in options if option['role']==role) for role in roles]
   return {'type':'final','result':{'status':'answered','answer':'The supplied request adds a payment module to the original five pages.',
     'proposal':{'scope_summary':'Add the requested payment module.','conditions':'Review integrations before delivery.',
       'description':'Payment module implementation','estimated_hours':'3.5','suggested_deadline':None},
-    'citations':[{'source_id':s['source_id'],'quote':s['text']} for s in sources],'missing_information':[]}}
+    'citations':[{'reference_id':reference} for reference in references],'missing_information':[]}}
 
 @patch.dict(os.environ,{'TRATO_WORKER_TOKEN':'worker'})
 class ChangeProposalIntegrationTests(unittest.TestCase):
@@ -142,15 +143,20 @@ class ChangeProposalIntegrationTests(unittest.TestCase):
     'change_proposal_job_id':draft,'document_ids':sorted([AGREEMENT,REQUEST])})
   self.assertEqual(response.status_code,202,response.text)
   self.assertEqual(self.jobs.input(OWNER,id)['proposal_discussion']['estimated_hours'],'3.5')
-  class DiscussionModel(ProposalModel):
+  class DiscussionModel:
+   name='explicit-test-model'
+   calls=0
    def generate(inner,messages,schema):
-    if inner.calls==0:
-     payload=json.loads(messages[1]['content']);self.assertEqual(payload['proposal_discussion']['estimated_hours'],'3.5')
+    inner.calls+=1
+    if inner.calls==1:
+     payload=json.loads(messages[1]['content'])
+     self.assertEqual(payload['proposal_discussion']['estimated_hours'],'3.5')
      self.assertEqual(payload['question'],'Why do you estimate 3.5 hours?')
-    result=super().generate(messages,schema)
-    if result['type']=='final':
-     result['result'].pop('proposal');result['result']['answer_basis']='documents';result['result']['answer']='The proposed estimate covers implementing the requested payment module and needs your review.'
-    return result
+     return {'type':'tool_call','tool':'search_document_text','params':{'query':'requested payment module'}}
+    source=json.loads(messages[-1]['content'])['tool_result']['data']['sources'][0]
+    return {'type':'final','result':{'status':'answered','answer_basis':'documents',
+     'answer':'The estimate covers the requested payment module and needs your review.',
+     'citations':[{'source_id':source['source_id'],'quote':source['text']}],'missing_information':[]}}
   model=DiscussionModel();lease=self.jobs.start(id)
   result=run_project_assistant(self.jobs.input(OWNER,id),model,self.client,id,lease)
   self.assertEqual(result['status'],'answered');self.assertTrue(result['citations'])

@@ -87,7 +87,8 @@ class ProposalPdfService:
         if not clients:
             raise ApiError('CLIENT_NOT_FOUND', 404)
         content = render_pdf(snapshot, project['name'], clients[0]['name'])
-        reservation = repo.reserve(project['id'], f'Adenda v{revision["revision_no"]}', 'addendum', f'adenda-v{revision["revision_no"]}.pdf', 'application/pdf', content, 'proposal-pdf-' + revision_id)
+        reservation = repo.reserve(project['id'], f'Adenda v{revision["revision_no"]}', 'addendum', f'adenda-v{revision["revision_no"]}.pdf', 'application/pdf', content, 'proposal-pdf-' + revision_id,
+            context={'purpose':'generated_addendum','revision_id':revision_id})
         document = reservation['document']
         if document['sha256'] != sha256(content).hexdigest():
             raise ApiError('PROPOSAL_PDF_HASH_MISMATCH', 409)

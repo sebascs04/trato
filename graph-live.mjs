@@ -2,7 +2,7 @@ import {uiText,uiLocale} from './i18n.mjs';
 import {icon} from './icons.mjs';
 const esc=value=>String(value??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const kinds={Project:[uiText("Proyecto"),'layout-dashboard'],Document:[uiText("Documento"),'file-text'],Extraction:[uiText("Texto extraído"),'file-text'],Proposal:[uiText("Propuesta"),'git-compare-arrows'],Revision:[uiText("Adenda"),'pencil'],Review:[uiText("Revisión"),'eye'],Acceptance:[uiText("Aceptación"),'file-text'],Delivery:[uiText("Envío"),'send'],Payment:[uiText("Pago"),'credit-card']};
-const links={HAS_DOCUMENT:uiText("Contiene"),HAS_EXTRACTION:uiText("Tiene texto extraído"),HAS_PROPOSAL:uiText("Incluye propuesta"),RESPONDS_TO:uiText("Responde al pedido"),HAS_REVISION:uiText("Tiene adenda"),CURRENT_REVISION:uiText("Tiene como vigente"),SUPPORTED_BY:uiText("Usa como fuente"),HAS_PDF:uiText("Tiene PDF"),HAS_REVIEW:uiText("Tiene revisión"),REVIEWED_PDF:uiText("Revisa"),ACCEPTS_REVISION:uiText("Acepta esta adenda"),EVIDENCED_BY:uiText("Se respalda en"),FOR_REVISION:uiText("Corresponde a"),FOLLOWS_ACCEPTANCE:uiText("Sigue a"),REPLACES_DRAFT:uiText("Reemplaza"),REQUESTED_CHANGES_FROM:uiText("Recoge ajustes de"),BASED_ON_ACCEPTANCE:uiText("Se basa en"),CURRENT_ACCEPTANCE:uiText("Tiene acuerdo vigente")};
+const links={HAS_INITIAL_AGREEMENT:uiText('graph.hasInitialAgreement'),RECEIVES_REQUEST:uiText('graph.receivesRequest'),HAS_CHANGE_PROPOSAL:uiText('graph.hasChangeProposal'),HAS_DOCUMENT:uiText("Contiene"),HAS_EXTRACTION:uiText("Tiene texto extraído"),HAS_PROPOSAL:uiText("Incluye propuesta"),RESPONDS_TO:uiText("Responde al pedido"),HAS_REVISION:uiText("Tiene adenda"),CURRENT_REVISION:uiText("Tiene como vigente"),SUPPORTED_BY:uiText("Usa como fuente"),HAS_PDF:uiText("Tiene PDF"),HAS_REVIEW:uiText("Tiene revisión"),REVIEWED_PDF:uiText("Revisa"),ACCEPTS_REVISION:uiText("Acepta esta adenda"),EVIDENCED_BY:uiText("Se respalda en"),FOR_REVISION:uiText("Corresponde a"),FOLLOWS_ACCEPTANCE:uiText("Sigue a"),REPLACES_DRAFT:uiText("Reemplaza"),REQUESTED_CHANGES_FROM:uiText("Recoge ajustes de"),BASED_ON_ACCEPTANCE:uiText("Se basa en"),CURRENT_ACCEPTANCE:uiText("Tiene acuerdo vigente")};
 const states={draft:uiText("Borrador"),active:uiText("Activo"),closed:uiText("Cerrado"),queued:uiText("Por leer"),ready:uiText("Disponible"),error:uiText("Error"),accepted:uiText("Aceptado"),ready_for_review:uiText("Por revisar"),completed:uiText("Pagado"),created:uiText("Pendiente"),sending:uiText("Enviando"),accepted_by_gmail:uiText("Envío registrado"),failed:uiText("Falló"),delivery_uncertain:uiText("Envío por verificar")};
 const formatDate=value=>value?new Intl.DateTimeFormat(uiLocale(),{dateStyle:'medium',timeStyle:'short',timeZone:'America/Lima'}).format(new Date(value)):'';
 const title=n=>n.title||(n.kind==='Revision'?`${uiText("Adenda v")}${n.revision_no}`:n.kind==='Document'?n.title:n.kind==='Payment'?new Intl.NumberFormat(uiLocale(),{style:'currency',currency:n.currency}).format(n.amount_minor/100):kinds[n.kind]?.[0]||uiText("Registro"));
@@ -32,7 +32,102 @@ export function presentProjectGraph(data){
    edges.push({...edge,kind:'HAS_REVISION',current_revision_edge:edge.edge_key});
   }
  }
- return {nodes:nodes.map(n=>currentNodes.has(n.entity_key)?{...n,is_current_revision:true}:n),edges};
+ return keyProjectGraph(data,{nodes:nodes.map(n=>currentNodes.has(n.entity_key)?{...n,is_current_revision:true}:n),edges});
+}
+
+// Presentation only: a version and its exact PDF are one card, not two milestones.
+function keyProjectGraph(original,presentation){
+ const records=new Map(presentation.nodes.map(n=>[n.entity_key,n]));
+ const attachments=new Map(),folded=new Map(),proposalRequests=new Map();
+ for(const proposal of presentation.nodes.filter(n=>n.kind==='Proposal')){
+  const requests=presentation.edges.filter(e=>e.source===proposal.entity_key&&e.kind==='RESPONDS_TO'&&records.get(e.target)?.business_kind==='email_request');
+  if(requests.length===1)proposalRequests.set(proposal.entity_key,requests[0]);
+ }
+ for(const edge of presentation.edges){
+  const owner=records.get(edge.source),doc=records.get(edge.target);
+  if(!doc||doc.kind!=='Document'||['initial_agreement','email_request'].includes(doc.business_kind))continue;
+  if(!(edge.kind==='HAS_PDF'&&owner?.kind==='Revision'||edge.kind==='EVIDENCED_BY'&&owner?.kind==='Acceptance'))continue;
+  if(!attachments.has(doc.entity_key))attachments.set(doc.entity_key,[]);attachments.get(doc.entity_key).push(edge);
+ }
+ for(const [id,links] of attachments)if(new Set(links.map(e=>e.source)).size===1)folded.set(id,links[0].source);
+ const nodes=presentation.nodes.filter(n=>!folded.has(n.entity_key)&&!proposalRequests.has(n.entity_key)).map(n=>{
+  const documents=[...attachments].filter(([id,links])=>folded.get(id)===n.entity_key).map(([id,links])=>({id:records.get(id).source_id,title:records.get(id).title,role:links[0].kind==='HAS_PDF'?'pdf':'acceptance'}));
+  if(n.kind!=='Revision')return documents.length?{...n,documents}:n;
+  const accepted=original.edges.some(e=>e.kind==='ACCEPTS_REVISION'&&e.target===n.entity_key);
+  const sent=original.edges.some(e=>e.kind==='FOR_REVISION'&&e.target===n.entity_key&&original.nodes.some(source=>source.entity_key===e.source&&source.kind==='Delivery'&&source.business_kind==='adenda'&&source.status==='accepted_by_gmail'));
+  return {...n,documents,milestone:accepted?'accepted':n.status==='rejected'?'rejected':sent?'sent':'created'};
+ });
+ const visible=new Set(nodes.map(n=>n.entity_key)),edges=[];
+ const add=e=>{if(e.source!==e.target&&visible.has(e.source)&&visible.has(e.target)&&!edges.some(x=>x.source===e.source&&x.target===e.target&&x.kind===e.kind))edges.push(e);};
+ for(const edge of presentation.edges){
+  if(edge.kind==='HAS_REVISION'&&proposalRequests.has(edge.source)){
+   const request=proposalRequests.get(edge.source);
+   add({...edge,edge_key:'version-request:'+edge.edge_key,source:edge.target,target:request.target,kind:'RESPONDS_TO',evidence_edges:[edge.edge_key,request.edge_key]});continue;
+  }
+  if(folded.has(edge.target)){
+   // Project containment and the artifact relation are represented by the card itself.
+   if(['HAS_DOCUMENT','HAS_PDF','EVIDENCED_BY'].includes(edge.kind))continue;
+   add({...edge,target:folded.get(edge.target),evidence_edges:[...(edge.evidence_edges||[edge.edge_key]),...attachments.get(edge.target).map(e=>e.edge_key)]});continue;
+  }
+  add(edge);
+ }
+ return assignProjectGraphCases(readableProjectGraph({nodes,edges}));
+}
+// Inverse reading labels describe the same verified relationship from the request.
+// Source evidence stays available in details instead of drawing a parallel arrow.
+export function readableProjectGraph(graph){
+ const byId=new Map(graph.nodes.map(n=>[n.entity_key,n]));
+ const edges=graph.edges.map(e=>{
+  const source=byId.get(e.source),target=byId.get(e.target);
+  if(e.kind==='HAS_DOCUMENT'&&source?.kind==='Project'&&target?.business_kind==='initial_agreement')return {...e,kind:'HAS_INITIAL_AGREEMENT',original_kind:e.kind};
+  if(e.kind==='HAS_DOCUMENT'&&source?.kind==='Project'&&target?.business_kind==='email_request')return {...e,kind:'RECEIVES_REQUEST',original_kind:e.kind};
+  if(e.kind==='RESPONDS_TO'&&source?.kind==='Revision'&&target?.business_kind==='email_request')return {...e,kind:'HAS_CHANGE_PROPOSAL',source:e.target,target:e.source,original_kind:e.kind,original_source:e.source,original_target:e.target};
+  return {...e};
+ });
+ const folded=new Set();
+ for(const primary of edges.filter(e=>e.kind==='HAS_CHANGE_PROPOSAL')){
+  const evidence=edges.filter(e=>e.kind==='SUPPORTED_BY'&&e.source===primary.target&&e.target===primary.source);
+  if(!evidence.length)continue;
+  primary.evidence_relations=evidence;
+  primary.evidence_edges=[...new Set([...(primary.evidence_edges||[primary.edge_key]),...evidence.flatMap(e=>e.evidence_edges||[e.edge_key])])];
+  evidence.forEach(e=>folded.add(e));
+ }
+ return {nodes:graph.nodes,edges:edges.filter(e=>!folded.has(e))};
+}
+export function renderProjectGraphReading(){
+ const samples=[
+  [uiText('graph.readExampleProject'),uiText('graph.hasInitialAgreement'),uiText('graph.readExampleAgreement')],
+  [uiText('graph.readExampleRequest'),uiText('graph.hasChangeProposal'),uiText('graph.readExampleAddendum')]
+ ];
+ return `<details class="gd-reading-guide"><summary>${uiText('graph.howToRead')}</summary><p>${uiText('graph.readArrow')}</p>${samples.map(([source,relation,target])=>`<p class="gd-reading-example"><strong>${esc(source)}</strong><span> → ${esc(relation)} → </span><strong>${esc(target)}</strong></p>`).join('')}</details>`;
+}
+
+export function projectGraphMilestone(node){
+ const milestones={created:uiText('graph.version.created'),sent:uiText('graph.version.sent'),accepted:uiText('graph.version.accepted'),rejected:uiText('graph.version.rejected')};
+ return node.kind==='Revision'?milestones[node.milestone||'created']:(states[node.status]||'');
+}
+
+// Colors identify a request's story, never its payment or acceptance status.
+export function assignProjectGraphCases(graph){
+ const requests=graph.nodes.filter(n=>n.kind==='Document'&&n.business_kind==='email_request').sort((a,b)=>(a.created_at||'').localeCompare(b.created_at||'')||a.entity_key.localeCompare(b.entity_key));
+ const palette=[['#7350b5','#f2edf9'],['#1476a8','#eaf5fc'],['#b15c13','#fff3e8'],['#14806e','#e8f7f3'],['#bd3c6c','#fceef4'],['#5168b5','#eef1fc'],['#7a771a','#f6f5e7'],['#a4472b','#fcf0eb']];
+ const cases=requests.map((n,index)=>{const [color,soft]=palette[index]||[`hsl(${(index*137.508)%360} 55% 37%)`,`hsl(${(index*137.508)%360} 60% 96%)`];return {id:n.entity_key,index,title:n.title||uiText('graph.unnamedRequest',{number:index+1}),color,soft};});
+ const memberships=new Map(graph.nodes.map(n=>[n.entity_key,new Set(n.kind==='Document'&&n.business_kind==='email_request'?[n.entity_key]:[])]));
+ for(let pass=0;pass<graph.nodes.length;pass++){
+  let changed=false;
+  for(const e of graph.edges){
+   let from,to;
+   if(['RESPONDS_TO','ACCEPTS_REVISION','FOR_REVISION','FOLLOWS_ACCEPTANCE'].includes(e.kind)){from=e.target;to=e.source;}
+   else if(['HAS_CHANGE_PROPOSAL','HAS_REVISION','HAS_PDF','EVIDENCED_BY'].includes(e.kind)){from=e.source;to=e.target;}
+   else continue;
+   for(const id of memberships.get(from)||[])if(memberships.has(to)&&!memberships.get(to).has(id)){memberships.get(to).add(id);changed=true;}
+  }
+  if(!changed)break;
+ }
+ const nodes=graph.nodes.map(n=>{const ids=memberships.get(n.entity_key);const item=ids.size===1?cases.find(c=>ids.has(c.id)):null;return item?{...n,case_id:item.id,case_title:item.title,case_index:item.index,case_color:item.color,case_soft:item.soft}:n;});
+ const byId=new Map(nodes.map(n=>[n.entity_key,n]));
+ const edges=graph.edges.map(e=>{const source=byId.get(e.source),target=byId.get(e.target);const item=source?.case_id&&target?.case_id&&source.case_id!==target.case_id?null:source?.case_id?source:target?.case_id?target:null;return item?{...e,case_id:item.case_id,case_index:item.case_index,case_color:item.case_color}:e;});
+ return {nodes,edges,cases};
 }
 
 // A presentation tree chooses one parent; all factual, directed edges remain visible.
@@ -48,7 +143,7 @@ export function layoutProjectGraph(nodes,edges){
   let parent;
   if(n.kind==='Document')parent=incoming(id,'HAS_PDF')||incoming(id,'EVIDENCED_BY')||root;
   else if(n.kind==='Proposal')parent=outgoing(id,'RESPONDS_TO')||root;
-  else if(n.kind==='Revision')parent=incoming(id,'HAS_REVISION')||root;
+  else if(n.kind==='Revision')parent=incoming(id,'HAS_CHANGE_PROPOSAL')||outgoing(id,'RESPONDS_TO')||incoming(id,'HAS_REVISION')||root;
   else if(n.kind==='Extraction')parent=incoming(id,'HAS_EXTRACTION')||root;
   else if(n.kind==='Review')parent=incoming(id,'HAS_REVIEW')||root;
   else if(n.kind==='Acceptance')parent=outgoing(id,'ACCEPTS_REVISION')||root;
@@ -71,7 +166,7 @@ export function layoutProjectGraph(nodes,edges){
  measure(root);
  const degree=new Map(nodes.map(n=>[n.entity_key,0]));
  for(const edge of edges){degree.set(edge.source,(degree.get(edge.source)||0)+1);degree.set(edge.target,(degree.get(edge.target)||0)+1);}
- const cardHeight=id=>Math.max(112,((degree.get(id)||0)+1)*16);
+ const cardHeight=id=>Math.max(byId.get(id)?.case_id?148:112,((degree.get(id)||0)+1)*16);
  const column=340,row=Math.max(152,...nodes.filter(n=>n.kind!=='Project').map(n=>cardHeight(n.entity_key)+36)),padding=100;
  function place(id,level,top){
   depth.set(id,level);const span=heights.get(id)*row;
@@ -158,7 +253,7 @@ export async function openProjectGraph({projectId,request,returnFocus,isCurrent=
  const embedded=Boolean(container),dialog=container||document.createElement('dialog');
  if(!embedded){dialog.className='gd-dialog';dialog.setAttribute('aria-label',uiText("Mapa del proyecto"));document.body.append(dialog);}
  const root=document.createElement('div');root.className='graph-design graph-live'+(embedded?' graph-live-embedded':'');dialog.replaceChildren(root);
- let generation=0,data,selected,all=[],edges=[],byId=new Map(),objectUrl,pdfDialog,observer,disposed=false,requestFilter='all',selectedRelation=null,detailsOpen=false,expanded=false,view={x:0,y:0,scale:1},layout,routes=new Map(),viewport,scene,resizeObserver,drag,ignoreClickUntil=0;
+ let generation=0,data,selected,all=[],edges=[],cases=[],byId=new Map(),objectUrl,pdfDialog,observer,disposed=false,requestFilter='all',selectedRelation=null,detailsOpen=false,expanded=false,view={x:0,y:0,scale:1},layout,routes=new Map(),viewport,scene,resizeObserver,drag,ignoreClickUntil=0;
  const current=run=>!disposed&&(embedded?root.isConnected:dialog.open)&&run===generation&&isCurrent();
  const header=()=>embedded?`<header class="gd-top"><div class="gd-heading"><h3>${uiText("Mapa del proyecto")}</h3><button class="gd-filter" data-live-refresh>${uiText("Actualizar mapa")}</button></div></header>`:`<header class="gd-top"><div class="gd-top-line"><button class="gd-back" data-live-back>${icon('arrow-left')}${uiText("Volver al proyecto")}</button><span class="gd-preview-label">${uiText("Datos del proyecto")}</span><span class="gd-brand">trato.</span></div><div class="gd-heading"><div><span class="gd-eyebrow">${uiText("SEGUIMIENTO")}</span><h1>${uiText("Mapa del proyecto")}</h1><p class="gd-intro">${uiText("Sigue las conexiones entre tus documentos, acuerdos y pagos.")}</p></div><button class="gd-filter" data-live-refresh>${uiText("Actualizar mapa")}</button></div></header>`;
  const cleanup=()=>{if(disposed)return;setExpanded(false);resizeObserver?.disconnect();disposed=true;generation++;observer?.disconnect();if(pdfDialog?.open)pdfDialog.close();if(objectUrl){URL.revokeObjectURL(objectUrl);objectUrl=null;}if(embedded)root.remove();else dialog.remove();if(returnFocus?.isConnected)returnFocus.focus();};
@@ -180,7 +275,7 @@ export async function openProjectGraph({projectId,request,returnFocus,isCurrent=
   data=await request(`/api/v1/projects/${encodeURIComponent(projectId)}/graph`);
   if(!current(run))return;
   if(!Array.isArray(data.nodes)||!Array.isArray(data.edges)||!data.nodes.some(n=>n.kind==='Project'&&n.source_id===projectId)||data.nodes.some(n=>n.project_id!==projectId))throw new Error(uiText("Las conexiones recibidas no corresponden al proyecto."));
-  ({nodes:all,edges}=presentProjectGraph(data));byId=new Map(all.map(n=>[n.entity_key,n]));
+  ({nodes:all,edges,cases}=presentProjectGraph(data));byId=new Map(all.map(n=>[n.entity_key,n]));
   selected=byId.has(selected)?selected:all.find(n=>n.kind==='Project').entity_key;
   render();
  }catch(error){if(current(run))root.innerHTML=header()+`<section class="gd-error" role="alert"><h2>${uiText("No se pudo abrir el mapa")}</h2><p>${esc(error.message)}</p><button class="gd-filter" data-live-refresh>${uiText("Volver a intentar")}</button></section>`;}
@@ -192,11 +287,12 @@ export async function openProjectGraph({projectId,request,returnFocus,isCurrent=
   visible.clear();visible.add(requestFilter);
   all.filter(n=>n.kind==='Project').forEach(n=>visible.add(n.entity_key));
   const proposals=new Set(edges.filter(e=>e.kind==='RESPONDS_TO'&&e.target===requestFilter).map(e=>e.source));
+  edges.filter(e=>e.kind==='HAS_CHANGE_PROPOSAL'&&e.source===requestFilter).forEach(e=>visible.add(e.target));
   proposals.forEach(k=>visible.add(k));
   edges.filter(e=>e.kind==='HAS_REVISION'&&proposals.has(e.source)).forEach(e=>visible.add(e.target));
   for(let i=0;i<3;i++)for(const e of edges){
-   if(['HAS_REVIEW','HAS_PDF','SUPPORTED_BY','REQUESTED_CHANGES_FROM','EVIDENCED_BY','REVIEWED_PDF'].includes(e.kind)&&visible.has(e.source))visible.add(e.target);
-   if(['ACCEPTS_REVISION','FOR_REVISION'].includes(e.kind)&&visible.has(e.target))visible.add(e.source);
+   if(['HAS_CHANGE_PROPOSAL','HAS_REVIEW','HAS_PDF','SUPPORTED_BY','REQUESTED_CHANGES_FROM','EVIDENCED_BY','REVIEWED_PDF'].includes(e.kind)&&visible.has(e.source))visible.add(e.target);
+   if(['RESPONDS_TO','ACCEPTS_REVISION','FOR_REVISION'].includes(e.kind)&&visible.has(e.target))visible.add(e.source);
    if(e.kind==='HAS_EXTRACTION'&&visible.has(e.target))visible.add(e.source);
   }
  }
@@ -206,7 +302,7 @@ export async function openProjectGraph({projectId,request,returnFocus,isCurrent=
  layout=layoutProjectGraph(viewNodes,viewEdges);
  const {positions,width,height,centerX,centerY}=layout;
  routes=routeProjectGraph(viewEdges,positions);
- root.innerHTML=header()+`<div class="gd-toolbar"><label>${uiText("Ver")} <select data-live-request aria-label="${uiText("Filtrar mapa por pedido")}"><option value="all">${uiText("Todo el proyecto")}</option>${requests.map(n=>`<option value="${esc(n.entity_key)}" ${n.entity_key===requestFilter?'selected':''}>${esc(n.title)}</option>`).join('')}</select></label><span>${uiText("graph.count",{nodes:new Intl.NumberFormat(uiLocale()).format(viewNodes.length),edges:new Intl.NumberFormat(uiLocale()).format(viewEdges.length)})}</span><div class="gd-space-actions"><button class="gd-filter" data-live-details aria-expanded="${detailsOpen}">${uiText("Detalles")}</button><button class="gd-filter" data-live-expand aria-pressed="${expanded}">${expanded?uiText("Reducir mapa"):uiText("Ampliar mapa")}</button></div></div><div class="gd-body"><section class="gd-map" aria-label="${uiText("Relaciones del proyecto")}" tabindex="0"><div class="gd-scene" style="width:${width}px;height:${height}px"><svg class="gd-lines" viewBox="0 0 ${width} ${height}" aria-label="${uiText("Relaciones entre elementos")}"><defs><marker id="live-arrow" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="9" markerHeight="9" markerUnits="userSpaceOnUse" orient="auto"><path d="M0 0 L8 4 L0 8" fill="#9b8bd3"/></marker></defs><g class="gd-orbits" aria-hidden="true">${layout.radii.map(r=>`<circle cx="${centerX}" cy="${centerY}" r="${r}"/>`).join('')}</g>${viewEdges.map(e=>{const line=routes.get(e.edge_key);return `<g class="gd-edge" data-live-edge="${esc(e.edge_key)}" data-live-relation="${esc(e.edge_key)}" role="button" tabindex="0" aria-label="${esc(title(byId.get(e.source))+' '+(links[e.kind]||e.kind)+' '+title(byId.get(e.target)))}"><path class="gd-edge-hit" d="${line.path}"/><path class="gd-edge-line" marker-end="url(#live-arrow)" d="${line.path}"/><circle class="gd-port" cx="${line.start.x}" cy="${line.start.y}" r="3"/><rect class="gd-edge-label-bg" rx="5"/><text x="${line.x}" y="${line.y-7}">${esc(links[e.kind]||e.kind)}</text></g>`;}).join('')}</svg>${viewNodes.map(n=>{const p=positions.get(n.entity_key);return `<button class="gd-node ${n.kind==='Project'?'is-root':''}" style="left:${p.x}px;top:${p.y}px;height:${p.height}px;min-height:${p.height}px" data-live-node="${esc(n.entity_key)}" data-live-depth="${p.depth}"><span class="gd-node-top"><span class="gd-node-icon">${icon(kinds[n.kind]?.[1]||'file-text')}</span><span class="gd-node-kind">${esc(kinds[n.kind]?.[0])}</span></span><strong>${esc(title(n))}</strong><span class="gd-node-description">${esc(n.is_current_revision?uiText("graph.currentRevision"):(states[n.status]|| (n.kind==='Revision'?uiText("Propuesta de cambio"):'')))}</span></button>`;}).join('')}</div></section><div class="gd-map-controls" role="group" aria-label="${uiText("Navegar por el mapa")}"><button class="gd-filter" data-live-zoom="out">${uiText("Alejar")}</button><output data-live-scale aria-label="${uiText("Nivel de zoom")}">100%</output><button class="gd-filter" data-live-zoom="in">${uiText("Acercar")}</button><button class="gd-filter" data-live-fit>${uiText("Ajustar")}</button><button class="gd-filter" data-live-center>${uiText("Ir al proyecto")}</button></div><span class="gd-navigation-hint">${uiText("Arrastra para moverte · Rueda para ampliar")}</span><aside class="gd-inspector" aria-label="${uiText("Detalle del elemento seleccionado")}" aria-live="polite" ${detailsOpen?'':'hidden'}></aside></div>`;
+ root.innerHTML=header()+`<div class="gd-toolbar"><label>${uiText("Ver")} <select data-live-request aria-label="${uiText("Filtrar mapa por pedido")}"><option value="all">${uiText("Todo el proyecto")}</option>${requests.map(n=>`<option value="${esc(n.entity_key)}" ${n.entity_key===requestFilter?'selected':''}>${esc(n.title)}</option>`).join('')}</select></label><span>${uiText("graph.count",{nodes:new Intl.NumberFormat(uiLocale()).format(viewNodes.length),edges:new Intl.NumberFormat(uiLocale()).format(viewEdges.length)})}</span><div class="gd-space-actions"><button class="gd-filter" data-live-details aria-expanded="${detailsOpen}">${uiText("Detalles")}</button><button class="gd-filter" data-live-expand aria-pressed="${expanded}">${expanded?uiText("Reducir mapa"):uiText("Ampliar mapa")}</button></div></div>${cases.length?`<div class="gd-case-legend" role="list" aria-label="${uiText('graph.caseLegend')}"><span class="gd-case-legend-heading">${uiText('graph.caseLegend')}</span>${cases.filter(item=>requestFilter==='all'||item.id===requestFilter).map(item=>`<span class="gd-case-legend-item" role="listitem" style="--gd-case-color:${item.color}" title="${esc(item.title)}"><i aria-hidden="true"></i>${esc(item.title)}</span>`).join('')}</div>`:''}${renderProjectGraphReading()}<div class="gd-body"><section class="gd-map" aria-label="${uiText("Relaciones del proyecto")}" tabindex="0"><div class="gd-scene" style="width:${width}px;height:${height}px"><svg class="gd-lines" viewBox="0 0 ${width} ${height}" aria-label="${uiText("Relaciones entre elementos")}"><defs><marker id="live-arrow" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="9" markerHeight="9" markerUnits="userSpaceOnUse" orient="auto"><path d="M0 0 L8 4 L0 8" fill="#9b8bd3"/></marker>${cases.map(item=>`<marker id="live-arrow-case-${item.index}" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="9" markerHeight="9" markerUnits="userSpaceOnUse" orient="auto"><path d="M0 0 L8 4 L0 8" fill="${item.color}"/></marker>`).join('')}</defs><g class="gd-orbits" aria-hidden="true">${layout.radii.map(r=>`<circle cx="${centerX}" cy="${centerY}" r="${r}"/>`).join('')}</g>${viewEdges.map(e=>{const line=routes.get(e.edge_key);return `<g class="gd-edge" ${e.case_id?`data-live-case="${esc(e.case_id)}" style="--gd-case-color:${e.case_color}"`:''} data-live-edge="${esc(e.edge_key)}" data-live-relation="${esc(e.edge_key)}" role="button" tabindex="0" aria-label="${esc(title(byId.get(e.source))+' '+(links[e.kind]||e.kind)+' '+title(byId.get(e.target)))}"><path class="gd-edge-hit" d="${line.path}"/><path class="gd-edge-line" marker-end="url(#${e.case_id?'live-arrow-case-'+e.case_index:'live-arrow'})" d="${line.path}"/><circle class="gd-port" cx="${line.start.x}" cy="${line.start.y}" r="3"/><rect class="gd-edge-label-bg" rx="5"/><text x="${line.x}" y="${line.y-7}">${esc(links[e.kind]||e.kind)}</text></g>`;}).join('')}</svg>${viewNodes.map(n=>{const p=positions.get(n.entity_key);return `<button class="gd-node ${n.kind==='Project'?'is-root':''}" style="${n.case_id?`--gd-case-color:${n.case_color};--gd-case-soft:${n.case_soft};`:''}left:${p.x}px;top:${p.y}px;height:${p.height}px;min-height:${p.height}px" ${n.case_id?`data-live-case="${esc(n.case_id)}"`:''} data-live-node="${esc(n.entity_key)}" data-live-depth="${p.depth}"><span class="gd-node-top"><span class="gd-node-icon">${icon(kinds[n.kind]?.[1]||'file-text')}</span><span class="gd-node-kind">${esc(kinds[n.kind]?.[0])}</span></span><strong>${esc(title(n))}</strong><span class="gd-node-description">${esc(projectGraphMilestone(n))}</span>${n.case_id&&n.entity_key!==n.case_id?`<span class="gd-node-case" title="${esc(n.case_title)}">${esc(n.case_title)}</span>`:''}</button>`;}).join('')}</div></section><div class="gd-map-controls" role="group" aria-label="${uiText("Navegar por el mapa")}"><button class="gd-filter" data-live-zoom="out">${uiText("Alejar")}</button><output data-live-scale aria-label="${uiText("Nivel de zoom")}">100%</output><button class="gd-filter" data-live-zoom="in">${uiText("Acercar")}</button><button class="gd-filter" data-live-fit>${uiText("Ajustar")}</button><button class="gd-filter" data-live-center>${uiText("Ir al proyecto")}</button></div><span class="gd-navigation-hint">${uiText("Arrastra para moverte · Rueda para ampliar")}</span><aside class="gd-inspector" aria-label="${uiText("Detalle del elemento seleccionado")}" aria-live="polite" ${detailsOpen?'':'hidden'}></aside></div>`;
  viewport=root.querySelector('.gd-map');scene=root.querySelector('.gd-scene');
  resizeObserver?.disconnect();resizeObserver=new ResizeObserver(()=>{if(!disposed&&scene?.isConnected)applyView();});resizeObserver.observe(viewport);
  viewport.addEventListener('wheel',wheel,{passive:false});
@@ -225,12 +321,12 @@ export async function openProjectGraph({projectId,request,returnFocus,isCurrent=
  const close=`<button class="gd-detail-close" data-live-details aria-label="${uiText("Cerrar detalle")}" title="${uiText("Cerrar detalle")}">${icon('x')}</button>`;
  if(edge){
   const source=byId.get(edge.source),target=byId.get(edge.target);
-  aside.innerHTML=close+`<span class="gd-eyebrow">${uiText("RELACIÓN")}</span><h2>${esc(links[edge.kind]||edge.kind)}</h2><div class="gd-relation-summary"><button class="gd-connection" data-live-select="${esc(source.entity_key)}">${icon(kinds[source.kind]?.[1]||'file-text')}<span>${esc(title(source))}<small>${uiText("Origen")}</small></span></button><p>${esc(links[edge.kind]||edge.kind)} ${icon('arrow-right')}</p><button class="gd-connection" data-live-select="${esc(target.entity_key)}">${icon(kinds[target.kind]?.[1]||'file-text')}<span>${esc(title(target))}<small>${uiText("Destino")}</small></span></button></div>`;
+  aside.innerHTML=close+`<span class="gd-eyebrow">${uiText("RELACIÓN")}</span><h2>${esc(links[edge.kind]||edge.kind)}</h2><div class="gd-relation-summary"><button class="gd-connection" data-live-select="${esc(source.entity_key)}">${icon(kinds[source.kind]?.[1]||'file-text')}<span>${esc(title(source))}<small>${uiText("Origen")}</small></span></button><p>${esc(links[edge.kind]||edge.kind)} ${icon('arrow-right')}</p><button class="gd-connection" data-live-select="${esc(target.entity_key)}">${icon(kinds[target.kind]?.[1]||'file-text')}<span>${esc(title(target))}<small>${uiText("Destino")}</small></span></button></div>${edge.evidence_relations?.some(e=>e.kind==='SUPPORTED_BY')?`<p class="gd-relation-evidence">${uiText('graph.requestSourceNote')}</p>`:''}`;
   placeRelationLabels();
   return;
  }
  const description=node.scope_summary||(node.business_kind==='email_request'?uiText("Conversación que respalda el pedido del cliente."):node.kind==='Acceptance'?uiText("Aceptación registrada mediante revisión manual del documento devuelto."):node.kind==='Payment'?(node.status==='completed'?uiText("Pago confirmado por el backend."):uiText("Este pago aún no está confirmado.")):uiText("Registro del proyecto y sus conexiones documentadas."));
- aside.innerHTML=close+`<span class="gd-eyebrow">${esc(kinds[node.kind]?.[0])}</span><h2>${esc(title(node))}</h2><p class="gd-detail-copy">${esc(description)}</p><div class="gd-connections"><h3>${uiText("Conectado con")}</h3><div class="gd-connection-legend" aria-label="${uiText("graph.directionLegend")}"><span>${icon('arrow-left')}${uiText("graph.incoming")}</span><span>${icon('arrow-right')}${uiText("graph.outgoing")}</span></div>${related.map(e=>{const other=byId.get(e.source===selected?e.target:e.source);return `<button class="gd-connection" data-live-select="${esc(other.entity_key)}">${icon(kinds[other.kind]?.[1]||'file-text')}<span>${esc(title(other))}<small>${e.source===selected?'→':'←'} ${esc(links[e.kind]||e.kind)}</small></span>${icon('chevron-right')}</button>`;}).join('')||("<p class=\"gd-detail-copy\">"+uiText("Sin conexiones registradas.")+"</p>")}</div>${node.kind==='Document'?`<button class="gd-document-action" data-live-document="${esc(node.source_id)}">${icon('file-text')}${uiText("Ver documento fuente")}</button>`:''}`;
+ aside.innerHTML=close+`<span class="gd-eyebrow">${esc(kinds[node.kind]?.[0])}</span><h2>${esc(title(node))}</h2><p class="gd-detail-copy">${esc(description)}</p>${related.some(e=>e.evidence_relations?.some(source=>source.kind==='SUPPORTED_BY'))?`<p class="gd-relation-evidence">${uiText('graph.requestSourceNote')}</p>`:''}<div class="gd-connections"><h3>${uiText("Conectado con")}</h3><div class="gd-connection-legend" aria-label="${uiText("graph.directionLegend")}"><span>${icon('arrow-left')}${uiText("graph.incoming")}</span><span>${icon('arrow-right')}${uiText("graph.outgoing")}</span></div>${related.map(e=>{const other=byId.get(e.source===selected?e.target:e.source);return `<button class="gd-connection" data-live-select="${esc(other.entity_key)}">${icon(kinds[other.kind]?.[1]||'file-text')}<span>${esc(title(other))}<small>${e.source===selected?'→':'←'} ${esc(links[e.kind]||e.kind)}</small></span>${icon('chevron-right')}</button>`;}).join('')||("<p class=\"gd-detail-copy\">"+uiText("Sin conexiones registradas.")+"</p>")}</div>${node.kind==='Document'?`<button class="gd-document-action" data-live-document="${esc(node.source_id)}">${icon('file-text')}${uiText("Ver documento fuente")}</button>`:(node.documents||[]).map(doc=>`<button class="gd-document-action" data-live-document="${esc(doc.id)}">${icon('file-text')}${uiText(doc.role==='pdf'?'graph.openVersionPdf':'graph.openAcceptancePdf')}</button>`).join('')}`;
   placeRelationLabels();
  }
  function applyView(){

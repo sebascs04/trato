@@ -100,6 +100,20 @@ class RefundFileContextTests(TestCase):
         self.assertTrue(result['reference_context'].get('case_description'))
         self.assertEqual(result['output_language'], 'es')
 
+    def test_upload_context_resolves_refund_before_a_final_pdf_or_acceptance_is_attached(self):
+        self.repo.tables['document_upload_contexts']=[{'document_id':DOCUMENT,'owner_id':OWNER,'project_id':PROJECT,
+            'purpose':'refund_evidence','refund_case_id':CASE,'snapshot_id':SNAPSHOT,'payment_id':PAYMENT}]
+        self.assert_refund_evidence(self.context())
+        self.assertEqual(self.context()['bindings']['snapshot_id'],SNAPSHOT)
+
+    def test_conflicting_analysis_options_cannot_repoint_an_upload_context(self):
+        self.repo.tables['document_upload_contexts']=[{'document_id':DOCUMENT,'owner_id':OWNER,'project_id':PROJECT,
+            'purpose':'refund_evidence','refund_case_id':CASE,'snapshot_id':SNAPSHOT,'payment_id':PAYMENT}]
+        self.repo.tables['file_processing_options']=[{'document_id':DOCUMENT,'output_language':'es',
+            'purpose':'refund_evidence','bindings':{'refund_case_id':OTHER}}]
+        with self.assertRaises(ApiError) as caught:self.context()
+        self.assertEqual(caught.exception.code,'FILE_PURPOSE_CONFLICT')
+
     def test_generated_refund_pdf_resolves_case_and_verified_initial_payment(self):
         self.repo.link('refund_artifacts', document_id=DOCUMENT, sha256='d' * 64)
         self.assert_refund_evidence(self.context())

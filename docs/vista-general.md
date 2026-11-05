@@ -30,3 +30,4 @@ La vista no añade controles que den por implementados esos pendientes. Cambios 
 
 ## Actualización segura del workspace
 
+La raíz local no tiene checkout Git operativo. Se comparó Main remoto contra el último snapshot publicado, se respaldaron los archivos presentes y se incorporó el único documento modificado en remoto conservando el cuerpo local. También se restauraron 18 documentos del responsable de cambios y devoluciones que faltaban, desde el snapshot publicado exacto. Registro privado: `.local/home-overview-20261104/sync.json`.

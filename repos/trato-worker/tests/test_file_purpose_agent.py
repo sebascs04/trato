@@ -13,9 +13,9 @@ from trato_worker.file_pipeline.embeddings import TRATO_EMBEDDING_PROFILE, TRATO
 
 
 class ControlledModel(ModelDouble):
-    def __init__(self, mutate=None): self.mutate, self.calls = mutate, []
+    def __init__(self, mutate=None): self.mutate, self.calls, self.schemas = mutate, [], []
     def generate(self, messages, schema):
-        payload = json.loads(messages[-1]['content']); self.calls.append(payload)
+        payload = json.loads(messages[-1]['content']); self.calls.append(payload); self.schemas.append(deepcopy(schema))
         result = super().generate(messages, schema)
         if 'segments' in payload and self.mutate: self.mutate(result)
         return result
@@ -81,6 +81,34 @@ class FilePurposeTests(unittest.TestCase):
         self.assertEqual(result['error_code'], 'TREATMENT_INVALID_CITATION')
         self.assertEqual(backend.projections, [])
         self.assertEqual(len(model.calls), 1)
+
+    def test_model_schema_explains_the_expected_category_for_each_purpose(self):
+        from trato_worker.file_pipeline.treatment import CATEGORIES
+        for purpose in PURPOSES:
+            backend, pipeline, model = self.build(purpose)
+            pipeline.run(backend.thread)
+            self.assertEqual(model.calls[0]['expected_category'], CATEGORIES[purpose])
+            self.assertIn('must be ' + CATEGORIES[purpose] + '.',
+                          model.schemas[0]['properties']['detected_category']['description'])
+
+    def test_reprocessing_reuses_valid_treatment_without_a_second_classification(self):
+        backend, pipeline, model = self.build()
+        first = pipeline.run(backend.thread)['result']
+        self.assertEqual(first['status'], 'processed')
+        count = len(model.calls)
+        second = pipeline.run(backend.thread)['result']
+        self.assertEqual(second['status'], 'processed')
+        self.assertEqual(len(model.calls), count)
+
+    def test_corrupt_cached_treatment_does_not_trigger_a_replacement_model_call(self):
+        backend, pipeline, model = self.build()
+        pipeline.run(backend.thread)
+        count = len(model.calls)
+        key = next(key for key in backend.artifacts if key[0] == 'treatment')
+        backend.artifacts[key]['prompt_fingerprint'] = '0' * 64
+        result = pipeline.run(backend.thread)['result']
+        self.assertEqual(result['error_code'], 'TREATMENT_CACHE_INVALID')
+        self.assertEqual(len(model.calls), count)
 
     def test_contradictory_category_is_error_not_automatic_reclassification(self):
         def contradictory(result): result['detected_category'] = 'change_request'
@@ -166,7 +194,7 @@ class SummaryIntegrityTests(unittest.TestCase):
         model.calls.clear(); backend.projections.clear()
         result=pipeline.run(backend.thread)['result']
         self.assertEqual(result['error_code'],'FILE_SUMMARY_INVALID')
-        self.assertEqual(len(model.calls),1)  # Treatment only; no summary fallback.
+        self.assertEqual(len(model.calls),0)  # Valid treatment is reused; no summary fallback.
         self.assertEqual(backend.projections,[])
 
     def test_summary_call_budget_is_a_visible_error(self):

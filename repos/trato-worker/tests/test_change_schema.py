@@ -5,4 +5,4 @@ class ChangeSchemaTests(unittest.TestCase):
   schema=proposal_schema();encoded=json.dumps(schema)
   self.assertNotIn('"$ref"',encoded);self.assertNotIn('"$defs"',encoded)
   self.assertEqual(schema['properties']['proposal']['properties']['suggested_deadline']['type'],'null')
-  self.assertIn('source_id',schema['properties']['citations']['items']['properties'])
+  self.assertIn('reference_id',schema['properties']['citations']['items']['properties'])

@@ -137,6 +137,24 @@ class Repository:
                                        'project_id': 'eq.' + project['id'], 'order': 'created_at.desc', 'limit': 100})
         ids='in.('+','.join(row['id'] for row in rows)+')' if rows else None
         refund_links={}
+        contexts=self.rows('document_upload_contexts',{'select':'*','document_id':ids,
+            'project_id':'eq.'+project['id'],'owner_id':'eq.'+project['owner_id']}) if ids else []
+        latest_outcomes={}
+        if ids:
+            offset=0
+            while True:
+                outcomes=self.rows('file_processing_artifacts',{'select':'document_id,status:artifact->>status,error_code:artifact->>error_code,reason:artifact->treatment->>reason',
+                    'document_id':ids,'project_id':'eq.'+project['id'],'owner_id':'eq.'+project['owner_id'],
+                    'stage':'eq.outcome','order':'created_at.desc,document_id.asc,cache_key.desc','limit':100,'offset':offset})
+                for outcome in outcomes:
+                    latest_outcomes.setdefault(outcome['document_id'],outcome)
+                if len(outcomes)<100 or len(latest_outcomes)==len(rows):break
+                offset+=len(outcomes)
+        by_context={row['document_id']:row for row in contexts}
+        context_revisions={row['revision_id'] for row in contexts if row.get('revision_id')}
+        revision_numbers=self.rows('proposal_revisions',{'select':'id,revision_no','id':'in.('+','.join(sorted(context_revisions))+')',
+            'project_id':'eq.'+project['id'],'owner_id':'eq.'+project['owner_id']}) if context_revisions else []
+        revision_numbers={row['id']:row['revision_no'] for row in revision_numbers}
         if ids:
             artifacts=self.rows('refund_artifacts',{'select':'document_id,snapshot_id,settlement_id','document_id':ids})
             acceptances=self.rows('refund_acceptances',{'select':'snapshot_id,settlement_id,evidence','evidence->>document_id':ids})
@@ -144,13 +162,23 @@ class Repository:
             references=[(a['document_id'],a,'proposal') for a in artifacts]
             references += [(a['evidence']['document_id'],a,'acceptance') for a in acceptances]
             references += [(a['evidence']['document_id'],a,'feedback') for a in feedback]
-            snapshot_ids={a['snapshot_id'] for _,a,_ in references}
+            cases=self.rows('refund_settlements',{'select':'id,request_evidence,created_at','project_id':'eq.'+project['id'],
+                'owner_id':'eq.'+project['owner_id']})
+            references += [(e['document_id'],{'settlement_id':case['id'],'snapshot_id':None},'request')
+                for case in cases for e in case.get('request_evidence',[]) if isinstance(e,dict) and e.get('document_id') in {r['id'] for r in rows}]
+            references += [(row['document_id'],{'settlement_id':row['refund_case_id'],'snapshot_id':row['snapshot_id']},'reference')
+                for row in contexts if row.get('refund_case_id') and row['document_id'] not in {d for d,_,_ in references}]
+            snapshot_ids={a['snapshot_id'] for _,a,_ in references if a.get('snapshot_id')}
             versions=self.rows('refund_snapshots',{'select':'id,version_no','id':'in.('+','.join(sorted(snapshot_ids))+')'}) if snapshot_ids else []
             for document_id,link,role in references:
                 version=next((v['version_no'] for v in versions if v['id']==link['snapshot_id']),None)
-                if version is None:raise ApiError('REFUND_SNAPSHOT_NOT_FOUND',409)
-                refund_links.setdefault(document_id,[]).append({'settlement_id':link['settlement_id'],'snapshot_id':link['snapshot_id'],'version_no':version,'role':role})
+                if link.get('snapshot_id') is not None and version is None:raise ApiError('REFUND_SNAPSHOT_NOT_FOUND',409)
+                refund_links.setdefault(document_id,[]).append({'settlement_id':link['settlement_id'],'snapshot_id':link['snapshot_id'],'version_no':version,'role':role,
+                    **({'case_created_at':case['created_at']} if (case:=next((c for c in cases if c['id']==link['settlement_id']),None)) and case.get('created_at') else {})})
         for row in rows:
+            outcome=latest_outcomes.get(row['id'])
+            row['processing_outcome']=({'status':outcome.get('status'),'error_code':outcome.get('error_code'),
+                'reason':outcome.get('reason')} if outcome else None)
             row['refund_links']=refund_links.get(row['id'],[])
             links = []
             def add_link(revision, role):
@@ -165,6 +193,15 @@ class Repository:
                 add_link((acceptance.get('review') or {}).get('revision'), 'acceptance')
             for revision_row in row.pop('feedback', []):
                 add_link(revision_row, 'feedback')
+            context=by_context.get(row['id'])
+            row['upload_context']=({k:v for k,v in context.items() if k not in ('owner_id','document_id','created_at')} if context else None)
+            if context and context.get('request_document_id') and context['request_document_id']!=row['id']:
+                role={'addendum_adjustments':'feedback','acceptance_evidence':'response','generated_addendum':'addendum'}.get(context['purpose'],'reference')
+                # A file uploaded to answer v1 stays attached to v1 even before v2 exists.
+                if role=='feedback':links=[link for link in links if link['role']!='feedback']
+                if not any(link['request_document_id']==context['request_document_id'] and link['role'] in (role,'acceptance' if role=='response' else role) for link in links):
+                    links.append({'request_document_id':context['request_document_id'],
+                        'revision_no':revision_numbers.get(context.get('revision_id')),'role':role})
             row['request_links'] = links
         return rows
 
@@ -263,10 +300,10 @@ class Repository:
         return self.rows('project_events', {'select': 'id,project_id,document_id,event_type,actor_id,created_at',
             'project_id': 'eq.' + project['id'], 'order': 'created_at.desc', 'limit': 100})
 
-    def reserve(self, project_id, title, kind, filename, mime, data, key):
+    def reserve(self, project_id, title, kind, filename, mime, data, key, *, context=None):
         self.project(project_id)
-        return self.rpc('reserve_document', {'p_project_id': uuid(project_id), 'p_title': title, 'p_kind': kind,
-            'p_filename': filename, 'p_mime': mime, 'p_size': len(data), 'p_sha256': sha256(data).hexdigest(), 'p_key': key})
+        return self.rpc('reserve_document_with_context', {'p_project_id': uuid(project_id), 'p_title': title, 'p_kind': kind,
+            'p_filename': filename, 'p_mime': mime, 'p_size': len(data), 'p_sha256': sha256(data).hexdigest(), 'p_key': key, 'p_context': context or {}})
 
     def upload(self, document, data):
         path = '/storage/v1/object/' + BUCKET + '/' + quote(document['storage_path'], safe='/')

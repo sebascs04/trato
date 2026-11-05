@@ -47,10 +47,6 @@ Verificación técnica en curso; pendiente prueba manual de conversación real, 
 
 TRATO-13, TRATO-14, TRATO-15 y TRATO-16: **implementados y validados en el alcance Sandbox aprobado, sin IA**. Dos recorridos manuales confirmados (cierre global parcial e individual total de adenda) y prueba conectada de entrega/deduplicación de eventos genuinos completados. Los apartados siguientes conservan el historial de tandas; sus pendientes históricos se resuelven en [el acta de cierre](cierre-validacion-devoluciones.md). La IA, un checkout inicial integrado y el uso Live no forman parte de este cierre. No se autoriza PR ni merge por publicar esta rama.
 
-## Nuevo lote: IA en expedientes — 3 de noviembre de 2026
-
-Requerimiento ampliado: asistentes para cambios, precios con antecedentes, renegociaciones y devoluciones; trazabilidad documental en Neo4j e interfaz conversacional con actividad real. Ver [backlog por tandas](backlog-ia-expedientes.md) y [plan de tanda 1](tanda-1-ia-expedientes-plan.md). Estado: plan de tanda 1 aprobado e implementación realizada; pruebas y validación real en curso según [acta](tanda-1-ia-expedientes-validacion.md). Cada tanda exige pruebas de código, integración real en la app y validación antes de continuar.
-
 ## Hallazgos de pruebas de devoluciones — 3 de noviembre de 2026
 
 Dos tareas nuevas reportadas por el usuario durante sus pruebas. Estado: **Por hacer**, sin responsable asignado. Son pendientes del producto; el cierre Sandbox de TRATO-13 a 16 no acredita que estas capacidades estén resueltas.
@@ -200,3 +196,40 @@ Mantener secretos fuera de Git. Los permisos de Supabase del colaborador no conv
 - [Flujo de cambios simulado](worker-flujo-cambios.md)
 - [Flujo de devoluciones simulado](worker-flujo-devoluciones.md)
 - [Modelo del grafo](grafo-conocimiento-trato.md)
+
+
+## 5 noviembre: documentos vinculados desde la subida
+
+**Preparado localmente; verificar publicación antes de asumirlo en main.** Auditoría y cambios en [auditoria-subidas-documentos-20261105.md](auditoria-subidas-documentos-20261105.md): reserva + contexto atómicos, agrupación por IDs reales y botón de reintento para fallos técnicos. Las migraciones de contexto están aplicadas en Supabase; deben acompañar el código en otros entornos.
+
+Pendientes separados: prueba manual de interrupción de subida/revisión; supervisor acotado de trabajos interrumpidos, todavía no activado. No reintentar automáticamente rechazos ni aclaraciones semánticas. La configuración financiera y el cierre de cambios/devoluciones siguen su recorrido existente.
+
+Reparación histórica completada: el PDF suelto de ajustes se vinculó como referencia a “Solicitud 1” tras confirmar SHA-256 y contenido idénticos. No se modificaron versiones ni pagos.
+
+## Recorrido de revisión acordado · 5 noviembre 2026
+
+Pendiente de prueba manual del responsable del proyecto, sin marcarlo completado por pruebas técnicas:
+
+- [ ] Plan de trabajo: presentación del plan guardado, etapas y condiciones de cobro.
+- [ ] Creación desde cero: encargo, contexto de Reputación, propuesta de IA, revisión y creación final.
+- [ ] Proyecto en marcha: acuerdo final como referencia y creación al confirmar.
+- [ ] Pago inicial y cierre del proyecto, al retomar esos flujos.
+
+Historial rediseñado localmente: casos separados por pedido/devolución, fechas agrupadas por día, hora junto a cada movimiento y detalle flotante con fuentes vinculadas explícitamente. Historial y Mapa permanecen juntos; no cambia la lógica financiera del responsable de cambios y devoluciones. Pendiente de revisión visual del responsable del proyecto.
+
+Asistente: la carga inicial oculta la última pregunta guardada hasta recuperar el historial y comprobar el trabajo en curso. Se muestra la actividad de TeTrato durante esa espera; no se alteró la memoria del agente.
+
+
+## 5 noviembre: mapa con elementos clave
+
+Decisión y contrato de presentación en [Mapa de hitos clave](mapa-hitos-clave.md), también enlazado en notas para el responsable de cambios y devoluciones. Preparado localmente: una tarjeta por versión y su PDF bajo demanda; pedido conectado directamente con sus versiones, aceptación y pago conservados. Se mantienen fuentes y relaciones verificables.
+
+- [ ] Revisión visual del responsable del proyecto.
+- [ ] Integrar estados reales de rechazo/retiro cuando el responsable de cambios y devoluciones cierre su contrato. No inventar hitos.
+- [ ] Aplicar el criterio al mapa conectado de devoluciones cuando el expediente forme parte de su proyección.
+
+Plan de trabajo, creación desde cero y proyecto en marcha siguen pendientes de prueba manual en el recorrido ya acordado.
+
+Mapa, ajuste visual adicional local: color diferenciado por solicitud, heredado por sus versiones/aceptación/pago; nombre breve del pedido en tarjetas y leyenda. Estados escritos y fuentes compartidas neutrales. Ver mapa-hitos-clave.md.
+
+Mapa, lectura de flechas: Proyecto → Tiene como acuerdo inicial → Acuerdo inicial; Pedido → Tiene como propuesta → Adenda. La doble relación al mismo pedido (respuesta + fuente) queda en una sola flecha con evidencia conservada en el detalle. Ayuda con ejemplos reales añadida; sin modificar Neo4j ni el flujo del responsable de cambios y devoluciones.

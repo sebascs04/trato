@@ -77,7 +77,11 @@ class PersistenceTests(unittest.TestCase):
             calls.append(request)
             self.assertEqual(request.headers['authorization'], 'Bearer user-a')
             if request.url.path.endswith('/projects'):
-                return httpx.Response(200, json=[{'id': PROJECT, 'client_id': CLIENT}])
+                return httpx.Response(200, json=[{'id': PROJECT, 'client_id': CLIENT, 'owner_id':'owner-a'}])
+            if request.url.path.rsplit('/', 1)[-1] in ('document_upload_contexts','refund_settlements','file_processing_artifacts'):
+                self.assertEqual(request.url.params['owner_id'],'eq.owner-a')
+                self.assertEqual(request.url.params['project_id'],'eq.'+PROJECT)
+                return httpx.Response(200,json=[])
             if request.url.path.rsplit('/', 1)[-1] in ('refund_artifacts', 'refund_acceptances', 'refund_feedback'):
                 key='document_id' if request.url.path.endswith('/refund_artifacts') else 'evidence->>document_id'
                 self.assertEqual(request.url.params[key],'in.(pdf,returned,feedback,unlinked)')
@@ -94,7 +98,7 @@ class PersistenceTests(unittest.TestCase):
                 {'id': 'feedback', 'feedback': [revision]},
                 {'id': 'unlinked', 'proposal_artifacts': []}])
         result = self.repo(handler).list_documents(PROJECT)
-        self.assertEqual(len(calls), 5)
+        self.assertEqual(len(calls), 8)
         for index, role in enumerate(('addendum', 'acceptance', 'feedback')):
             self.assertEqual(result[index]['request_links'], [{'request_document_id': DOC, 'revision_no': 2, 'role': role}])
         self.assertEqual(result[0]['proposal_artifacts'], [{'revision_id': 'revision-2'}])
@@ -106,19 +110,49 @@ class PersistenceTests(unittest.TestCase):
             self.assertEqual(request.headers['authorization'], 'Bearer user-a')
             table=request.url.path.rsplit('/',1)[-1]
             data={
-                'projects':[{'id':PROJECT,'client_id':CLIENT}],
+                'projects':[{'id':PROJECT,'client_id':CLIENT,'owner_id':'owner-a'}],
                 'documents':[{'id':DOC,'project_id':PROJECT,'kind':'addendum'}],
                 'refund_artifacts':[{'document_id':DOC,'snapshot_id':'snapshot-v2','settlement_id':'refund'}],
-                'refund_acceptances':[], 'refund_feedback':[],
+                'refund_acceptances':[], 'refund_feedback':[], 'document_upload_contexts':[], 'refund_settlements':[{'id':'refund','request_evidence':[],'created_at':'2026-11-02T12:00:00Z'}], 'file_processing_artifacts':[],
                 'refund_snapshots':[{'id':'snapshot-v2','version_no':2}],
             }
-            if table.startswith('refund_'):
+            if table.startswith('refund_') and table!='refund_settlements':
                 self.assertNotIn('body_text',request.url.params['select'])
                 self.assertIn('in.',str(request.url.params))
             return httpx.Response(200,json=data[table])
         result=self.repo(handler).list_documents(PROJECT)
         self.assertEqual(result[0]['request_links'],[])
-        self.assertEqual(result[0]['refund_links'],[{'settlement_id':'refund','snapshot_id':'snapshot-v2','version_no':2,'role':'proposal'}])
+        self.assertEqual(result[0]['refund_links'],[{'settlement_id':'refund','snapshot_id':'snapshot-v2','version_no':2,'role':'proposal','case_created_at':'2026-11-02T12:00:00Z'}])
+
+    def test_uploaded_adjustments_are_grouped_before_the_next_revision_is_saved(self):
+        def handler(request):
+            table=request.url.path.rsplit('/',1)[-1]
+            data={
+                'projects':[{'id':PROJECT,'client_id':CLIENT,'owner_id':'owner-a'}],
+                'documents':[{'id':DOC,'kind':'reference','feedback':[]}],
+                'document_upload_contexts':[{'document_id':DOC,'project_id':PROJECT,'owner_id':'owner-a',
+                    'purpose':'addendum_adjustments','request_document_id':'request-a','revision_id':'revision-v1'}],
+                'proposal_revisions':[{'id':'revision-v1','revision_no':1}],
+                'refund_artifacts':[],'refund_acceptances':[],'refund_feedback':[],'refund_settlements':[], 'file_processing_artifacts':[],
+            }
+            return httpx.Response(200,json=data[table])
+        result=self.repo(handler).list_documents(PROJECT)
+        self.assertEqual(result[0]['request_links'],[{'request_document_id':'request-a','revision_no':1,'role':'feedback'}])
+        self.assertNotIn('owner_id',result[0]['upload_context'])
+
+    def test_reservation_sends_structural_context_in_the_same_rpc_without_owner_claims(self):
+        def handler(request):
+            import json
+            if request.url.path.endswith('/projects'):
+                return httpx.Response(200,json=[{'id':PROJECT,'client_id':CLIENT,'owner_id':'owner-a'}])
+            self.assertTrue(request.url.path.endswith('/rpc/reserve_document_with_context'))
+            data=json.loads(request.content)
+            self.assertEqual(data['p_context'],{'purpose':'addendum_adjustments','revision_id':'rev-a'})
+            self.assertNotIn('owner_id',data)
+            self.assertEqual(request.headers['authorization'],'Bearer user-a')
+            return httpx.Response(200,json={'document':{'id':DOC}})
+        self.repo(handler).reserve(PROJECT,'Adjustments','reference','a.pdf','application/pdf',b'%PDF-','idempotent-a',
+            context={'purpose':'addendum_adjustments','revision_id':'rev-a'})
 
     def test_owner_is_not_inserted_from_browser_or_app_claims(self):
         def handler(request):
@@ -135,7 +169,7 @@ class PersistenceTests(unittest.TestCase):
             if path.endswith('/documents'):
                 return httpx.Response(200, json=[{'id': DOC, 'project_id': PROJECT, 'owner_id': 'user-a', 'sha256': 'a'*64}])
             if path.endswith('/projects'):
-                return httpx.Response(200, json=[{'id': PROJECT, 'client_id': CLIENT}])
+                return httpx.Response(200, json=[{'id': PROJECT, 'client_id': CLIENT, 'owner_id':'owner-a'}])
             if path.endswith('/document_extractions'):
                 return httpx.Response(200, json=[{'id': 'extraction-1', 'status': 'ready'}])
             offset = int(request.url.params['offset']); offsets.append(offset)

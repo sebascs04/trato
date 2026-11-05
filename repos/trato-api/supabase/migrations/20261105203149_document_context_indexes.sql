@@ -1,0 +1,8 @@
+begin;
+create index document_upload_contexts_document_scope on public.document_upload_contexts(document_id,project_id,owner_id);
+create index document_upload_contexts_request_scope on public.document_upload_contexts(request_document_id,project_id,owner_id);
+create index document_upload_contexts_revision_scope on public.document_upload_contexts(revision_id,proposal_id,project_id,owner_id);
+create index document_upload_contexts_refund_scope on public.document_upload_contexts(refund_case_id,project_id,owner_id);
+create index document_upload_contexts_snapshot_scope on public.document_upload_contexts(snapshot_id,refund_case_id,project_id,owner_id);
+create index document_upload_contexts_payment_scope on public.document_upload_contexts(payment_id,project_id,owner_id);
+commit;

@@ -345,6 +345,13 @@ class GmailConnectionService:
             mime=str(part.get('mimeType','')).lower()
             filename=self._safe_filename(part.get('filename'))
             attachment_id=body.get('attachmentId')
+            if mime.startswith('image/'):
+                headers={str(header.get('name','')).lower():str(header.get('value',''))
+                         for header in part.get('headers') or [] if isinstance(header,dict)}
+                disposition=headers.get('content-disposition','').split(';',1)[0].strip().lower()
+                if (disposition=='inline' or not part.get('filename') or filename.lower()=='noname'
+                    or (headers.get('content-id') and disposition!='attachment')):
+                    return
             if (bool(part.get('filename')) or attachment_id) and mime not in ('multipart/mixed','multipart/alternative','multipart/related'):
                 count+=1
                 size=body.get('size')

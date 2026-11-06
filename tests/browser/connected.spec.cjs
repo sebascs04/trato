@@ -530,28 +530,27 @@ test('real project map opens on demand and returns to the same project',async({p
   expect(errors).toEqual([]);
 });
 
-test('project sections distinguish agreement changes from refunds without inventing financial actions',async({page})=>{
+test('project sections show refunds coming soon without opening a financial flow',async({page})=>{
  const errors=await setup(page);await openClient(page);
  await page.getByRole('button',{name:'Abrir proyecto Proyecto privado A',exact:true}).click();
  const nav=page.getByRole('navigation',{name:'Secciones del proyecto'});
- await expect(nav.locator('[aria-current="page"]')).toContainText('Proyecto');
+ await expect(nav.locator('[aria-current="page"]')).toContainText('Resumen');
  await nav.getByRole('button',{name:'Cambios: Alcance, precio o plazo',exact:true}).click();
  await expect(page.getByRole('heading',{name:'Cambios del acuerdo',exact:true})).toBeVisible();
  await expect(nav.locator('[aria-current="page"]')).toContainText('Cambios');
  const financial=[];page.on('request',request=>{if(request.method()==='POST')financial.push(request.url());});
- await nav.getByRole('button',{name:'Devoluciones: Dinero de un pago recibido',exact:true}).click();
- await expect(page.getByRole('heading',{name:'Devoluciones del proyecto',exact:true})).toBeVisible();
- await expect(page.locator('.cloud-refunds')).not.toContainText('todavía no está disponible');
- await expect(page.locator('.cloud-setup-path')).toHaveCount(0);
- await expect(page.locator('.refund-simulation button')).toHaveCount(1);
- await expect(page.locator('.refund-simulation button')).toHaveAttribute('data-cloud-action','refund-preview');
+ const refunds=nav.getByRole('button',{name:/Devoluciones.*Próximamente/});
+ await expect(refunds).toBeDisabled();
+ await expect(refunds).toContainText('¿Cuánto devolver?');
+ await expect(page.getByRole('heading',{name:'Cambios del acuerdo',exact:true})).toBeVisible();
+ await expect(page.locator('.cloud-refunds')).toHaveCount(0);
  await expect(nav.getByRole('button',{name:'Historial del proyecto: Historial y mapa',exact:true})).toBeVisible();
  await expect(page.locator('.cloud-project-resources')).toHaveCount(0);
  await page.screenshot({path:'.local/browser-tests/project-refunds-navigation.png',fullPage:true});
  await page.setViewportSize({width:390,height:844});
  await expect(nav.getByRole('button',{name:/Devoluciones/})).toBeVisible();
  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
- await nav.getByRole('button',{name:'Proyecto: Acuerdo y fuentes iniciales',exact:true}).click();
+ await nav.getByRole('button',{name:'Resumen: Acuerdo y fuentes iniciales',exact:true}).click();
  await expect(page.locator('.cloud-agreement')).toBeVisible();
  expect(financial).toHaveLength(0);expect(errors).toEqual([]);
 });

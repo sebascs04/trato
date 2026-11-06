@@ -213,6 +213,7 @@ body.cloud-design{--bg:#faf9fc;--paper:#fff;--surface:#fff;--surface-soft:#f7f5f
 .cloud-mail-field-label{font-size:10px;letter-spacing:1px;color:var(--muted);font-weight:600}
 .cloud-mail-message h3{font-size:16px!important;line-height:1.5;margin:7px 0 20px;letter-spacing:0;font-weight:600;overflow-wrap:anywhere}
 .cloud-mail-body{white-space:pre-wrap;overflow-wrap:anywhere;font-size:13px;line-height:1.85;color:var(--ink)}
+.cloud-mail-frame{display:block;width:100%;min-height:180px;border:0;border-radius:8px;background:#f6f3fa}
 .cloud-mail-attachment{display:flex;width:100%;align-items:center;gap:13px;margin-top:16px;border:1px solid var(--line);border-radius:10px;padding:15px 16px;background:var(--surface);color:var(--ink);text-align:left;cursor:pointer;transition:background .15s,border-color .15s}
 .cloud-mail-attachment:hover{border-color:var(--purple);background:var(--surface-soft)}
 .cloud-mail-pdf{display:grid;place-items:center;width:38px;height:44px;flex-shrink:0;background:#fbefed;color:#a6483c;border:1px solid #efd7d2;border-radius:6px;font-size:10px;font-weight:700;letter-spacing:.4px}
@@ -401,11 +402,20 @@ body.cloud-design{--bg:#faf9fc;--paper:#fff;--surface:#fff;--surface-soft:#f7f5f
 
 /* Gmail responses are plain text evidence; preserve line breaks and wrap hostile long strings. */
 .cloud-design .cloud-gmail-replies{margin-top:22px}
-.cloud-design .cloud-email-reply{padding:18px 0;border-top:1px solid var(--line);min-width:0}
-.cloud-design .cloud-email-reply>header{display:flex;justify-content:space-between;gap:14px;flex-wrap:wrap;font-size:12px}
-.cloud-design .cloud-email-reply>header span{color:var(--muted);overflow-wrap:anywhere}
-.cloud-design .cloud-email-reply-body{white-space:pre-wrap;overflow-wrap:anywhere;max-height:420px;overflow:auto;padding:14px;border:1px solid var(--line);border-radius:8px;background:var(--surface-soft);font-family:inherit;font-size:12px;line-height:1.8;color:var(--ink)}
-.cloud-design .cloud-email-attachment{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;padding:8px 0;font-size:11px;color:var(--muted);overflow-wrap:anywhere}
+.cloud-replies-heading{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:18px}
+.cloud-replies-heading h3{display:flex;align-items:center;gap:8px;margin:0}
+.cloud-replies-heading h3 .ui-icon{color:var(--purple)}
+.cloud-reply-actions{display:flex;align-items:center;gap:8px 14px;flex-wrap:wrap}
+.cloud-reply-actions :is(.button,.text-button){display:inline-flex;align-items:center;gap:7px;min-height:36px}
+.cloud-design .cloud-email-reply{display:grid;gap:12px;padding:16px 0;border-top:1px solid var(--line);min-width:0}
+.cloud-design .cloud-email-reply>header{display:flex;align-items:center;gap:10px;font-size:12px;overflow-wrap:anywhere}
+.cloud-reply-avatar{display:grid;place-items:center;width:34px;height:34px;flex-shrink:0;border-radius:50%;background:var(--purple-soft);color:var(--purple)}
+.cloud-email-reply time{display:block;color:var(--muted);font-size:11px;margin-top:2px}
+.cloud-design .cloud-email-reply-body{white-space:pre-wrap;overflow-wrap:anywhere;max-height:420px;overflow:auto;margin:0;padding:12px 14px;border:1px solid var(--line);border-radius:4px 14px 14px 14px;background:var(--surface-soft);font-family:inherit;font-size:13px;line-height:1.75;color:var(--ink)}
+.cloud-design .cloud-email-attachment{display:flex;align-items:center;gap:8px 12px;flex-wrap:wrap;padding:8px 12px;border:1px solid var(--line);border-radius:10px;font-size:12px;overflow-wrap:anywhere}
+.cloud-email-attachment strong{flex:1 1 140px;min-width:0}
+.cloud-email-attachment .cloud-mail-pdf{width:28px;height:32px}
+.cloud-reply-footer{margin-top:4px}
 .cloud-design .cloud-email-attachment [data-proposal-action="import-gmail-pdf"]:disabled{cursor:default}
 .cloud-design .cloud-client-feedback{margin:16px 0;padding:14px;border:1px solid var(--line);border-radius:9px;background:var(--surface-soft)}
 .cloud-design .cloud-client-feedback strong{font-size:12px}
@@ -541,3 +551,61 @@ body.cloud-design{--bg:#faf9fc;--paper:#fff;--surface:#fff;--surface-soft:#f7f5f
 .cloud-file-preview-stage{position:relative}.cloud-file-preview-stage>.cloud-file-loading{position:absolute;inset:0;z-index:1}
 @keyframes cloud-file-loading{0%{transform:translateX(-110%)}100%{transform:translateX(330%)}}
 @media(prefers-reduced-motion:reduce){.cloud-file-loading-track:after{animation:none;width:100%;opacity:.5}}
+
+.cloud-design .cloud-mail-dialog .upload-modal-header {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  background: var(--surface);
+}
+.cloud-mail-dialog [data-cloud-form="proposal-send"] {
+  flex-wrap: wrap;
+  z-index: 2;
+}
+.cloud-mail-confirmation,
+.cloud-mail-dialog .cloud-mail-footer > .cloud-error {
+  flex: 1 0 100%;
+  margin: 0;
+  font-size: 13px;
+}
+.cloud-mail-dialog .cloud-mail-footer > .cloud-error:empty { display: none; }
+.cloud-mail-dialog .cloud-mail-footer > .cloud-error:not(:empty) {
+  padding: 10px 12px;
+  border: 1px solid #efd7d2;
+  border-radius: 8px;
+  background: #fbefed;
+}
+
+.change-revision-comparison{margin:16px 0;padding:16px;border:1px solid var(--line);border-radius:12px;background:var(--surface-soft)}
+.change-revision-comparison h4{margin:0 0 12px;font-size:14px}
+.change-revision-comparison dl,.change-revision-scopes{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin:0}
+.change-revision-comparison dt,.change-revision-scopes strong{font-size:12px;color:var(--muted)}
+.change-revision-comparison dd{margin:4px 0 0;font-size:13px;overflow-wrap:anywhere}
+.change-revision-comparison summary{margin-top:12px;cursor:pointer;color:var(--purple);font-size:13px}
+.change-revision-scopes{margin-top:10px}
+.change-revision-scopes p{margin:4px 0 0;white-space:pre-wrap;overflow-wrap:anywhere}
+.change-reply-agent blockquote{white-space:pre-wrap;overflow-wrap:anywhere}
+@media(max-width:600px){.change-revision-comparison dl,.change-revision-scopes{grid-template-columns:1fr}}
+
+.change-reply-agent .change-reply-analysis{margin:0;white-space:pre-wrap;line-height:1.65}
+.change-reply-draft{display:grid;gap:12px;padding:16px;border:1px solid var(--line);border-radius:14px;background:var(--surface-soft)}
+.change-reply-draft .field,.change-reply-hint{margin:0}
+.change-reply-draft textarea.context-box{min-height:64px;resize:vertical}
+.change-reply-draft input.context-box{min-height:40px}
+.change-reply-term-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+.change-reply-hint{font-size:12px;line-height:1.6;color:var(--muted)}
+.change-reply-draft>button{justify-self:start}
+@media(max-width:380px){.change-reply-term-grid{grid-template-columns:minmax(0,1fr)}}
+
+[data-acceptance-pdf]{height:clamp(220px,42vh,420px);margin:12px 0}
+[data-acceptance-pdf][hidden]{display:none}
+
+.cloud-design .cloud-project-navigation>.cloud-refund-soon:disabled{
+  align-items:flex-start;background:var(--purple-soft);color:var(--ink);opacity:1;cursor:default;text-align:left;
+}
+.cloud-refund-soon>.ui-icon{color:var(--purple);margin-top:2px}
+.cloud-refund-soon-badge{
+  display:inline-block;margin-top:4px;padding:2px 7px;border-radius:999px;
+  background:var(--surface);color:var(--purple);font-size:10px;font-weight:700;line-height:1.45;
+}
+.cloud-design .cloud-project-navigation>.cloud-refund-soon small{display:block;color:var(--ink)}

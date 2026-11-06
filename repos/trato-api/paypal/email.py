@@ -5,12 +5,15 @@ import hashlib
 from email.message import EmailMessage
 from email.utils import parseaddr
 from html import escape
+from pathlib import Path
 import smtplib
 import ssl
 from urllib.parse import urlparse
 from .client import exact_amount, PayPalError
 from .email_layout import email_layout
 
+MASCOT_CONTENT_ID = 'mascot@trato'
+MASCOT_FILE = Path(__file__).with_name('assets') / 'trato-guide.png'
 
 @dataclass(frozen=True)
 class PdfAttachment:
@@ -53,6 +56,7 @@ class ProposalEmail:
     currency:str
     revised_due_date:str
     agreement:PdfAttachment
+    freelancer_email:str=''
 
 
 def validate_proposal_email(item):
@@ -67,6 +71,7 @@ def validate_proposal_email(item):
     try:
         if date.fromisoformat(item.revised_due_date).isoformat()!=item.revised_due_date:raise ValueError()
     except (TypeError,ValueError):raise EmailDeliveryError('INVALID_PROPOSED_DATE')
+    if item.freelancer_email and not valid_email(item.freelancer_email):raise EmailDeliveryError('INVALID_EMAIL_ADDRESS')
     validate_pdf_attachment(item.agreement)
 
 
@@ -77,10 +82,33 @@ def build_proposal_email(sender,item:ProposalEmail,notification_id):
     greeting=f'Hola, {item.recipient_name}.' if item.recipient_name else 'Hola.'
     cost='Sin adicional de precio.' if item.additional_amount=='0.00' else f'Adicional propuesto: USD {item.additional_amount}.'
     instruction='Revisa la adenda adjunta. Si estás de acuerdo, responde a este correo con el documento firmado. Si necesitas ajustes, indícalos en tu respuesta.'
-    text=f'{greeting}\n\nTe compartimos la propuesta de cambio para {item.project_name}.\n\n{item.proposed_scope}\n\n{cost}\nFecha de entrega propuesta: {item.revised_due_date}.\n\n{instruction}\n\nEsta propuesta queda pendiente de aceptación. No incluye una solicitud de pago.\nReferencia: {item.proposal_id}\n'
+    contact=f'Correo del freelancer: {item.freelancer_email}\n' if item.freelancer_email else ''
+    text=f'{greeting}\n\nProyecto: {item.project_name}\n{contact}\n{item.proposed_scope}\n\n{cost}\nFecha de entrega propuesta: {item.revised_due_date}.\n\n{instruction}\n\nEsta propuesta queda pendiente de aceptación. No incluye una solicitud de pago.\nReferencia: {item.proposal_id}\n'
     message.set_content(text)
     scope=escape(item.proposed_scope).replace('\n','<br>')
-    message.add_alternative(email_layout(str(message['Subject']).split(' · ')[0],item.project_name,f'<p>{escape(greeting)}</p><p>Te compartimos la propuesta de cambio para <strong>{escape(item.project_name)}</strong>.</p><p>{scope}</p><p>{escape(cost)}<br>Fecha de entrega propuesta: {escape(item.revised_due_date)}.</p><p>{escape(instruction)}</p><p>Esta propuesta queda pendiente de aceptación. No incluye una solicitud de pago.</p><p>Referencia: {escape(item.proposal_id)}</p>'),subtype='html')
+    contact_html = (f'<br><strong>Correo del freelancer</strong><br>{escape(item.freelancer_email)}'
+                    if item.freelancer_email else '')
+    html = (
+        f'<p>{escape(greeting)}</p>'
+        '<table role="presentation" width="100%" cellspacing="0" cellpadding="0" '
+        'style="background:#f6f3fa;border-radius:12px;margin:0 0 24px">'
+        f'<tr><td style="padding:16px 18px;font-size:15px;line-height:1.8;overflow-wrap:anywhere">'
+        f'<strong>Proyecto</strong><br>{escape(item.project_name)}{contact_html}</td></tr></table>'
+        '<h2 style="font-size:17px;margin:22px 0 8px">Alcance del cambio</h2>'
+        f'<p><span style="overflow-wrap:anywhere">{scope}</span></p>'
+        '<table role="presentation" width="100%" cellspacing="0" cellpadding="0" '
+        'style="background:#f6f3fa;border-radius:12px;margin:0 0 24px">'
+        f'<tr><td style="padding:16px 18px;font-size:15px;line-height:1.8">'
+        f'<strong>{escape(cost)}</strong><br>'
+        f'Fecha de entrega propuesta: <strong>{escape(item.revised_due_date)}</strong>'
+        '</td></tr></table>'
+        '<h2 style="font-size:17px;margin:0 0 8px">Revisa la adenda adjunta</h2>'
+        '<p>Si estás de acuerdo, responde a este correo con el documento firmado. '
+        'Si necesitas ajustes, indícalos en tu respuesta.</p>'
+        '<p>Esta propuesta queda pendiente de aceptación. No incluye una solicitud de pago.</p>'
+        f'<p>Referencia: {escape(item.proposal_id)}</p>'
+    )
+    _add_branded_html(message, 'Adenda para revisión', item.project_name, html)
     message.add_attachment(item.agreement.content,maintype='application',subtype='pdf',filename=item.agreement.filename)
     return message
 
@@ -114,6 +142,34 @@ def _email_envelope(sender,recipient,notification_id):
     return message
 
 
+def _add_branded_html(message, title, project, content):
+    try:
+        mascot = MASCOT_FILE.read_bytes()
+    except OSError:
+        raise EmailDeliveryError('EMAIL_MASCOT_UNAVAILABLE') from None
+    message.add_alternative(email_layout(title, project, content, mascot_src=f'cid:{MASCOT_CONTENT_ID}'), subtype='html')
+    message.get_body(preferencelist=('html',)).add_related(
+        mascot, maintype='image', subtype='png', cid=f'<{MASCOT_CONTENT_ID}>', disposition='inline')
+
+
+def payment_email_content(greeting, amount, approval_url, payment_id, *, has_agreement):
+    attachment_note = '<p>Adjuntamos la adenda correspondiente a este cobro.</p>' if has_agreement else ''
+    return (
+        f'<p>{escape(greeting)}</p>'
+        '<p>Revisa el cobro de prueba de tu proyecto en PayPal Sandbox.</p>'
+        '<table role="presentation" width="100%" cellspacing="0" cellpadding="0" '
+        'style="background:#f6f3fa;border:1px solid #e6dcef;border-radius:14px;margin:0 0 24px">'
+        '<tr><td align="center" style="padding:20px">'
+        '<div style="font-size:13px;color:#62576d;margin-bottom:8px">Importe de prueba</div>'
+        f'<strong style="font-size:32px;line-height:1.2;color:#302837">USD {escape(amount)}</strong>'
+        '</td></tr></table>'
+        f'<p><a href="{escape(approval_url, quote=True)}">Revisar pago en PayPal Sandbox</a></p>'
+        '<p><strong>Modo de prueba.</strong> Usa una cuenta Sandbox, sin dinero real.</p>'
+        f'{attachment_note}'
+        f'<p>Referencia: {escape(payment_id)}</p>'
+    )
+
+
 def build_payment_email(sender,item:PaymentEmail,notification_id):
     if item.agreement is not None:validate_pdf_attachment(item.agreement)
     message=_email_envelope(sender,item.recipient_email,notification_id)
@@ -126,15 +182,15 @@ def build_payment_email(sender,item:PaymentEmail,notification_id):
     message['Subject']=f'Cobro de prueba · {item.project_name[:120]}'
     greeting=f'Hola, {item.recipient_name}.' if item.recipient_name else 'Hola.'
     text=f'{greeting}\n\nTienes una solicitud de pago de prueba por USD {item.amount} para {item.project_name}.\n\nRevisa y aprueba el pago en PayPal sandbox:\n{item.approval_url}\n\nEs una prueba: usa una cuenta sandbox, sin dinero real. Abrir este correo no confirma el pago.\nReferencia: {item.payment_id}\n'
-    message.set_content(text)
-    message.add_alternative(email_layout(str(message['Subject']).split(' · ')[0],item.project_name,f'<p>{escape(greeting)}</p><p>Tienes una solicitud de pago de prueba por <strong>USD {escape(item.amount)}</strong> para {escape(item.project_name)}.</p><p><a href="{escape(item.approval_url,quote=True)}">Revisar pago en PayPal sandbox</a></p><p>Prueba sin dinero real. Abrir el correo no confirma un pago.</p><p>Referencia: {escape(item.payment_id)}</p>'),subtype='html')
     if item.agreement is not None:
-        # The PDF is a server-authorized snapshot, not a browser-supplied path or URL.
+        text+='\nAdjuntamos la adenda correspondiente a este cobro.\n'
+    message.set_content(text)
+    _add_branded_html(message, 'Cobro de prueba', item.project_name,
+                      payment_email_content(greeting, item.amount, item.approval_url, item.payment_id,
+                                            has_agreement=item.agreement is not None))
+    if item.agreement is not None:
+        # The PDF is a server-authorized snapshot.
         attachment=item.agreement
-        plain=message.get_body(preferencelist=('plain',))
-        plain.set_content(plain.get_content()+'\nAdjuntamos la adenda correspondiente a este cobro.\n')
-        html=message.get_body(preferencelist=('html',))
-        html.set_content(html.get_content().replace('<!-- attachment-note -->','<p style="font-size:14px;line-height:1.8;color:#62576d">Adjuntamos la adenda correspondiente a este cobro.</p>'),subtype='html')
         message.add_attachment(attachment.content,maintype='application',subtype='pdf',filename=attachment.filename)
     return message
 

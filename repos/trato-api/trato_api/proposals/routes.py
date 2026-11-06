@@ -9,6 +9,7 @@ from pydantic import BaseModel,ConfigDict,Field,StringConstraints, field_validat
 from starlette.concurrency import run_in_threadpool
 
 from ..errors import ApiError
+from ..change_reply import mount_change_reply
 from ..persistence import uuid
 from .repository import ProposalRepository
 from .pdf import ProposalPdfService
@@ -105,6 +106,8 @@ def build_proposal_router(settings,require_user,repository_factory=None,workflow
     def get_revision(proposal_id:str,revision_id:str,repo=Depends(repository)):
         return reply(repo.get_revision(uuid(proposal_id),uuid(revision_id)))
     if workflow is not None:
+        mount_change_reply(router,repository,require_user,workflow)
+
         @router.post('/projects/{project_id}/gmail-replies/sync')
         def sync_gmail_replies(project_id:str,repo=Depends(repository),user=Depends(require_user)):
             project_id=uuid(project_id)
@@ -176,14 +179,20 @@ def build_proposal_router(settings,require_user,repository_factory=None,workflow
     async def accept(proposal_id:str,request:Request,repo=Depends(repository)):
         return await command(request,repo,'accept',Accept,{'proposal_id':uuid(proposal_id)})
     if workflow is not None:
+        def freelancer_contact(request,kind):
+            if kind!='adenda':return ''
+            email=getattr(request.state,'identity',{}).get('email')
+            if not email:raise ApiError('VERIFIED_EMAIL_REQUIRED',409)
+            return email
+
         @router.get('/proposals/{proposal_id}/revisions/{revision_id}/email-preview')
-        def preview(proposal_id:str,revision_id:str,kind:Literal['adenda','payment'],repo=Depends(repository),user=Depends(require_user)):
-            return reply(workflow.preview(repo,user,uuid(proposal_id),uuid(revision_id),kind))
+        def preview(proposal_id:str,revision_id:str,request:Request,kind:Literal['adenda','payment'],repo=Depends(repository),user=Depends(require_user)):
+            return reply(workflow.preview(repo,user,uuid(proposal_id),uuid(revision_id),kind,freelancer_email=freelancer_contact(request,kind)))
         @router.post('/proposals/{proposal_id}/revisions/{revision_id}/email')
         async def send(proposal_id:str,revision_id:str,request:Request,kind:Literal['adenda','payment'],repo=Depends(repository),user=Depends(require_user)):
             from ..business_routes import read_model
             value=await read_model(request,Send)
-            return reply(await run_in_threadpool(workflow.send,repo,user,uuid(proposal_id),uuid(revision_id),kind,value.digest))
+            return reply(await run_in_threadpool(workflow.send,repo,user,uuid(proposal_id),uuid(revision_id),kind,value.digest,freelancer_email=freelancer_contact(request,kind)))
         @router.post('/proposals/{proposal_id}/revisions/{revision_id}/payment')
         def payment(proposal_id:str,revision_id:str,repo=Depends(repository),user=Depends(require_user)):
             return reply(workflow.public_payment(workflow.prepare_payment(repo,user,uuid(proposal_id),uuid(revision_id))))

@@ -53,6 +53,13 @@ class MemoryRedis:
         return Lock()
 
 
+class MemoryRegistry:
+    def __init__(self): self.data = {}
+    def get(self, owner, file_id): return deepcopy(self.data.get((owner,file_id)))
+    def put(self, owner, file_id, receipt): self.data[(owner,file_id)] = deepcopy(receipt)
+    def remove(self, owner, file_id): self.data.pop((owner,file_id),None)
+
+
 class Processor:
     def read(self, value):
         return chunk_file({'schema_version': 1, 'file_id': FILE, 'source_fingerprint': value['generation'],
@@ -75,7 +82,7 @@ class Store:
 class VectorTests(unittest.TestCase):
     def setUp(self):
         self.repo, self.store, self.redis = Repo(), Store(), MemoryRedis()
-        self.gateway = VectorGateway(None, store=self.store, redis=self.redis, processor=Processor())
+        self.gateway = VectorGateway(None, store=self.store, redis=self.redis, processor=Processor(), registry=MemoryRegistry())
     def index(self): return self.gateway.index(self.repo, OWNER, PROJECT, FILE)
     def test_index_and_search_reconstruct_exact_source_and_page(self):
         self.index()
@@ -161,14 +168,14 @@ class VectorTests(unittest.TestCase):
         settings = SimpleNamespace(processor_url='http://processor', processor_token='internal')
         transport = httpx.MockTransport(dispatch)
         gateway = VectorGateway(settings, redis=self.redis, store=ProcessorVectorClient(settings, transport),
-                                processor=ProcessorChunks(settings, transport))
+                                processor=ProcessorChunks(settings, transport), registry=MemoryRegistry())
         gateway.index(self.repo, OWNER, PROJECT, FILE)
         result = gateway.search(self.repo, OWNER, PROJECT, 'Revisiones')
         self.assertEqual(result['matches'][0]['text'], self.repo.text)
         self.assertEqual(requests, ['/v1/files/chunks', '/v1/vectors/index', '/v1/vectors/search'])
     def test_malformed_provider_score_and_registry_are_visible_errors(self):
         self.index()
-        self.redis.set(self.gateway.receipt_key(OWNER, FILE), '[]')
+        self.gateway.registry.data[(OWNER, FILE)] = []
         with self.assertRaisesRegex(ApiError, 'VECTOR_REGISTRY_INVALID'):
             self.gateway.search(self.repo, OWNER, PROJECT, 'Texto')
         self.index()

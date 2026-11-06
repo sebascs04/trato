@@ -28,7 +28,7 @@ Clonar el repositorio entrega código y las cinco fuentes del evaluador, pero no
 ## Estado de verificación
 
 - Contratos comprobados en el lote publicado: API 239, procesador 26, Node 38, despliegue 3; worker 128 ejecutadas con 11 omisiones explícitas; 1.559 traducciones ES/EN emparejadas.
-- el equipo comprobó por separado web/API/FP/worker en Docker local con red aislada, sin puertos publicados ni proveedores externos. Se verificaron recursos del evaluador, casos de Ensayos, disponibilidad de `pdftotext` e imports del worker; no se inició el consumidor real.
+- P2 comprobó por separado web/API/FP/worker en Docker local con red aislada, sin puertos publicados ni proveedores externos. Se verificaron recursos del evaluador, casos de Ensayos, disponibilidad de `pdftotext` e imports del worker; no se inició el consumidor real.
 - Posteriormente pasaron arranque conjunto de siete servicios backend, conectividad HTTP interna API/FP, heartbeats IA y persistencia Redis al reiniciar su contenedor de prueba. Se usaron credenciales sintéticas sin red externa ni trabajos de modelo; el pump reportó Supabase inaccesible, conforme al aislamiento. Esto no equivale a instalación fresca Windows/macOS, conexiones remotas reales ni calidad de una conversación/evaluación completa con Gemini.
 - No se han creado accesos de la nueva colaboradora por redactar este documento. Confirmar invitaciones aceptadas y entrega privada de credenciales antes de declarar su entorno listo.
 - Adjuntos privados de reputación y adaptación de expedientes monetarios del colaborador que lleva devoluciones siguen separados. Instalar dependencias no completa esas integraciones.

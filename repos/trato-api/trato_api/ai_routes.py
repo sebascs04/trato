@@ -1,5 +1,6 @@
 """Authenticated AI jobs. The server, not the browser, supplies reputation context."""
-from datetime import date
+from datetime import date, datetime
+from zoneinfo import ZoneInfo
 from decimal import Decimal
 from typing import Literal
 from uuid import UUID
@@ -15,6 +16,9 @@ from .model_preferences import ModelPreferences
 from .ai_jobs import AIJobs
 from .reputation_usage import record_plan_usage
 
+def project_today():
+    return datetime.now(ZoneInfo('America/Lima')).date()
+
 class ReputationInput(BaseModel):
     model_config=ConfigDict(extra='forbid')
     profile_id:UUID
@@ -27,6 +31,11 @@ class ProjectPlanInput(BaseModel):
     brief:str=Field(min_length=1,max_length=4000)
     budget:Decimal=Field(gt=0,le=100000000,max_digits=11,decimal_places=2)
     target_date:date
+    @field_validator('target_date')
+    @classmethod
+    def future_delivery(cls,value):
+        if value < project_today():raise ValueError('Delivery date is in the past')
+        return value
     @field_validator('brief')
     @classmethod
     def nonempty(cls,v):
@@ -45,6 +54,13 @@ class CreatePlannedProject(BaseModel):
     name:str=Field(min_length=1,max_length=200)
     plan_job_id:UUID
     stages:list[HumanStage]=Field(min_length=1,max_length=8)
+    review_job_id:UUID|None=None
+
+class ReviewPlanInput(BaseModel):
+    model_config=ConfigDict(extra='forbid')
+    plan_job_id:UUID
+    stages:list[HumanStage]=Field(min_length=1,max_length=8)
+    output_language:Literal['es','en']
 
 def reputation_context(repo,profile_id):
     reviews=[];offset=0;seen=set()
@@ -67,7 +83,7 @@ def plan_context(repo,item):
     email=clients[0].get('contact_email')
     profile=repo.rpc('community_reputation',{'p_action':'lookup','p_data':{'public_email':email}}).get('client') if email else None
     return {'client_id':client_id,'draft_id':str(item.draft_id),'brief':item.brief,'budget':str(item.budget),
-            'target_date':item.target_date.isoformat(),'today':date.today().isoformat(),
+            'target_date':item.target_date.isoformat(),'today':project_today().isoformat(),
             'reviews':reputation_context(repo,profile['id']) if profile else []}
 
 def build_ai_router(settings,require_user,repository_factory=None,jobs=None,preferences=None,usage_writer=None):
@@ -91,20 +107,40 @@ def build_ai_router(settings,require_user,repository_factory=None,jobs=None,pref
         item=await parse(request,ProjectPlanInput)
         data=await run_in_threadpool(plan_context,repository(request),item)
         return await enqueue(request,owner,{'workflow':'project_plan','output_language':item.output_language,**data})
+    @router.post('/project-plans/review')
+    async def review_plan(request:Request,owner=Depends(require_user)):
+        item=await parse(request,ReviewPlanInput)
+        original=await run_in_threadpool(jobs.get,owner,str(item.plan_job_id),'project_plan')
+        context=await run_in_threadpool(jobs.input,owner,str(item.plan_job_id))
+        if original['status']!='completed' or context.get('mode')=='review':raise ApiError('AI_PLAN_NOT_READY',409)
+        stages=[st.model_dump() for st in item.stages]
+        if sum(st.percent for st in item.stages)!=100 or any(not st.title.strip() or not st.body.strip() or not st.when.strip() for st in item.stages):raise ApiError('AI_INVALID_PLAN',422)
+        # The original job already fixed the owner and client; authorize that client again.
+        repo=repository(request)
+        if not await run_in_threadpool(repo.rows,'clients',{'select':'id','id':'eq.'+context['client_id'],'owner_id':'eq.'+owner,'deleted_at':'is.null'}):raise ApiError('CLIENT_NOT_FOUND',404)
+        data={k:context[k] for k in ('client_id','draft_id','brief','budget','target_date','reviews')}
+        return await enqueue(request,owner,{'workflow':'project_plan','mode':'review','source_plan_job_id':str(item.plan_job_id),'output_language':item.output_language,'today':project_today().isoformat(),**data,'original_stages':original['result']['stages'],'confirmed_stages':stages})
     @router.post('/projects')
     async def create_project(request:Request,owner=Depends(require_user)):
         item=await parse(request,CreatePlannedProject)
         creation_key=uuid(request.headers.get('Idempotency-Key',''))
         job=await run_in_threadpool(jobs.get,owner,str(item.plan_job_id),'project_plan')
         context=await run_in_threadpool(jobs.input,owner,str(item.plan_job_id))
-        if job['status']!='completed':raise ApiError('AI_PLAN_NOT_READY',409)
+        if job['status']!='completed' or context.get('mode')=='review':raise ApiError('AI_PLAN_NOT_READY',409)
         if context['client_id']!=str(item.client_id) or context['draft_id']!=creation_key:raise ApiError('AI_PLAN_CONTEXT_MISMATCH',409)
         if sum(stage.percent for stage in item.stages)!=100:raise ApiError('AI_INVALID_PLAN',422)
         if not item.name.strip() or any(not st.title.strip() or not st.body.strip() or not st.when.strip() for st in item.stages):raise ApiError('AI_INVALID_PLAN',422)
-        result=job['result']
+        result=job['result'];confirmed=[st.model_dump() for st in item.stages]
+        original_proposal={'source_job_id':str(item.plan_job_id),'stages':result.get('stages',[]),'summary':result['summary'],'model':result['model']}
+        if result.get('stages') is not None and confirmed!=result['stages']:
+            if item.review_job_id is None:raise ApiError('AI_PLAN_REVIEW_REQUIRED',409)
+            review=await run_in_threadpool(jobs.get,owner,str(item.review_job_id),'project_plan')
+            review_input=await run_in_threadpool(jobs.input,owner,str(item.review_job_id))
+            if review['status']!='completed' or review_input.get('mode')!='review' or review_input.get('source_plan_job_id')!=str(item.plan_job_id) or review_input.get('confirmed_stages')!=confirmed or review['result'].get('stages')!=confirmed:raise ApiError('AI_PLAN_CONTEXT_MISMATCH',409)
+            result=review['result'];original_proposal.update(review_job_id=str(item.review_job_id),material_change=result['material_change'])
         plan={**{key:context[key] for key in ('brief','budget','target_date','reviews','output_language')},
               **{key:result[key] for key in ('summary','observations','limitations','model')},
-              'source_job_id':str(item.plan_job_id),'stages':[st.model_dump() for st in item.stages]}
+              'source_job_id':str(item.plan_job_id),'original_proposal':original_proposal,'stages':[st.model_dump() for st in item.stages]}
         data=await run_in_threadpool(repository(request).rpc,'create_planned_project',{'p_key':creation_key,'p_client':str(item.client_id),'p_name':item.name.strip(),'p_plan':plan})
         await run_in_threadpool(usage_writer or record_plan_usage,settings,owner,data['id'],str(item.plan_job_id),context)
         return JSONResponse({'data':data},status_code=201,headers={'Cache-Control':'no-store'})
@@ -119,6 +155,8 @@ def build_ai_router(settings,require_user,repository_factory=None,jobs=None,pref
     @router.get('/jobs/{job_id}')
     async def get(job_id:UUID,request:Request,owner=Depends(require_user)):
         result=await run_in_threadpool(jobs.get,owner,str(job_id))
+        if result['status']=='completed' and result['result'].get('kind')=='change_reply':
+            raise ApiError('AI_NOT_FOUND',404)
         if result['status']=='completed' and result['result'].get('kind')=='project_assistant':
             from .project_assistant import ProjectAssistant
             result['result']=await run_in_threadpool(ProjectAssistant(settings,jobs=jobs).validate_result,repository(request),owner,str(job_id),result['result'])

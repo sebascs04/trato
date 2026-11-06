@@ -69,7 +69,7 @@ Compartir almacenamiento, validación técnica, extracción reutilizable, resume
 
 El resumen no reemplaza el original y su caché necesita hash, parser, selección autorizada de apartados, prompt/modelo e idioma. Se mantienen localizadores, referencias y verificación contra la fuente vigente. Antes de compartir o recuperar evidencia de Reputación se revalida publicación y consentimiento; compartir una ficha no publica proyectos privados.
 
-el equipo coincidió en el pipeline común con handlers por propósito y señaló preservar la lectura completa obligatoria de las cinco guías de Ensayos hasta que se autorice cambiar esa política.
+P1 coincidió en el pipeline común con handlers por propósito y señaló preservar la lectura completa obligatoria de las cinco guías de Ensayos hasta que se autorice cambiar esa política.
 
 ## Referencias de código revisadas
 

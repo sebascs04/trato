@@ -151,6 +151,18 @@ class GmailTest(unittest.TestCase):
         self.assertEqual(value['attachments'][0],{'attachment_id':'attachment-1','filename':'offer.pdf','mime_type':'application/pdf','size_bytes':7,'supported':True})
         self.assertFalse(value['attachments'][1]['supported'])
 
+    def test_inline_mascot_is_excluded_without_hiding_real_attachments(self):
+        parts=[
+            {'mimeType':'image/png','filename':'noname','body':{'attachmentId':'mascot','size':100}},
+            {'mimeType':'image/png','filename':'trato.png','headers':[{'name':'Content-ID','value':'<mascot@trato>'}],
+             'body':{'attachmentId':'embedded','size':100}},
+            {'mimeType':'application/pdf','filename':'firmado.pdf','body':{'attachmentId':'signed','size':100}},
+            {'mimeType':'image/png','filename':'referencia.png','headers':[{'name':'Content-Disposition','value':'attachment'}],
+             'body':{'attachmentId':'reference','size':100}},
+        ]
+        result=self.service.message_content({'payload':{'mimeType':'multipart/mixed','parts':parts}})
+        self.assertEqual([part['filename'] for part in result['attachments']],['firmado.pdf','referencia.png'])
+
     def test_reply_text_hides_wrapped_gmail_quotes_in_spanish_and_english(self):
         answer='Hola,\nProponemos USD 140.\nSaludos,\nCafé Mirador'
         for header in ['El vie, 30 oct 2026 a la(s) 9:26 p.m., <sender@example.com>\nescribió:',
@@ -281,6 +293,12 @@ class GmailTest(unittest.TestCase):
         message=BytesParser(policy=policy.default).parsebytes(raw)
         self.assertEqual(message['From'],'sender@example.com')
         self.assertEqual(message['To'],'client@example.com')
+        html=message.get_body(preferencelist=('html',)).get_content()
+        self.assertIn('src="cid:mascot@trato"',html)
+        image=next(part for part in message.walk() if part.get_content_type()=='image/png')
+        self.assertEqual(image['Content-ID'],'<mascot@trato>')
+        self.assertEqual(image.get_content_disposition(),'inline')
+        self.assertTrue(image.get_payload(decode=True).startswith(b'\x89PNG'))
         self.assertEqual(list(message.iter_attachments())[0].get_payload(decode=True),self.proposal().agreement.content)
 
     def test_send_network_loss_is_uncertain_and_is_not_retried(self):

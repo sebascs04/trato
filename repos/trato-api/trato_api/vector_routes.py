@@ -1,6 +1,6 @@
 """On-demand project search. Canonical text/authorization stay in Supabase/processor.
 
-Redis holds durable projection receipts, not agreements or payment states. Search
+Supabase holds shared durable projection receipts. Redis coordinates local locks. Search
 never repairs an index implicitly, and never presents a partial index as complete.
 """
 from hashlib import sha256
@@ -21,6 +21,7 @@ from .errors import ApiError
 from .persistence import Repository, uuid
 from .vector_contract import PROFILE_ID, digest
 from .vector_client import ProcessorVectorClient
+from .vector_receipts import VectorReceipts
 
 POLICY = {'version': 'v1', 'max_chars': 800, 'overlap_chars': 100, 'max_chunks': 512}
 PREFIX = 'trato:vector:receipt:'
@@ -144,10 +145,11 @@ def validate_chunks(value, result):
 
 
 class VectorGateway:
-    def __init__(self, settings, *, store=None, redis=None, processor=None):
+    def __init__(self, settings, *, store=None, redis=None, processor=None, registry=None):
         self.store = store if store is not None else ProcessorVectorClient(settings)
         self.redis = redis
         self.processor = processor if processor is not None else ProcessorChunks(settings)
+        self.registry = registry if registry is not None else VectorReceipts(settings)
 
     def connection(self):
         if os.getenv('TRATO_VECTOR_SEARCH_ENABLED') != 'true':
@@ -164,10 +166,9 @@ class VectorGateway:
 
     def receipt(self, owner, file_id):
         try:
-            raw = self.connection().get(self.receipt_key(owner, file_id))
-            if not raw:
+            receipt = self.registry.get(owner, file_id)
+            if receipt is None:
                 return None
-            receipt = json.loads(raw)
             if not isinstance(receipt, dict) or receipt.get('status') not in ('ready', 'indexing', 'failed'):
                 raise ValueError()
             return receipt
@@ -196,8 +197,10 @@ class VectorGateway:
             if not lock.acquire(blocking=False):
                 raise ApiError('VECTOR_INDEX_BUSY', 409)
             try:
-                redis.set(self.receipt_key(owner, file_id), json.dumps({'status': 'indexing',
-                    'generation': value['generation'], 'project_id': project_id}))
+                current=source(repo,owner,repo.project(project_id),file_id)
+                if current['generation']!=value['generation']:raise ApiError('VECTOR_SOURCE_CHANGED',409)
+                self.registry.put(owner, file_id, {'status': 'indexing',
+                    'generation': value['generation'], 'project_id': project_id})
                 self.store.write(owner, records)
                 summary=self.summary(repo,{'id':file_id,'generation':value['generation']}) if os.getenv('TRATO_FILE_PROCESSING_ENABLED')=='true' else None
                 if os.getenv('TRATO_FILE_PROCESSING_ENABLED')=='true' and summary is None:raise ApiError('FILE_SUMMARY_NOT_READY',409)
@@ -211,12 +214,12 @@ class VectorGateway:
                     current_summary=self.summary(repo,{'id':file_id,'generation':value['generation']})
                     if current_summary is None or current_summary['summary_fingerprint']!=summary['summary_fingerprint']:raise ApiError('FILE_SUMMARY_CHANGED',409)
                     receipt.update(summary_fingerprint=summary['summary_fingerprint'],objects=len(records)+1)
-                redis.set(self.receipt_key(owner, file_id), json.dumps(receipt))
+                self.registry.put(owner, file_id, receipt)
                 return receipt
             except ApiError as error:
                 if lock.owned():
-                    redis.set(self.receipt_key(owner, file_id), json.dumps({'status': 'failed',
-                        'generation': value['generation'], 'project_id': project_id, 'error_code': error.code}))
+                    self.registry.put(owner, file_id, {'status': 'failed',
+                        'generation': value['generation'], 'project_id': project_id, 'error_code': error.code})
                 raise
             finally:
                 if lock.owned():
@@ -232,7 +235,7 @@ class VectorGateway:
         documents = []
         for offset in range(0, 1001, 100):
             rows = repo.rows('documents', {'select': 'id,title,kind,original_filename,created_at',
-                'project_id': 'eq.' + project_id, 'order': 'created_at.desc,id.asc', 'limit': 100, 'offset': offset})
+                'project_id': 'eq.' + project_id, 'deleted_at':'is.null', 'order': 'created_at.desc,id.asc', 'limit': 100, 'offset': offset})
             documents.extend({key: row[key] for key in ('id', 'title', 'kind', 'original_filename', 'created_at')}
                              for row in rows)
             if len(documents) > 1000:

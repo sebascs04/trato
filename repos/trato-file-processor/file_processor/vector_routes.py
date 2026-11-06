@@ -76,6 +76,18 @@ class IndexInput(Strict):
         return self
 
 
+class RemoveFileInput(Strict):
+    schema_version:Literal[1]
+    embedding_identity:Literal[PROFILE_ID]
+    owner_id:str
+    client_id:str
+    project_id:str
+    file_id:str
+    @model_validator(mode='after')
+    def scoped(self):
+        for value in (self.owner_id,self.client_id,self.project_id,self.file_id):canonical(value)
+        return self
+
 class FileGeneration(Strict):
     id: str
     generation: str = Field(pattern='^[a-f0-9]{64}$')
@@ -237,6 +249,10 @@ def build_vector_router(service_token, store=None):
     @router.post('/index')
     async def index_route(request: Request):
         return await execute(request, IndexInput, index)
+
+    @router.post('/remove-file')
+    async def remove_file(request:Request):
+        return await execute(request,RemoveFileInput,lambda value:store.remove_file(value.owner_id,value.client_id,value.project_id,value.file_id))
 
     @router.post('/search')
     async def search_route(request: Request):

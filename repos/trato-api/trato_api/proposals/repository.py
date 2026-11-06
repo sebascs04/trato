@@ -66,6 +66,14 @@ class ProposalRepository(Repository):
         selected=tuple(queries) if collections is None else tuple(collections)
         if any(name not in queries for name in selected):raise ValueError('Unknown revision collection')
         data=self._read_parallel({name:queries[name] for name in selected})
+        if collections is None and revision['revision_no']>1:
+            previous=self.rows('proposal_revisions',{
+                'select':'id,revision_no,scope_summary,additional_minor,deadline,proposal_deliveries!inner(id)',
+                'proposal_id':'eq.'+proposal['id'],'revision_no':'eq.'+str(revision['revision_no']-1),
+                'proposal_deliveries.kind':'eq.adenda','proposal_deliveries.status':'eq.accepted_by_gmail',
+                'order':'draft_sequence.desc','limit':1})
+            if previous:
+                data['previous_sent']={key:value for key,value in previous[0].items() if key!='proposal_deliveries'}
         return {'proposal':proposal,'revision':revision,**data,'payment_required':revision['additional_minor']>0}
 
     def command(self,action,data,key):

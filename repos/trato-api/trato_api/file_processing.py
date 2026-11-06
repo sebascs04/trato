@@ -29,7 +29,7 @@ def remember_options(settings,repo,document,language,purpose=None,bindings=None)
     if language not in ('es','en'):raise ApiError('INVALID_OUTPUT_LANGUAGE',422)
     repo.project(document['project_id'])
     row={'document_id':document['id'],'project_id':document['project_id'],'owner_id':document['owner_id'],
-         'output_language':language,'purpose':purpose,'bindings':bindings or {}}
+         'output_language':language,'purpose':purpose,'bindings':bindings or {},'runtime_scope':os.getenv('TRATO_RUNTIME_SCOPE') or None}
     server=ThreadStore(settings).repo
     old=server.rows('file_processing_options',{'select':'*','document_id':'eq.'+document['id']})
     if old:
@@ -41,10 +41,10 @@ def remember_options(settings,repo,document,language,purpose=None,bindings=None)
 def purpose_context(repo,owner,project,value):
     doc=value['document'];common={'project_id':'eq.'+project['id'],'owner_id':'eq.'+owner}
     options=repo.rows('file_processing_options',{'select':'output_language,purpose,bindings','document_id':'eq.'+doc['id']})
-    context=repo.rows('document_upload_contexts',{'select':'purpose,revision_id,refund_case_id,snapshot_id,payment_id',
+    context=repo.rows('document_upload_contexts',{'select':'purpose,revision_id,refund_case_id,snapshot_id,payment_id,stage_position',
         'document_id':'eq.'+doc['id'],**common})
     structural=context[0] if context else None
-    structural_bindings={k:structural[k] for k in ('revision_id','refund_case_id','snapshot_id','payment_id') if structural and structural.get(k)}
+    structural_bindings={k:structural[k] for k in ('revision_id','refund_case_id','snapshot_id','payment_id','stage_position') if structural and structural.get(k)}
     option=dict(options[0]) if options else {'output_language':'es','purpose':None,'bindings':{}}
     if structural:
         if option.get('purpose') and option['purpose']!=structural['purpose']:raise ApiError('FILE_PURPOSE_CONFLICT',409)
@@ -82,6 +82,11 @@ def purpose_context(repo,owner,project,value):
         if len(proposals)!=1:raise ApiError('FILE_PURPOSE_CONTEXT_INVALID',409)
         bindings={'revision_id':revision['id'],'request_id':proposals[0]['request_document_id']};proof+=proposals
     reference={}
+    if purpose=='delivery_evidence' and bindings.get('stage_position') is not None:
+        stages=repo.rows('project_start_stages',{'select':'position,title,deliverables,payment_condition',**common,'position':'eq.'+str(bindings['stage_position'])})
+        if len(stages)!=1:raise ApiError('PLAN_STAGE_INVALID',409)
+        reference={'case_description':json.dumps({'type':'initial_plan_deliverable','stage':stages[0],'expected_evidence':'A conversation or document showing completion of this deliverable and the client acknowledgment.'},ensure_ascii=False)};proof+=stages
+        bindings={k:v for k,v in bindings.items() if k!='stage_position'}
     if purpose in ('refund_request','refund_evidence'):
         bindings,reference,refund_proof=refund_context(repo,owner,project,bindings,refund_link)
         proof+=refund_proof
@@ -256,8 +261,9 @@ class FileProcessing:
         outcome={'source_generation':data['generation'],'purpose':data['purpose'],'output_language':data['output_language'],
                  'model_id':data['model_id'],'selection_fingerprint':data['selection_fingerprint'],**result}
         if result['status']!='processed':
-            self.gateway.connection().set(self.gateway.receipt_key(data['owner_id'],data['file_id']),json.dumps({
-                'status':'failed','generation':data['generation'],'error_code':result.get('error_code','FILE_REVIEW_REQUIRED')}))
+            self.gateway.registry.put(data['owner_id'],data['file_id'],{
+                'status':'failed','generation':data['generation'],'project_id':data['project_id'],
+                'error_code':result.get('error_code','FILE_REVIEW_REQUIRED')})
         self.store(repo,data,'outcome',digest([id,lease]),outcome)
         return {'stored':True,'status':result['status']}
 

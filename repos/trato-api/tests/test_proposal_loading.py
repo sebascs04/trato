@@ -26,7 +26,7 @@ class ProposalLoadingTests(unittest.TestCase):
             if table=='change_proposals':return httpx.Response(200,json=[{'id':PROPOSAL,'project_id':PROJECT}])
             if table=='proposal_revisions':
                 self.assertEqual(request.url.params['id'],'eq.'+REVISION)
-                return httpx.Response(200,json=[{'id':REVISION,'additional_minor':10}])
+                return httpx.Response(200,json=[{'id':REVISION,'revision_no':1,'additional_minor':10}])
             self.assertEqual(request.url.params['revision_id'],'eq.'+REVISION)
             self.assertEqual(request.url.params['proposal_id'],'eq.'+PROPOSAL)
             with lock:active+=1;peak=max(peak,active)

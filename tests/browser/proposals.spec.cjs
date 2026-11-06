@@ -1,12 +1,12 @@
 const {test,expect}=require('@playwright/test');
-async function setup(page,{paid=false,draft=false,emailFailure=false,versionCount=1,detailDelay=0,detailFailures=0}={}){
- let saved=paid||draft,reviewed=paid,sent=paid,sendCount=0,snapshotId='revision',scope='Un video adicional',closed=false;const writes=[];
+async function setup(page,{paid=false,draft=false,emailFailure=false,versionCount=1,detailDelay=0,detailFailures=0,gmailReply=false}={}){
+ let saved=paid||draft||gmailReply,reviewed=paid||gmailReply,sent=paid||gmailReply,sendCount=0,snapshotId='revision',scope='Un video adicional',closed=false,terms=null;const writes=[];
  const docs=[{id:'initial',kind:'initial_agreement',title:'Acuerdo inicial'},{id:'request',kind:'email_request',title:'Un video adicional'}].map(d=>({...d,project_id:'project',original_filename:d.id+'.pdf',mime_type:'application/pdf',created_at:'2026-10-25T18:00:00Z',document_extractions:[{status:'ready'}]}));
  const summary=()=>({id:'proposal',request_document_id:'request',current_revision_id:snapshotId,revision_no:versionCount,status:reviewed?'ready_for_review':'draft',locked_at:paid||closed?'2026-10-25T19:00:00Z':null,business_status:closed?'Cerrado':paid?'Finalizado':sent?'Esperando respuesta':'Adenda en borrador'});
- const detail=()=>({proposal:{...summary(),project_id:'project'},revision:{id:snapshotId,revision_no:versionCount,scope_summary:scope,conditions:'Una revisión',additional_minor:10,deadline:'2026-11-12'},line_items:[{description:'Video',quantity:1,unit_amount_minor:10}],sources:[{document_id:'initial'},{document_id:'request'}],artifacts:[{document_id:'pdf',sha256:'a'.repeat(64)}],reviews:reviewed?[{}]:[],acceptances:paid?[{}]:[],deliveries:sent?[{kind:'adenda',status:'accepted_by_gmail',updated_at:'2026-10-25T19:00:00Z'}]:[],payments:paid?[{status:'completed',amount_minor:10,updated_at:'2026-10-25T19:01:00Z'}]:[],events:[{event_type:'revision_created',created_at:'2026-10-25T18:00:00Z'}],payment_required:true});
+ const detail=()=>({proposal:{...summary(),project_id:'project'},revision:{id:snapshotId,revision_no:versionCount,scope_summary:scope,conditions:'Una revisión',additional_minor:terms?.line_items[0].unit_amount_minor??10,deadline:terms?.deadline??'2026-11-12'},...(terms?{previous_sent:{revision_no:1,scope_summary:'Un video adicional',additional_minor:10,deadline:'2026-11-12'}}:{}),line_items:[{description:'Video',quantity:1,unit_amount_minor:10}],sources:[{document_id:'initial'},{document_id:'request'}],artifacts:[{document_id:'pdf',sha256:'a'.repeat(64)}],reviews:reviewed?[{}]:[],acceptances:paid?[{}]:[],deliveries:sent?[{kind:'adenda',status:'accepted_by_gmail',updated_at:'2026-10-25T19:00:00Z'}]:[],payments:paid?[{status:'completed',amount_minor:10,updated_at:'2026-10-25T19:01:00Z'}]:[],events:[{event_type:'revision_created',created_at:'2026-10-25T18:00:00Z'}],payment_required:true});
  await page.route('**/api/v1/**',async route=>{
   const req=route.request(),path=new URL(req.url()).pathname;let data;
-  if(req.method()==='POST')writes.push({path,body:req.postDataJSON(),headers:req.headers()});
+  if(req.method()==='POST')writes.push({path,body:path.endsWith('/returned-pdf')?req.postDataBuffer():req.postDataJSON(),headers:req.headers()});
   if(path.endsWith('/config'))data={supabase_url:'https://tests.supabase.invalid',publishable_key:'sb_publishable_test'};
   else if(path.endsWith('/session'))data={user_id:'owner'};
   else if(path.endsWith('/clients'))data=[{id:'client',name:'Cliente prueba',contact_email:'recipient@example.com'}];
@@ -14,6 +14,13 @@ async function setup(page,{paid=false,draft=false,emailFailure=false,versionCoun
   else if(path.endsWith('/documents'))data=docs;
   else if(path.endsWith('/extraction')){const id=path.split('/').at(-2);data={document:docs.find(d=>d.id===id),extraction:{status:'ready'},segments:[{locator_kind:'page',locator_number:1,text:'Fuente de prueba'}]};}
   else if(path==='/api/v1/proposals/proposal')data={proposal:summary(),revisions:versionCount>1?[detail().revision,{...detail().revision,id:'revision-previous',revision_no:1}]:[detail().revision],snapshots:[detail().revision]};
+  else if(path.endsWith('/gmail-replies'))data=gmailReply?[{id:'reply',revision_id:'revision',reply_text:'Añadan también subtítulos.',from_email:'recipient@example.com',received_at:'2026-11-02T12:00:00Z',attachment_metadata:[],used_at:null}]:[];
+  else if(path.endsWith('/gmail-replies/reply/analysis'))data={id:req.headers()['idempotency-key'],status:'queued'};
+  else if(path.startsWith('/api/v1/ai/change-replies/'))data={id:path.split('/').at(-1),status:'completed',result:{proposal_id:'proposal',revision_id:'revision',message_id:'reply',classification:'adjustments',summary:'El cliente pidió subtítulos.',analysis:'Añadir subtítulos requiere edición y una revisión del video.',base_amount_minor:10,proposed_amount_minor:140,proposed_deadline:'2026-11-15',quote:'Añadan también subtítulos.',draft:{scope_summary:'Un video adicional con subtítulos',conditions:'Una revisión',description:'Video subtitulado',estimated_extra_hours:'0.70',estimated_extra_minor:130,deadline_basis:'estimated'}}};
+  else if(path==='/api/v1/proposals/proposal/revisions'&&req.method()==='POST'){
+   versionCount=2;snapshotId='revision-edited';terms=req.postDataJSON().terms;scope=terms.scope_summary;sent=false;reviewed=false;
+   data={proposal_id:'proposal',revision_id:snapshotId};
+  }
   else if(path.endsWith('/events'))data=[];
   else if(path.endsWith('/activity'))data=[{id:'registered',kind:'request_registered',title:'Pedido registrado',request_document_id:'request',request_title:'Un video adicional',created_at:'2026-10-25T18:00:00Z'},...(paid?[{id:'paid',kind:'payment_completed',title:'Pago confirmado · USD 0.10',request_document_id:'request',request_title:'Un video adicional',created_at:'2026-10-25T19:01:00Z'}]:[]),...(closed?[{id:'closed',kind:'request_closed',title:'Pedido cerrado · Retirado',request_document_id:'request',request_title:'Un video adicional',created_at:'2026-10-26T18:00:00Z'}]:[])];
   else if(path.endsWith('/request-status'))data={can_register:paid||closed,active_request:paid||closed?null:{id:'request',title:'Un video adicional'},closures:closed?[{request_document_id:'request',reason:'withdrawn',notes:'El cliente retiró el pedido',closed_at:'2026-10-26T18:00:00Z'}]:[]};
@@ -22,10 +29,12 @@ async function setup(page,{paid=false,draft=false,emailFailure=false,versionCoun
   }
   else if(path==='/api/v1/requests/request/close'){closed=true;data={request_document_id:'request',reason:req.postDataJSON().reason};}
   else if(path.endsWith('/file')){await route.fulfill({contentType:'application/pdf',body:require('node:fs').readFileSync('data/pdfs/DOC-SP-002.pdf')});return;}
+  else if(path.endsWith('/returned-pdf'))data={document_id:'returned'};
+  else if(path.endsWith('/acceptance'))data={id:'acceptance'};
   else if(path.endsWith('/pdf'))data={document_id:'pdf',sha256:'a'.repeat(64)};
   else if(path.endsWith('/draft')){snapshotId='revision-edited';scope=req.postDataJSON().terms.scope_summary;reviewed=false;data={proposal_id:'proposal',revision_id:snapshotId};}
   else if(path.endsWith('/review')){reviewed=true;data={proposal_id:'proposal',revision_id:'revision'};}
-  else if(path.endsWith('/email-preview'))data={sender:'sender@example.com',recipient:'recipient@example.com',subject:'Adenda para revisión',body:'Un video adicional por USD 0.10',filename:'adenda-v1.pdf',document_id:'pdf',digest:'b'.repeat(64)};
+  else if(path.endsWith('/email-preview'))data={sender:'sender@example.com',recipient:'recipient@example.com',subject:'Adenda para revisión',body:'Un video adicional por USD 0.10',body_html:'<!doctype html><html><head></head><body><h1>Alcance del cambio</h1><p>Un video adicional por USD 0.10</p></body></html>',filename:'adenda-v1.pdf',document_id:'pdf',digest:'b'.repeat(64)};
   else if(path.endsWith('/email')){if(emailFailure){await route.fulfill({status:503,json:{error:{code:'EMAIL_DELIVERY_UNCERTAIN'}}});return;}sendCount++;sent=true;data={status:'accepted_by_gmail'};}
   else if(/^\/api\/v1\/proposals\/proposal\/revisions\/(revision|revision-edited)$/.test(path)){if(detailDelay)await new Promise(resolve=>setTimeout(resolve,detailDelay));if(detailFailures>0){detailFailures--;await route.fulfill({status:503,json:{error:{code:'PERSISTENCE_UNAVAILABLE'}}});return;}data=detail();}
   else{await route.fulfill({status:404,json:{error:{code:'NOT_FOUND'}}});return;}
@@ -52,6 +61,7 @@ test('manual proposal saves its exact PDF, reviews email and sends only on expli
  await expect(page.getByRole('button',{name:'Confirmar revisión →'})).toHaveCount(0);
  expect(context.writes.some(w=>w.path.endsWith('/review')||w.path.endsWith('/email'))).toBe(false);
  await expect(page.locator('.cloud-dialog')).toContainText('recipient@example.com');expect(context.sendCount()).toBe(0);
+ await expect(page.frameLocator('.cloud-mail-frame').getByRole('heading',{name:'Alcance del cambio'})).toBeVisible();
  expect(projectReloads).toBe(0);page.off('request',countReload);
  await page.getByRole('button',{name:'Ver PDF adjunto adenda-v1.pdf',exact:true}).click();
  await expect(page.getByTitle('PDF adjunto de la adenda')).toBeVisible();
@@ -238,4 +248,62 @@ test('reload restores a paid proposal exact version without issuing business com
  await expect(page.locator('.cloud-tracking')).toContainText('Finalizado');
  await expect(page.getByRole('button',{name:'Ver PDF v2 ↗',exact:true})).toBeVisible();
  expect(state.writes).toEqual([]);
+});
+
+test('reviewing a Gmail reply prefills a revision and compares it with the sent addendum',async({page})=>{
+ const context=await setup(page,{gmailReply:true});
+ await page.getByRole('button',{name:'Revisar respuesta con Trato'}).click();
+ const drawer=page.getByRole('dialog',{name:'Respuesta del cliente'});
+ await expect(drawer.getByRole('heading',{name:'Pidió ajustes'})).toBeVisible();
+ await expect(drawer.locator('blockquote')).toHaveText('Añadan también subtítulos.');
+ expect(context.writes.filter(write=>!write.path.endsWith('/analysis'))).toEqual([]);
+ await expect(drawer).toContainText('Añadir subtítulos requiere edición');
+ await expect(drawer.locator('[name="amount"]')).toHaveValue('1.40');
+ await expect(drawer.getByText('Calcular el costo del nuevo trabajo',{exact:true})).toHaveCount(0);
+ await drawer.locator('[name="amount"]').fill('1.50');
+ await expect(drawer.locator('[name="deadline"]')).toHaveValue('2026-11-15');
+ await drawer.getByRole('button',{name:'Abrir borrador de la nueva versión'}).click();
+ const form=page.locator('[data-cloud-form="proposal-terms"]');
+ await expect(form.locator('[name="scope"]')).toHaveValue('Un video adicional con subtítulos');
+ await expect(form.locator('[name="amount"]')).toHaveValue('1.50');
+ await expect(form.locator('[name="deadline"]')).toHaveValue('2026-11-15');
+ const comparison=form.locator('.change-revision-comparison');
+ await expect(comparison).toContainText('Comparación con la adenda v1 enviada');
+ await expect(comparison).toContainText(/0[.,]10.*1[.,]50/);
+ await expect(comparison).toContainText(/12.*15/);
+ await comparison.getByText('Ver cambios de alcance',{exact:true}).click();
+ await expect(comparison.getByText('Un video adicional con subtítulos',{exact:true})).toBeVisible();
+ await form.getByRole('button',{name:'Guardar borrador',exact:true}).click();
+ await expect(page.getByRole('heading',{name:'Adenda en borrador',exact:true})).toBeVisible();
+ await expect(page.getByRole('heading',{name:'Comparación con la adenda v1 enviada'})).toBeVisible();
+ const revision=context.writes.find(write=>write.path==='/api/v1/proposals/proposal/revisions');
+ expect(revision.body.feedback_email_id).toBe('reply');
+ expect(revision.body.terms.line_items[0].unit_amount_minor).toBe(150);
+ expect(context.sendCount()).toBe(0);
+ await page.getByRole('button',{name:'Enviar adenda →',exact:true}).click();
+ await expect(page.getByRole('dialog').getByRole('heading',{name:'Comparación con la adenda v1 enviada'})).toBeVisible();
+ expect(context.sendCount()).toBe(0);
+});
+
+test('explicit acceptance from a reply leads to PDF review and saves only after confirmation',async({page})=>{
+ const context=await setup(page,{gmailReply:true});
+ const quote='Acepto la adenda v1. Adjunto el PDF firmado.';
+ const pdf=require('node:fs').readFileSync('data/pdfs/DOC-SP-002.pdf');
+ await page.route('**/api/v1/proposals/proposal/gmail-replies',route=>route.fulfill({json:{data:[{id:'reply',revision_id:'revision',reply_text:quote,from_email:'recipient@example.com',received_at:'2026-11-02T12:00:00Z',attachment_metadata:[{filename:'adenda-firmada.pdf',supported:true,mime_type:'application/pdf',size_bytes:pdf.length}]}]}}));
+ await page.route('**/api/v1/proposals/proposal/gmail-replies/reply/attachments/0',route=>route.fulfill({contentType:'application/pdf',body:pdf}));
+ await page.route('**/api/v1/ai/change-replies/*',route=>route.fulfill({json:{data:{id:new URL(route.request().url()).pathname.split('/').at(-1),status:'completed',result:{proposal_id:'proposal',revision_id:'revision',message_id:'reply',classification:'acceptance',summary:'El cliente acepta la v1.',quote,draft:null}}}}));
+ await page.getByRole('button',{name:'Actualizar respuestas',exact:true}).click();
+ await expect(page.getByText(quote,{exact:true})).toBeVisible();
+ await page.getByRole('button',{name:'Revisar respuesta con Trato'}).click();
+ const drawer=page.getByRole('dialog',{name:'Respuesta del cliente'});
+ await expect(drawer.getByRole('heading',{name:'Aceptación expresada'})).toBeVisible();
+ await drawer.getByRole('button',{name:'Registrar aceptación recibida →',exact:true}).click();
+ const form=page.locator('[data-cloud-form="proposal-accept"]');
+ await expect(form.locator('textarea')).toHaveValue(/Acepto la adenda v1/);
+ await form.getByRole('button',{name:'adenda-firmada.pdf'}).click();
+ await expect(form.locator('[data-acceptance-pdf]')).toBeVisible();
+ expect(context.writes.filter(w=>w.path.endsWith('/returned-pdf')||w.path.endsWith('/acceptance'))).toHaveLength(0);
+ await form.getByRole('button',{name:'Guardar aceptación revisada →'}).click();
+ await expect.poll(()=>context.writes.find(w=>w.path.endsWith('/acceptance'))?.body).toMatchObject({expected_revision_id:'revision',document_id:'returned',confirmed:true});
+ expect(context.writes.find(w=>w.path.endsWith('/returned-pdf')).body).toEqual(pdf);
 });

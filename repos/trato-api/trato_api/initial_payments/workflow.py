@@ -27,7 +27,7 @@ class InitialPayments:
     def link(self,pay):
         return self.settings.web_origin.rstrip('/')+'/initial-payment.html?'+urlencode({'checkout':pay['checkout_token'],'lang':pay['output_language']})
     def public(self,pay):
-        return {k:pay.get(k) for k in ('id','status','amount_minor','currency','order_id','capture_id','paid_at','project_name','conditions')}
+        return {k:pay.get(k) for k in ('id','status','amount_minor','currency','order_id','capture_id','paid_at','project_name','conditions','stage_position')}
     def owned(self,pay):
         if pay is None:return None
         return {**self.public(pay),**{k:pay.get(k) for k in ('conditions','output_language','created_at','updated_at','mail_status','events','last_error')},'checkout_url':self.link(pay)}
@@ -113,7 +113,7 @@ class InitialPayments:
         if not self.gmail:raise ApiError('GMAIL_NOT_CONFIGURED',503)
         status=self.gmail.status(owner)
         if not status.get('connected'):raise ApiError('GMAIL_NOT_CONNECTED',409)
-        item={k:pay[k] for k in ('project_name','client_name','recipient_email','amount_minor','conditions','output_language','mail_id')}
+        item={k:pay.get(k) for k in ('project_name','client_name','recipient_email','amount_minor','conditions','output_language','mail_id','stage_position')}
         item['url']=self.link(pay);item['sender']=status['email']
         digest=sha256(json.dumps(item,sort_keys=True).encode()).hexdigest()
         message=build_email(item['sender'],item,pay['mail_id'])
@@ -132,9 +132,10 @@ class InitialPayments:
 
 def build_email(sender,item,notification):
     english=item['output_language']=='en';amount=f'USD {item["amount_minor"]/100:.2f}'
-    subject=('Initial payment' if english else 'Pago inicial')+' · '+' '.join(item['project_name'].split())
-    title='Your project starts here' if english else 'Tu proyecto empieza aquí'
-    intro=('Here is the initial payment request for ' if english else 'Te enviamos la solicitud de pago inicial de ')+item['project_name']+'.'
+    staged=item.get('stage_position') is not None
+    subject=(('Deliverable payment' if english else 'Pago de entregable') if staged else ('Initial payment' if english else 'Pago inicial'))+' · '+' '.join(item['project_name'].split())
+    title=('Your deliverable is ready' if english else 'Tu entregable está listo') if staged else ('Your project starts here' if english else 'Tu proyecto empieza aquí')
+    intro=(('Here is the payment request for deliverable ' if english else 'Te enviamos la solicitud de pago del entregable ')+str(item['stage_position'])+' · '+item['project_name']+'.') if staged else (('Here is the initial payment request for ' if english else 'Te enviamos la solicitud de pago inicial de ')+item['project_name']+'.')
     button='Review payment' if english else 'Revisar pago'
     sandbox='PayPal Sandbox · test funds' if english else 'PayPal Sandbox · saldo de prueba'
     msg=EmailMessage();msg['From']=sender;msg['To']=item['recipient_email'];msg['Subject']=subject;msg['Date']=formatdate(usegmt=True)

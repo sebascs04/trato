@@ -58,3 +58,14 @@ class ThreadPumpTests(unittest.TestCase):
             with self.assertRaises(ApiError):pump.consume_once()
             self.assertEqual(store.calls,['result'])
             self.assertEqual(redis.calls,[])
+
+    def test_claim_uses_server_runtime_scope(self):
+        pump,store,redis=self.setup()
+        with patch.dict(os.environ,{'TRATO_RUNTIME_SCOPE':'local-fixture','TRATO_VECTOR_SEARCH_ENABLED':'false'}),patch.object(store,'command',return_value=None) as call:
+            self.assertFalse(pump.publish_once())
+            call.assert_called_once_with('relay_claim',{'runtime_scope':'local-fixture'})
+    def test_legacy_claim_preserves_unscoped_contract(self):
+        pump,store,redis=self.setup()
+        with patch.dict(os.environ,{'TRATO_RUNTIME_SCOPE':'','TRATO_VECTOR_SEARCH_ENABLED':'false'}),patch.object(store,'command',return_value=None) as call:
+            self.assertFalse(pump.publish_once())
+            call.assert_called_once_with('relay_claim',{})

@@ -31,7 +31,10 @@ class ModelPreferenceTests(unittest.TestCase):
             with self.assertRaises(ApiError) as error:self.preferences.save(request,'a','gemini-3.5-flash-lite')
             self.assertEqual(error.exception.status,403)
         with self.assertRaises(ApiError):self.preferences.save(self.request(),'a','gemini-unknown-model')
-        self.assertFalse(self.preferences.get(self.request('other@example.com'),'a')['can_select'])
+        data=self.preferences.get(self.request('other@example.com'),'a')
+        self.assertFalse(data['can_select'])
+        self.assertEqual(data['selected_model_name'],'Gemini 3.8 Flash')
+        self.assertEqual(data['models'],[])
     def test_failure_or_retired_selection_never_silently_uses_default(self):
         self.store.set('trato:model-preference:a','removed-model')
         with self.assertRaises(ApiError):self.preferences.selected('a')

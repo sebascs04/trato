@@ -61,7 +61,7 @@ class ProposalWorkflow:
         if config.environment!='sandbox':raise ApiError('LIVE_PAYMENTS_DISABLED',503)
         if not all((config.client_id,config.client_secret,config.merchant_id)):raise ApiError('PAYPAL_SANDBOX_NOT_CONFIGURED',503)
         return PayPalSandboxClient(config.client_id,config.client_secret,config.merchant_id)
-    def context(self,repo,proposal_id,revision_id,kind,*,allow_unreviewed=False):
+    def context(self,repo,proposal_id,revision_id,kind,*,allow_unreviewed=False,freelancer_email=''):
         if not self.gmail:raise ApiError('GMAIL_NOT_CONFIGURED',503)
         snapshot=repo.get_revision(proposal_id,revision_id,collections=('artifacts','reviews')+(('payments',) if kind=='payment' else ()))
         proposal,revision=snapshot['proposal'],snapshot['revision']
@@ -81,7 +81,7 @@ class ProposalWorkflow:
         amount=f'{revision["additional_minor"]//100}.{revision["additional_minor"]%100:02d}'
         if kind=='adenda':
             if proposal['status']!='ready_for_review' and not (draft_preview and proposal['status']=='draft'):raise ApiError('PROPOSAL_NOT_READY_FOR_EMAIL',409)
-            item=ProposalEmail(proposal_id,client['contact_email'],client['name'],project['name'],revision['scope_summary'],amount,'USD',revision['deadline'],attachment)
+            item=ProposalEmail(proposal_id,client['contact_email'],client['name'],project['name'],revision['scope_summary'],amount,'USD',revision['deadline'],attachment,freelancer_email=freelancer_email)
         elif kind=='payment':
             if proposal['status']!='accepted':raise ApiError('ACCEPTANCE_REQUIRED',409)
             payments=snapshot['payments']
@@ -90,23 +90,29 @@ class ProposalWorkflow:
             item=PaymentEmail(pay['id'],client['contact_email'],client['name'],project['name'],amount,'USD',pay['approval_url'],attachment)
         else:raise ApiError('INVALID_MAIL_KIND',422)
         return snapshot,item
-    def prepare_email(self,repo,owner,proposal_id,revision_id,kind,*,for_preview=False):
-        snapshot,item=self.context(repo,proposal_id,revision_id,kind,allow_unreviewed=for_preview)
+    def prepare_email(self,repo,owner,proposal_id,revision_id,kind,*,for_preview=False,freelancer_email=''):
+        snapshot,item=self.context(repo,proposal_id,revision_id,kind,allow_unreviewed=for_preview,freelancer_email=freelancer_email)
         status=self.gmail.status(owner)
         if not status['connected']:raise ApiError('GMAIL_NOT_CONNECTED',409)
         sender=status['email']
         message=(build_proposal_email if kind=='adenda' else build_payment_email)(sender,item,'preview')
         canonical=asdict(item);canonical['agreement']={'filename':item.agreement.filename,'sha256':item.agreement.sha256}
         canonical.update(sender=sender,revision_id=revision_id,kind=kind)
-        digest=sha256(json.dumps(canonical,sort_keys=True).encode()).hexdigest()
-        return item,{'sender':sender,'recipient':item.recipient_email,'subject':str(message['Subject']),'body':message.get_body(preferencelist=('plain',)).get_content(),'document_id':snapshot['artifacts'][0]['document_id'],'filename':item.agreement.filename,'sha256':item.agreement.sha256,'digest':digest}
-    def preview(self,repo,owner,proposal_id,revision_id,kind):
-        return self.prepare_email(repo,owner,proposal_id,revision_id,kind,for_preview=True)[1]
-    def send(self,repo,owner,proposal_id,revision_id,kind,digest):
-        item,preview=self.prepare_email(repo,owner,proposal_id,revision_id,kind)
+        # Keep the existing delivery identity while binding the reviewed preview to its contact.
+        contact=canonical.pop('freelancer_email','')
+        delivery_digest=sha256(json.dumps(canonical,sort_keys=True).encode()).hexdigest()
+        digest=sha256(json.dumps({**canonical,'freelancer_email':contact},sort_keys=True).encode()).hexdigest() if contact else delivery_digest
+        preview={'sender':sender,'recipient':item.recipient_email,'subject':str(message['Subject']),'body':message.get_body(preferencelist=('plain',)).get_content(),'document_id':snapshot['artifacts'][0]['document_id'],'filename':item.agreement.filename,'sha256':item.agreement.sha256,'digest':digest}
+        if for_preview:
+            preview['body_html']=message.get_body(preferencelist=('html',)).get_content()
+        return item,preview,delivery_digest
+    def preview(self,repo,owner,proposal_id,revision_id,kind,*,freelancer_email=''):
+        return self.prepare_email(repo,owner,proposal_id,revision_id,kind,for_preview=True,freelancer_email=freelancer_email)[1]
+    def send(self,repo,owner,proposal_id,revision_id,kind,digest,*,freelancer_email=''):
+        item,preview,delivery_digest=self.prepare_email(repo,owner,proposal_id,revision_id,kind,freelancer_email=freelancer_email)
         if not secrets.compare_digest(preview['digest'],digest):raise ApiError('EMAIL_PREVIEW_CHANGED',409)
         store=self.backend()
-        data={'proposal_id':proposal_id,'revision_id':revision_id,'kind':kind,'recipient':preview['recipient'],'message_hash':digest}
+        data={'proposal_id':proposal_id,'revision_id':revision_id,'kind':kind,'recipient':preview['recipient'],'message_hash':delivery_digest}
         claim=store.command(owner,'mail_reserve',data)
         if not claim['acquired']:
             if claim['status']=='accepted_by_gmail':return claim

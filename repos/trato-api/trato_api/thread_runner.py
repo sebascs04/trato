@@ -30,7 +30,8 @@ class BackendPump:
         if os.getenv('TRATO_VECTOR_SEARCH_ENABLED') == 'true':
             from .reputation_vector import relay_reputation
             relay_reputation(self.store,self.redis)
-        item=self.store.command('relay_claim',{})
+        runtime=os.getenv('TRATO_RUNTIME_SCOPE')
+        item=self.store.command('relay_claim',{'runtime_scope':runtime} if runtime else {})
         if item is None:return False
         self.redis.xadd(COMMANDS,{'thread':json.dumps(item['envelope'])})
         self.store.command('relay_published',{'id':item['id'],'lease_id':item['lease_id']})

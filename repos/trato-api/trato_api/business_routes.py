@@ -132,7 +132,7 @@ def build_business_router(settings, services, require_user, repository_factory=N
 
     @router.post('/projects/{project_id}/documents')
     async def upload(project_id: str, request: Request, filename: str, title: str,
-                     kind: str = 'reference', purpose: str | None = None, revision_id: str | None = None,
+                     kind: str = 'reference', stage_position: int | None = None, purpose: str | None = None, revision_id: str | None = None,
                      refund_case_id: str | None = None, snapshot_id: str | None = None, payment_id: str | None = None, request_id: str | None = None,
                      repo=Depends(repository)):
         project_id = uuid(project_id)
@@ -154,11 +154,14 @@ def build_business_router(settings, services, require_user, repository_factory=N
         context={k:uuid(v) for k,v in {'revision_id':revision_id,'refund_case_id':refund_case_id,
             'snapshot_id':snapshot_id,'payment_id':payment_id,'request_id':request_id}.items() if v is not None}
         if purpose is not None:context['purpose']=purpose
+        if stage_position is not None:
+            if not 1<=stage_position<=8 or kind!='delivery' or purpose!='delivery_evidence':raise ApiError('PLAN_STAGE_INVALID',422)
+            context['stage_position']=stage_position
         if revision_id is not None and (purpose!='addendum_adjustments' or kind!='reference'):
             raise ApiError('FILE_PURPOSE_CONTEXT_INVALID',422)
         if purpose is not None and purpose not in ('addendum_adjustments','refund_request','refund_evidence','supporting_reference','delivery_evidence'):
             raise ApiError('FILE_PURPOSE_CONTEXT_INVALID',422)
-        bindings={k:v for k,v in context.items() if k not in ('purpose','request_id')}
+        bindings={k:v for k,v in context.items() if k not in ('purpose','request_id','stage_position')}
         data = await read_bytes(request, 10485760)
         if not data.startswith(expected_magic):
             raise ApiError('FORMAT_MISMATCH', 422)

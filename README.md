@@ -67,7 +67,7 @@ Las pruebas de navegador requieren el servidor local y bibliotecas de Chromium. 
 
 - [Instalación paso a paso y accesos para colaboradores](docs/colaboradores.md)
 - [Auditoría y límites de instalación](docs/auditoria-instalacion-colaboradores.md)
-- [Accesos que preparal equipo](docs/accesos-colaboradores.md)
+- [Accesos que prepara el equipo](docs/accesos-colaboradores.md)
 - [Ingesta conectada](docs/ingesta-conectada.md)
 - [Arquitectura de IA](docs/arquitectura-ia-trato.md)
 - [Flujo de cambios simulado](docs/worker-flujo-cambios.md)

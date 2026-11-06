@@ -92,3 +92,33 @@ class VectorRoutesTests(TestCase):
                 'files':[{'id':FILE,'generation':'a'*64}],'query':'terms','limit':3,'expected_chunks':1}
         self.assertEqual(self.client.post('/v1/vectors/public-search',json=search,headers=self.headers).status_code,200)
         self.assertEqual(self.store.calls[-1][1],profile)
+
+class ScopedRemovalTests(TestCase):
+    def test_removes_summary_and_chunks_across_generations_but_preserves_foreign_scope(self):
+        from contextlib import contextmanager
+        from types import SimpleNamespace
+        from unittest.mock import Mock
+        base={'owner_id':OWNER,'client_id':CLIENT,'project_id':PROJECT,'file_id':FILE}
+        rows=[{**base,'segment_id':'chunk','generation':'old'},{**base,'segment_id':'document_summary','generation':'new'}]
+        foreign=[{**base,key:str(uuid4()),'segment_id':'foreign'} for key in base];rows.extend(deepcopy(foreign))
+        class Property:
+            def __init__(self,key):self.key=key
+            def equal(self,value):return (self.key,value)
+        class Filters:
+            by_property=Property
+            all_of=staticmethod(tuple)
+        def matches(row,filters):return all(row.get(k)==v for k,v in filters)
+        def delete(where):rows[:]=[row for row in rows if not matches(row,where)];return SimpleNamespace(failed=0)
+        col=Mock();col.data.delete_many.side_effect=delete;col.query.fetch_objects.side_effect=lambda filters,**kw:SimpleNamespace(objects=[r for r in rows if matches(r,filters)])
+        client=Mock();client.collections.use.return_value.with_tenant.return_value=col
+        @contextmanager
+        def connection():yield client
+        store=WeaviateStore();store.connection=connection;store.validate=Mock()
+        with patch('weaviate.classes.query.Filter',Filters):
+            self.assertTrue(store.remove_file(OWNER,CLIENT,PROJECT,FILE)['removed']);self.assertEqual(rows,foreign)
+            self.assertTrue(store.remove_file(OWNER,CLIENT,PROJECT,FILE)['removed'])
+        client.collections.use.return_value.with_tenant.assert_called_with('projects_private')
+    def test_tenant_is_not_caller_selectable(self):
+        from file_processor.vector_routes import RemoveFileInput
+        from pydantic import ValidationError
+        with self.assertRaises(ValidationError):RemoveFileInput.model_validate({'schema_version':1,'embedding_identity':PROFILE_ID,'owner_id':OWNER,'client_id':CLIENT,'project_id':PROJECT,'file_id':FILE,'tenant':'reputation_public'})

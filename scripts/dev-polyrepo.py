@@ -7,6 +7,7 @@ import re
 import subprocess
 import socket
 import time
+from uuid import uuid4
 
 ROOT = Path(__file__).resolve().parent.parent
 REPOS = ROOT / 'repos'
@@ -80,6 +81,17 @@ if __name__ == '__main__':
         match = re.search(r'v=(\d+)\.(\d+)', version.stdout)
         if not match or tuple(map(int, match.groups())) < (6, 2):
             raise SystemExit('El worker necesita Redis >= 6.2 para XAUTOCLAIM.')
+    api_env=environment(REPOS/'trato-api')
+    if args.with_worker:
+        scope_file=ROOT/'.local/runtime/ingestion-scope'
+        scope_file.parent.mkdir(parents=True,exist_ok=True)
+        if not scope_file.exists():
+            scope_file.write_text('local-'+str(uuid4())+'\n')
+            scope_file.chmod(0o600)
+        runtime_scope=scope_file.read_text().strip()
+        if not re.fullmatch(r'local-[a-f0-9-]{36}',runtime_scope):
+            raise SystemExit('La configuración local de ingesta no es válida. No se inició ningún servicio.')
+        api_env['TRATO_RUNTIME_SCOPE']=runtime_scope
     children = []
     try:
         if queue_requested:
@@ -88,7 +100,7 @@ if __name__ == '__main__':
         for name, service_port, module in [('trato-file-processor', str(args.processor_port), 'file_processor.app:app'),
                                    ('trato-api', str(args.api_port), 'trato_api.app:app')]:
             repo = REPOS / name
-            service_env=environment(repo)
+            service_env=api_env.copy() if name=='trato-api' else environment(repo)
             if name=='trato-api':service_env['FILE_PROCESSOR_URL']=f'http://127.0.0.1:{args.processor_port}'
             children.append(subprocess.Popen([str(PYTHON), '-m', 'uvicorn', module, '--host', '127.0.0.1',
                 '--port', service_port, '--limit-concurrency', '8', '--no-access-log'], cwd=repo, env=service_env))
@@ -107,7 +119,7 @@ if __name__ == '__main__':
                         if time.monotonic()>deadline:raise RuntimeError('No arrancaron los servicios de Trato.')
                         time.sleep(.1)
             if args.with_worker:
-                children.append(subprocess.Popen([str(PYTHON),'-m','trato_api.thread_runner','--mode','connected'],cwd=REPOS/'trato-api',env=environment(REPOS/'trato-api')))
+                children.append(subprocess.Popen([str(PYTHON),'-m','trato_api.thread_runner','--mode','connected'],cwd=REPOS/'trato-api',env=api_env))
                 children.append(subprocess.Popen([str(REPOS/'trato-worker/.venv/bin/python'),'-m','trato_worker.run','--mode','connected'],cwd=REPOS/'trato-worker',env=worker_env))
             if worker_env.get('TRATO_AI_WORKFLOWS_ENABLED')=='true':
                 children.append(subprocess.Popen([str(REPOS/'trato-worker/.venv/bin/python'),'-m','trato_worker.ai_jobs'],cwd=REPOS/'trato-worker',env=worker_env))

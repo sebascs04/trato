@@ -56,7 +56,7 @@ Repeat these steps for deliverables 1, 2 and 3, in order. A deliverable can be c
 2. **Attach delivery evidence:** upload `06-…`, `07-…` or `08-…` for that deliverable. An AI agent checks that the client confirms the stage is complete. You can keep working while it processes.
 3. When the document shows as processed, click **Prepare payment request**.
 4. Click **Send payment email**, review the email and send it to the client.
-5. **Pay as the client.** In real use the client pays from the email. To test, click **Open test payment** in the *Test mode (PayPal Sandbox)* box, or use the link in the email you received. Log in to PayPal with the Sandbox buyer account from Devpost and approve the payment. Use that account, not your own Sandbox account: for deliverables, Trato verifies that the payer is the buyer linked to this client and rejects any other.
+5. **Pay as the client.** In real use the client pays from the email. To test, click **Open test payment** in the *Test mode (PayPal Sandbox)* box, or use the link in the email you received. Log in to PayPal with the Sandbox buyer account from Devpost, or any PayPal Sandbox buyer account, and approve the payment.
 6. Back in Trato, click **Check payment**. The deliverable is marked as paid only after the backend verifies the capture with PayPal.
 
 ## 5. Turn a scope change into a paid addendum

@@ -84,6 +84,9 @@ def validate(value, data):
     return value
 
 def run_business_ai(data,model):
+    if data.get('workflow')=='change_review':
+        from .change_review import run_change_review
+        return run_change_review(data,model)
     kind=data.get('workflow')
     if kind not in ('reputation','project_plan') or data.get('output_language') not in ('es','en') or not isinstance(data.get('reviews'),list):raise ToolError('AI_INVALID_INPUT')
     fields=['workflow','output_language','reviews']+(['brief','budget','target_date','today','sources'] if kind=='project_plan' else [])

@@ -160,11 +160,16 @@ async function fillProposal(page){
  await page.getByLabel('Adicional total en USD').fill('0.10');
  await page.getByLabel('Fecha de entrega',{exact:true}).fill('2026-11-12');
 }
-test('save and send creates the PDF and sends once without another confirmation dialog',async({page})=>{
+test('save and review creates the PDF, shows the email and sends only after confirming',async({page})=>{
  const context=await setup(page);await fillProposal(page);
  await expect(page.locator('.cloud-proposal-send-context')).toContainText('recipient@example.com');
  expect(context.writes).toHaveLength(0);
- await page.getByRole('button',{name:'Guardar y enviar al cliente →',exact:true}).click();
+ await page.getByRole('button',{name:'Guardar y revisar envío →',exact:true}).click();
+ // Saving shows the exact email and PDF first; nothing is reviewed or sent before confirming.
+ await expect(page.getByRole('heading',{name:'Enviar adenda al cliente',exact:true})).toBeVisible();
+ expect(context.sendCount()).toBe(0);
+ expect(context.writes.filter(w=>w.path.endsWith('/review')||w.path.endsWith('/email'))).toHaveLength(0);
+ await page.getByRole('button',{name:'Enviar correo →',exact:true}).click();
  await expect(page.locator('.cloud-dialog')).not.toBeVisible();
  await expect(page.getByRole('heading',{name:'Esperando respuesta',exact:true})).toBeVisible();
  expect(context.sendCount()).toBe(1);
@@ -173,16 +178,14 @@ test('save and send creates the PDF and sends once without another confirmation 
  expect(context.writes.find(w=>w.path.endsWith('/review')).body.document_id).toBe('pdf');
  await expect(page.getByRole('button',{name:'Enviar adenda →',exact:true})).toHaveCount(0);
 });
-test('save and send failure preserves the form and does not claim mail was sent',async({page})=>{
+test('a send failure after review does not claim mail was sent',async({page})=>{
  const context=await setup(page,{emailFailure:true});await fillProposal(page);
- await page.getByRole('button',{name:'Guardar y enviar al cliente →',exact:true}).click();
+ await page.getByRole('button',{name:'Guardar y revisar envío →',exact:true}).click();
+ await expect(page.getByRole('heading',{name:'Enviar adenda al cliente',exact:true})).toBeVisible();
+ await page.getByRole('button',{name:'Enviar correo →',exact:true}).click();
  await expect(page.locator('[data-cloud-error]')).not.toBeEmpty();
- await expect(page.getByLabel('Alcance del cambio')).toHaveValue('Un video adicional');
  await expect(page.getByRole('heading',{name:'Esperando respuesta',exact:true})).toHaveCount(0);
  expect(context.sendCount()).toBe(0);
- await page.getByLabel('Alcance del cambio').fill('Otro alcance después del fallo');
- await page.getByRole('button',{name:'Guardar y enviar al cliente →',exact:true}).click();
- await expect(page.locator('[data-cloud-error]')).toContainText('Esta adenda ya se guardó');
  expect(context.writes.filter(w=>w.path==='/api/v1/projects/project/proposals')).toHaveLength(1);
 });
 test('multiple versions open in place without a second modal',async({page})=>{
@@ -196,7 +199,7 @@ test('multiple versions open in place without a second modal',async({page})=>{
 test('save and send stops if the server recipient differs from the displayed recipient',async({page})=>{
  const context=await setup(page);await fillProposal(page);
  await page.route('**/*email-preview*',route=>route.fulfill({json:{data:{recipient:'changed@example.com',document_id:'pdf',digest:'b'.repeat(64)}}}));
- await page.getByRole('button',{name:'Guardar y enviar al cliente →',exact:true}).click();
+ await page.getByRole('button',{name:'Guardar y revisar envío →',exact:true}).click();
  await expect(page.locator('[data-cloud-error]')).toContainText('El correo del cliente cambió');
  expect(context.writes.some(w=>w.path.endsWith('/review')||w.path.endsWith('/email'))).toBe(false);
  await expect(page.getByLabel('Alcance del cambio')).toHaveValue('Un video adicional');

@@ -110,6 +110,14 @@ def build_business_router(settings, services, require_user, repository_factory=N
     @router.get('/projects/{project_id}/activity')
     def activity(project_id:str,repo=Depends(repository)):
         return reply(repo.activity(uuid(project_id)))
+    @router.get('/projects/{project_id}/activity/groups')
+    def activity_groups(project_id:str,repo=Depends(repository)):
+        project=uuid(project_id);repo.project(project)
+        return reply(repo.rpc('project_activity_groups',{'p_project_id':project}))
+    @router.get('/projects/{project_id}/activity/groups/{group_kind}/{group_id}')
+    def activity_group(project_id:str,group_kind:str,group_id:str,repo=Depends(repository)):
+        if group_kind not in ('project','change','refund'):raise ApiError('ACTIVITY_GROUP_INVALID',422)
+        return reply(repo.activity(uuid(project_id),group_kind=group_kind,group_id=group_id))
 
     @router.post('/projects/{project_id}/delete')
     def delete_project(project_id:str,repo=Depends(repository)):

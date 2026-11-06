@@ -65,3 +65,13 @@ La migracion `20261101154326_ai_initial_project_plans.sql` coincide con la versi
 ## Uso de antecedentes en planes confirmados
 
 La migracion `20261103170835_reputation_plan_usage.sql` coincide con la version remota `20261103170835`, nombre `reputation_plan_usage`. El archivo inicial generado por CLI se renombro para conservar esa correspondencia antes de publicarlo. Incluye dos tablas privadas con RLS cerrado y funciones con permisos limitados. La prueba `supabase/tests/reputation_plan_usage.sql` se ejecuto con fixtures sinteticos bajo rollback, sin dejar cuentas, planes ni votos de prueba. No ejecutar esta migracion otra vez en trato-dev. No hay backfill automatico ni nuevas credenciales/env.
+
+## Plan, entregables y pagos verificados en el grafo
+
+`20261106171356_project_plan_graph_snapshot.sql` coincide con la versión aplicada `20261106171356`. Amplía el snapshot privado con el plan inicial, etapas, evidencias vigentes y pagos de etapas contrastados con el registro de pagos recibidos. Las pruebas SQL de plan y del contrato genérico de grafos pasaron bajo rollback. No hay variables de entorno, recursos ni dependencias nuevas; no aplicar esta migración de nuevo. La publicación del worker y la interfaz sigue siendo un paso separado.
+
+## Reconciliación del lote de cambios, 6 de noviembre
+
+- `20261106174949_project_activity_group_headers.sql` corresponde al registro aplicado `20261106175245_project_activity_group_headers`; no volver a ejecutarlo por su prefijo local.
+- Los análisis originales y sus revisiones ya existían en la base sin registro de migración. Se contrastaron sus columnas, restricciones y RLS antes de registrar las migraciones idempotentes `20261106233048_proposal_revision_ai.sql` y `20261106233051_proposal_revision_ai_review.sql`. Se conservaron los datos.
+- Se revocaron los permisos generales heredados de `authenticated`: puede leer e insertar su análisis y actualizar únicamente `review`. No puede modificar la propuesta original; `anon` no puede leerla. Los archivos publicados reproducen las sentencias registradas.

@@ -67,9 +67,8 @@ class InitialPayments:
     def apply(self,pay,order):
         client=self.provider();state=client.validate_order(order,self.instruction(pay))
         if pay.get('order_id') and order['id']!=pay['order_id']:raise ApiError('PAYMENT_EVIDENCE_MISMATCH',409)
-        if state in ('approved','completed','pending'):
-            payer=order.get('payer',{}).get('email_address','')
-            if not isinstance(payer,str) or payer.lower()!=pay['payer_email'].lower():raise ApiError('INITIAL_PAYER_MISMATCH',409)
+        # Who pays is not a payment control: a client's accountant or company account may pay. Order, amount,
+        # merchant, currency and the verified capture are what protect the freelancer (project owner decision, 6 Nov 2026).
         captures=order['purchase_units'][0].get('payments',{}).get('captures',[])
         if state=='completed':
             if order.get('status')!='COMPLETED' or len(captures)!=1:raise ApiError('PAYMENT_EVIDENCE_MISMATCH',409)

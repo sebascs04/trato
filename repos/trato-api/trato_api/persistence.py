@@ -232,7 +232,7 @@ class Repository:
         public_doc = {key: value for key, value in doc.items() if key not in ('ingestion_key', 'command_hash', 'storage_path')}
         return {'document': public_doc, 'extraction': extraction, 'segments': segments}
 
-    def activity(self,project_id):
+    def activity(self,project_id,*,group_kind=None,group_id=None):
         from concurrent.futures import ThreadPoolExecutor
         from datetime import datetime
         project=self.project(project_id)
@@ -255,9 +255,13 @@ class Repository:
                 result.extend(page)
                 if len(page)<500:return result
                 offset+=len(page)
-        with ThreadPoolExecutor(max_workers=4) as pool:
-            futures={name:pool.submit(all_rows,table,params) for name,(table,params) in queries.items()}
-            data={name:future.result() for name,future in futures.items()}
+        if group_kind is not None:
+            from .history_scope import scoped_rows
+            data=scoped_rows(self,project,group_kind,group_id,queries,all_rows)
+        else:
+            with ThreadPoolExecutor(max_workers=4) as pool:
+                futures={name:pool.submit(all_rows,table,params) for name,(table,params) in queries.items()}
+                data={name:future.result() for name,future in futures.items()}
         requests={row['id']:row for row in data['requests']}
         proposals={row['id']:row for row in data['proposals']}
         revisions={row['id']:row for row in data['revisions']}
@@ -289,28 +293,29 @@ class Repository:
         def start(id,kind,timestamp,**extra):
             if not timestamp:raise ApiError('ACTIVITY_TIMESTAMP_MISSING',502)
             events.append({'id':id,'kind':kind,'created_at':timestamp,'group_kind':'project','group_id':project['id'],'group_title':project['name'],**extra})
-        start('project-'+project['id'],'project_created',project.get('created_at'),title='Proyecto creado')
-        for row in data['initial_sources']:
-            start('source-'+row['id'],'initial_source_added',row['created_at'],title=row['title'],document_id=row['id'])
-        # Initial plan: confirmation, delivery evidence and stage payments verified by the backend.
-        plans=self.rows('project_start_plans',{'select':'created_at,currency',**common})
-        if plans:
-            plan=plans[0]
-            stages={row['position']:row for row in self.rows('project_start_stages',{'select':'position,title,amount',**common,'order':'position.asc'})}
-            minor=lambda value:int(round(float(value)*100))
-            start('plan-'+project['id'],'plan_confirmed',plan['created_at'],stages=len(stages),amount_minor=sum(minor(s['amount']) for s in stages.values()),currency=plan['currency'])
-            contexts=self.rows('document_upload_contexts',{'select':'document_id,stage_position',**common,'purpose':'eq.delivery_evidence','stage_position':'not.is.null','order':'document_id.asc'})
-            delivered={row['id']:row for row in all_rows('documents',{'select':'id,title,created_at','kind':'eq.delivery','deleted_at':'is.null'})}
-            for row in contexts:
-                doc=delivered.get(row['document_id'])
-                if doc:start('delivery-'+doc['id'],'delivery_evidence_added',doc['created_at'],stage_position=row['stage_position'],title=doc['title'],document_id=doc['id'])
-            progress=self.rpc('project_plan_progress',{'p_project':project['id']}) or {}
-            for row in progress.get('stages') or []:
-                stage=stages.get(row.get('position'))
-                if row.get('status')=='completed' and row.get('paid_at') and stage:
-                    start('stage-paid-'+str(row['payment_id']),'stage_paid',row['paid_at'],stage_position=row['position'],stage_title=stage['title'],
-                          amount_minor=minor(stage['amount']),currency=plan['currency'],**({'document_id':row['evidence_document_id']} if row.get('evidence_document_id') else {}))
-            if progress.get('completed_at'):start('plan-completed-'+project['id'],'plan_completed',progress['completed_at'])
+        if group_kind in (None,'project'):
+            start('project-'+project['id'],'project_created',project.get('created_at'),title='Proyecto creado')
+            for row in data['initial_sources']:
+                start('source-'+row['id'],'initial_source_added',row['created_at'],title=row['title'],document_id=row['id'])
+            # Initial plan: confirmation, delivery evidence and stage payments verified by the backend.
+            plans=self.rows('project_start_plans',{'select':'created_at,currency',**common})
+            if plans:
+                plan=plans[0]
+                stages={row['position']:row for row in self.rows('project_start_stages',{'select':'position,title,amount',**common,'order':'position.asc'})}
+                minor=lambda value:int(round(float(value)*100))
+                start('plan-'+project['id'],'plan_confirmed',plan['created_at'],stages=len(stages),amount_minor=sum(minor(s['amount']) for s in stages.values()),currency=plan['currency'])
+                contexts=self.rows('document_upload_contexts',{'select':'document_id,stage_position',**common,'purpose':'eq.delivery_evidence','stage_position':'not.is.null','order':'document_id.asc'})
+                delivered={row['id']:row for row in all_rows('documents',{'select':'id,title,created_at','kind':'eq.delivery','deleted_at':'is.null'})}
+                for row in contexts:
+                    doc=delivered.get(row['document_id'])
+                    if doc:start('delivery-'+doc['id'],'delivery_evidence_added',doc['created_at'],stage_position=row['stage_position'],title=doc['title'],document_id=doc['id'])
+                progress=self.rpc('project_plan_progress',{'p_project':project['id']}) or {}
+                for row in progress.get('stages') or []:
+                    stage=stages.get(row.get('position'))
+                    if row.get('status')=='completed' and row.get('paid_at') and stage:
+                        start('stage-paid-'+str(row['payment_id']),'stage_paid',row['paid_at'],stage_position=row['position'],stage_title=stage['title'],
+                              amount_minor=minor(stage['amount']),currency=plan['currency'],**({'document_id':row['evidence_document_id']} if row.get('evidence_document_id') else {}))
+                if progress.get('completed_at'):start('plan-completed-'+project['id'],'plan_completed',progress['completed_at'])
         events.extend(milestones(data))
         events.sort(key=lambda event:datetime.fromisoformat(event['created_at'].replace('Z','+00:00')),reverse=True)
         return events

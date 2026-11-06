@@ -164,7 +164,7 @@ class SavedPlanToolTests(unittest.TestCase):
    if path.endswith('/memory'):return original(method,path,**kwargs)
    body=kwargs['json']
    if body['tool']=='catalog':
-    catalog=original(method,path,**kwargs);catalog['tools'].append({'name':'read_project_plan','description':'Retrieves the saved plan.','when_to_use':'Use for planned deliverables and payments.','parameters':{'type':'object','additionalProperties':False,'required':[],'properties':{}}});return catalog
+    catalog=original(method,path,**kwargs);catalog['tools'].append({'name':'read_project_plan','description':'Retrieves the saved plan.','when_to_use':'Use for planned deliverables and payments.','parameters':{'type':'object','additionalProperties':False,'required':[],'properties':{}}});catalog['tools'].append({'name':'read_project_status','description':'Retrieves recorded changes and payments.','when_to_use':'Use for planned deliverables and payments.','parameters':{'type':'object','additionalProperties':False,'required':[],'properties':{}}});return catalog
    if body['tool']=='read_project_plan':
     record={'file_id':PROJECT,'title':'Initial project plan','generation':'a'*64,'source_kind':'plan','text':'{"budget":"600.00"}'};record['source_id']=digest(record);return {'sources':[record]}
    raise AssertionError('Unexpected vector tool')
@@ -172,3 +172,13 @@ class SavedPlanToolTests(unittest.TestCase):
   tools=ProjectTools(backend,JOB,EXEC,data());result=tools.execute('read_project_plan',{})
   self.assertEqual(result['sources'][0]['source_kind'],'plan');self.assertIn(result['sources'][0]['source_id'],tools.sources)
   self.assertEqual(tools.used,['read_project_plan'])
+  def status(method,path,**kwargs):
+   if path.endswith('/memory'):return original(method,path,**kwargs)
+   body=kwargs['json']
+   if body['tool']=='catalog':return request(method,path,**kwargs)
+   if body['tool']=='read_project_status':
+    record={'file_id':PROJECT,'title':'Project status','generation':'b'*64,'source_kind':'status','text':'{"change_requests":[]}'};record['source_id']=digest(record);return {'sources':[record]}
+   raise AssertionError('Unexpected vector tool')
+  backend.request=status
+  tools=ProjectTools(backend,JOB,EXEC,data());result=tools.execute('read_project_status',{})
+  self.assertEqual(result['sources'][0]['source_kind'],'status');self.assertIn(result['sources'][0]['source_id'],tools.sources)

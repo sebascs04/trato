@@ -18,6 +18,7 @@ from .vector_routes import VectorGateway,source
 from .vector_contract import digest
 from .assistant_memory import AssistantMemory
 from .plan_context import PLAN_TOOL,plan_source
+from .project_status import STATUS_TOOL,status_source
 
 MEMORY_TOOL={'name':'search_conversation_history','description':'Retrieves matching messages from the current conversation archive.','when_to_use':'Use when an earlier statement or detail is needed beyond the available conversation context.','parameters':{'type':'object','additionalProperties':False,'required':['query'],'properties':{'query':{'type':'string','minLength':1,'maxLength':4096}}}}
 QUERY={'type':'string','minLength':1,'maxLength':4096}
@@ -43,6 +44,7 @@ class Question(Strict):
  question:str=Field(min_length=1,max_length=4000)
  document_ids:list[UUID]|None=Field(default=None,min_length=1,max_length=100)
  change_proposal_job_id:UUID|None=None
+ focus_request_id:UUID|None=None
  
 class MemoryCitation(Strict):
  source_id:str=Field(pattern='^[a-f0-9]{64}$')
@@ -60,7 +62,7 @@ class MemoryAnswer(Strict):
  missing_information:list[str]=Field(max_length=8)
 class Call(Strict):
  execution_id:UUID
- tool:Literal['catalog','search_document_summaries','read_document_summary','search_document_text','search_conversation_history','read_project_plan']
+ tool:Literal['catalog','search_document_summaries','read_document_summary','search_document_text','search_conversation_history','read_project_plan','read_project_status']
  params:dict=Field(default_factory=dict)
 class Query(Strict):
  query:str=Field(min_length=1,max_length=4096)
@@ -121,7 +123,7 @@ class ProjectAssistant:
    if selected is not None:
     if not set(selected).issubset({document['id'] for document in documents}):raise ApiError('DOCUMENT_NOT_FOUND',404)
     documents=[document for document in documents if document['id'] in selected]
-   return {'workflow':'project_assistant','project_id':project['id'],'tools':TOOLS+([MEMORY_TOOL] if data.get('memory') is not None else [])+([PLAN_TOOL] if data.get('memory') is not None and not data.get('source_document_ids') and not data.get('case_context') else []),'documents':documents,
+   return {'workflow':'project_assistant','project_id':project['id'],'tools':TOOLS+([MEMORY_TOOL] if data.get('memory') is not None else [])+([PLAN_TOOL,STATUS_TOOL] if data.get('memory') is not None and not data.get('source_document_ids') and not data.get('case_context') else []),'documents':documents,
     **({'source_scope':{'document_ids':selected,'complete_project':False}} if selected is not None else {}),
     **({'case_context':data['case_context']} if data.get('case_context') else {})}
   if item.tool=='search_conversation_history':
@@ -134,6 +136,9 @@ class ProjectAssistant:
    if item.tool=='read_project_plan':
     if item.params or data.get('memory') is None or data.get('source_document_ids') or data.get('case_context'):raise ApiError('AI_TOOL_NOT_ALLOWED',422)
     record=plan_source(repo,owner,project);rows=[record] if record else []
+   elif item.tool=='read_project_status':
+    if item.params or data.get('memory') is None or data.get('source_document_ids') or data.get('case_context'):raise ApiError('AI_TOOL_NOT_ALLOWED',422)
+    rows=[status_source(repo,owner,project)]
    elif item.tool=='read_document_summary':
     params=Document.model_validate(item.params)
     if data.get('source_document_ids') is not None and str(params.document_id) not in data['source_document_ids']:raise ApiError('DOCUMENT_NOT_FOUND',404)
@@ -171,7 +176,7 @@ class ProjectAssistant:
    if stored!=1:raise ApiError('AI_JOB_NOT_ACTIVE',409)
   except RedisError:raise ApiError('AI_QUEUE_UNAVAILABLE',503) from None
   return {'sources':sources,'exhaustive_evidence':False}
- def validate_result(self,repo,owner,job_id,result):
+ def validate_result(self,repo,owner,job_id,result,*,draft_saved=False):
   if isinstance(result,dict) and result.get('project_id') and result.get('answer_basis') is not None:
    project=self.scope(repo,owner,result['project_id'])
    saved=self.memory.call(owner,project['id'],'turn',{'job_id':job_id})
@@ -181,7 +186,8 @@ class ProjectAssistant:
   project=self.scope(repo,owner,data['project_id'],data['client_id'])
   from .case_assistant import validate_case_job,validate_case_answer
   validate_case_job(repo,owner,data)
-  if data.get('action')=='draft_change':
+  # Once its proposal is saved the request context has changed by design; proposal_ai checks project and request itself.
+  if data.get('action')=='draft_change' and not draft_saved:
    from .change_proposal import validate_job_context
    validate_job_context(repo,owner,data)
   if data.get('case_context'):
@@ -198,6 +204,11 @@ class ProjectAssistant:
    record=stored.get(citation['source_id']);quote=citation['quote']
    if record is None or not isinstance(quote,str) or not quote.strip() or quote not in record['text']:raise ApiError('AI_INVALID_CITATION',502)
    file_id=record['file_id']
+   if record['source_kind']=='status':
+    # Business records can change between the tool call and the answer; cite only the current state.
+    current=status_source(repo,owner,project)
+    if data.get('source_document_ids') or data.get('case_context') or current['source_id']!=record['source_id']:raise ApiError('AI_CONTEXT_INVALID',409)
+    canonical.append({k:record[k] for k in ('source_id','file_id','title','source_kind','generation')});continue
    if record['source_kind']=='plan':
     current=plan_source(repo,owner,project)
     if data.get('source_document_ids') or data.get('case_context') or current is None or current['source_id']!=record['source_id']:raise ApiError('AI_CONTEXT_INVALID',409)
@@ -214,9 +225,21 @@ class ProjectAssistant:
    from .change_proposal import validate_draft_result
    validate_draft_result(data,result,canonical)
   return {**{k:v for k,v in result.items() if k!='source_scope'},'question':data['question'],'sources':canonical,
-   **({'conversation_context':{'document_ids':data.get('source_document_ids'),'change_proposal_job_id':data.get('change_proposal_job_id')}} if data.get('memory') is not None else {}),
+   **({'conversation_context':{'document_ids':data.get('source_document_ids'),'change_proposal_job_id':data.get('change_proposal_job_id'),'focus':data.get('focus')}} if data.get('memory') is not None else {}),
     **({'source_scope':{'document_ids':data['source_document_ids'],'complete_project':False}} if data.get('source_document_ids') is not None else {}),
     **({'case_context':data['case_context']} if data.get('case_context') else {})}
+
+def focus_context(repo,owner,project,request_id):
+ # Where the user is looking (a change request), verified against owner and project. Navigation context, not evidence.
+ if request_id is None:return None
+ rows=repo.rows('documents',{'select':'id,title','id':'eq.'+uuid(str(request_id)),'project_id':'eq.'+project['id'],'owner_id':'eq.'+owner,'kind':'eq.email_request','deleted_at':'is.null'})
+ if len(rows)!=1:raise ApiError('DOCUMENT_NOT_FOUND',404)
+ proposals=repo.rows('change_proposals',{'select':'current_revision_id','request_document_id':'eq.'+rows[0]['id'],'owner_id':'eq.'+owner})
+ version=None
+ if proposals and proposals[0].get('current_revision_id'):
+  revisions=repo.rows('proposal_revisions',{'select':'revision_no','id':'eq.'+proposals[0]['current_revision_id'],'owner_id':'eq.'+owner})
+  version=revisions[0]['revision_no'] if revisions else None
+ return {'kind':'change_request','request_document_id':rows[0]['id'],'title':rows[0]['title'],'addendum_version':version}
 
 def build_project_assistant_router(settings,require_user,repository_factory=None,service=None,preferences=None):
  router=APIRouter();service=service if service is not None else ProjectAssistant(settings)
@@ -229,17 +252,19 @@ def build_project_assistant_router(settings,require_user,repository_factory=None
   if not item.question.strip():raise ApiError('AI_INVALID_INPUT',422)
   repo=repository(request);project=await run_in_threadpool(service.scope,repo,owner,str(item.project_id))
   selected=await run_in_threadpool(service.selected_documents,repo,owner,project,item.document_ids)
+  focus=await run_in_threadpool(focus_context,repo,owner,project,item.focus_request_id)
+  focus_id=focus['request_document_id'] if focus else None
   job_id=uuid(request.headers.get('Idempotency-Key',''))
   saved=await run_in_threadpool(service.memory.call,owner,project['id'],'turn',{'job_id':job_id})
   if saved:
-   if saved['result']['question']!=item.question.strip() or saved['result'].get('output_language')!=item.output_language or saved['result'].get('conversation_context',{}).get('document_ids')!=selected or saved['result'].get('conversation_context',{}).get('change_proposal_job_id')!=(str(item.change_proposal_job_id) if item.change_proposal_job_id else None):raise ApiError('AI_CONFLICT',409)
+   if saved['result']['question']!=item.question.strip() or saved['result'].get('output_language')!=item.output_language or saved['result'].get('conversation_context',{}).get('document_ids')!=selected or saved['result'].get('conversation_context',{}).get('change_proposal_job_id')!=(str(item.change_proposal_job_id) if item.change_proposal_job_id else None) or (saved['result'].get('conversation_context',{}).get('focus') or {}).get('request_document_id')!=focus_id:raise ApiError('AI_CONFLICT',409)
    return reply({'id':job_id,'status':'completed','result':saved['result']},202)
   try:
    old=await run_in_threadpool(service.jobs.input,owner,job_id)
   except ApiError as error:
    if error.code!='AI_NOT_FOUND':raise
   else:
-   if old.get('workflow')!='project_assistant' or old.get('project_id')!=project['id'] or old.get('question')!=item.question.strip() or old.get('output_language')!=item.output_language or old.get('source_document_ids')!=selected or old.get('change_proposal_job_id')!=(str(item.change_proposal_job_id) if item.change_proposal_job_id else None):raise ApiError('AI_CONFLICT',409)
+   if old.get('workflow')!='project_assistant' or old.get('project_id')!=project['id'] or old.get('question')!=item.question.strip() or old.get('output_language')!=item.output_language or old.get('source_document_ids')!=selected or old.get('change_proposal_job_id')!=(str(item.change_proposal_job_id) if item.change_proposal_job_id else None) or (old.get('focus') or {}).get('request_document_id')!=focus_id:raise ApiError('AI_CONFLICT',409)
    existing=await run_in_threadpool(service.jobs.get,owner,job_id)
    if existing['status']=='completed':existing['result']=await run_in_threadpool(service.validate_result,repo,owner,job_id,existing['result'])
    return reply(existing,202)
@@ -253,6 +278,7 @@ def build_project_assistant_router(settings,require_user,repository_factory=None
    if previous['status']!='completed' or previous['result']['project_id']!=project['id']:raise ApiError('AI_CONTEXT_INVALID',409)
    data['proposal_discussion']=previous['result']
   if selected is not None:data['source_document_ids']=selected
+  if focus:data['focus']=focus
   data['thread']={'type':'thread','schema_version':1,'workflow':'project_assistant','action':'start','thread_id':job_id,
     'event_id':str(uuid5(NAMESPACE_URL,'trato:assistant:'+job_id)),'context':{'owner_id':owner,'project_id':project['id'],'client_id':project['client_id']}}
   job=await run_in_threadpool(service.jobs.enqueue,owner,job_id,data)

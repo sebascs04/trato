@@ -1,5 +1,7 @@
 from copy import deepcopy
 import unittest
+from datetime import date,timedelta
+FUTURE=(date.today()+timedelta(days=30)).isoformat()
 
 import httpx
 from fastapi import FastAPI,Request,HTTPException
@@ -35,7 +37,7 @@ class ProposalRoutesTest(unittest.TestCase):
         @app.exception_handler(ApiError)
         async def error(request,value):return JSONResponse({'error':{'code':value.code}},status_code=value.status)
         self.client=TestClient(app);self.auth={'Authorization':'Bearer synthetic-user','Idempotency-Key':'proposal-command'}
-        self.terms={'scope_summary':'Additional vertical videos','conditions':'One review round','currency':'USD','deadline':'2026-11-12','line_items':[{'description':'Video','quantity':2,'unit_amount_minor':9000}]}
+        self.terms={'scope_summary':'Additional vertical videos','conditions':'One review round','currency':'USD','deadline':FUTURE,'line_items':[{'description':'Video','quantity':2,'unit_amount_minor':9000}]}
         self.create={'request_document_id':DOC,'terms':self.terms,'source_document_ids':[DOC,SOURCE]}
     def test_authentication_precedes_creation_and_no_owner_can_be_injected(self):
         url=f'/api/v1/projects/{PROJECT}/proposals'
@@ -49,6 +51,10 @@ class ProposalRoutesTest(unittest.TestCase):
             self.assertEqual(self.client.post(url,headers=self.auth,json=data).status_code,422)
         data=deepcopy(self.create);data['terms']['currency']='EUR'
         self.assertEqual(self.client.post(url,headers=self.auth,json=data).status_code,422)
+        self.assertEqual(self.calls,[])
+    def test_past_deadline_is_rejected_before_any_write(self):
+        data=deepcopy(self.create);data['terms']['deadline']=(date.today()-timedelta(days=400)).isoformat()
+        self.assertEqual(self.client.post(f'/api/v1/projects/{PROJECT}/proposals',headers=self.auth,json=data).status_code,422)
         self.assertEqual(self.calls,[])
     def test_zero_price_is_preserved_and_project_comes_from_the_path(self):
         data=deepcopy(self.create);data['terms']['line_items'][0]['unit_amount_minor']=0

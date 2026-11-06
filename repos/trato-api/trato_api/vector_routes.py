@@ -227,21 +227,27 @@ class VectorGateway:
         except (RedisError, LockError):
             raise ApiError('VECTOR_REGISTRY_UNAVAILABLE', 503) from None
 
-    def snapshot(self, repo, owner, project_id):
+    def snapshot(self, repo, owner, project_id, file_ids=None):
         owner, project_id = uuid(owner), uuid(project_id)
         project = repo.project(project_id)
         if project['owner_id'] != owner:
             raise ApiError('PROJECT_NOT_FOUND', 404)
+        wanted = {uuid(i) for i in file_ids} if file_ids is not None else None
+        if wanted == set():return project, []
         documents = []
         for offset in range(0, 1001, 100):
             rows = repo.rows('documents', {'select': 'id,title,kind,original_filename,created_at',
-                'project_id': 'eq.' + project_id, 'deleted_at':'is.null', 'order': 'created_at.desc,id.asc', 'limit': 100, 'offset': offset})
+                'project_id': 'eq.' + project_id, 'owner_id':'eq.'+owner, 'deleted_at':'is.null',
+                **({'id':'in.('+','.join(sorted(wanted))+')'} if wanted is not None else {}),
+                'order': 'created_at.desc,id.asc', 'limit': 100, 'offset': offset})
             documents.extend({key: row[key] for key in ('id', 'title', 'kind', 'original_filename', 'created_at')}
                              for row in rows)
             if len(documents) > 1000:
                 raise ApiError('VECTOR_INVENTORY_LIMIT', 413)
             if len(rows) < 100:
                 break
+        if wanted is not None and wanted != {d['id'] for d in documents}:
+            raise ApiError('DOCUMENT_NOT_FOUND',404)
         files = []
         for doc in documents:
             try:
@@ -263,8 +269,8 @@ class VectorGateway:
                           'generation': value['generation'], '_source': value})
         return project, files
 
-    def inventory(self, repo, owner, project_id, offset=0, limit=50):
-        _, files = self.snapshot(repo, owner, project_id)
+    def inventory(self, repo, owner, project_id, offset=0, limit=50, file_ids=None):
+        _, files = self.snapshot(repo, owner, project_id, file_ids=file_ids)
         if os.getenv('TRATO_FILE_PROCESSING_ENABLED')=='true':
             for file in files[offset:offset+limit]:
                 file['summary']=self.summary(repo,file)

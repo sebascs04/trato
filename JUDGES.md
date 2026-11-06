@@ -31,7 +31,7 @@ Your judge account may also include an example project you can open first to see
 
 ### Paying as the client
 
-In real use the client receives the payment link by email. Use your own email as the client's contact email to see those emails arrive. While PayPal is in Sandbox, a **Test mode (PayPal Sandbox)** box also lets you open the same checkout directly with **Open test payment**. Log in with the **Sandbox buyer account provided in Devpost** and approve. Please use that account rather than your own Sandbox account: for deliverables, Trato verifies that the payer is the buyer linked to the client and rejects any other. The payment counts only after Trato's backend verifies the capture with PayPal.
+In real use the client receives the payment link by email. Use your own email as the client's contact email to see those emails arrive. While PayPal is in Sandbox, a **Test mode (PayPal Sandbox)** box also lets you open the same checkout directly with **Open test payment**. Log in with the **Sandbox buyer account provided in Devpost**, or any PayPal Sandbox buyer account, and approve. Like a real client's accountant or company account, any PayPal account can pay. Trato verifies the order, amount, receiving merchant and currency, and the payment counts only after its backend verifies the capture with PayPal.
 
 ## Notes
 

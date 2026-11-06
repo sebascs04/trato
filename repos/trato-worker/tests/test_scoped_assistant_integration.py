@@ -13,7 +13,7 @@ from fastapi.testclient import TestClient
 from fastapi.responses import JSONResponse
 sys.path.append(str(Path(__file__).resolve().parents[2]/'trato-api/tests'))
 from test_summary_vectors import MixedSummaryRepo,SummaryStore
-from test_vector_routes import MemoryRedis,Processor,OWNER,PROJECT,FILE
+from test_vector_routes import MemoryRedis,MemoryRegistry,Processor,OWNER,PROJECT,FILE
 from trato_api.errors import ApiError
 from trato_api.project_assistant import ProjectAssistant,build_project_assistant_router
 from trato_api.vector_routes import VectorGateway
@@ -52,7 +52,7 @@ class Model:
 @patch.dict(os.environ,{'TRATO_FILE_PROCESSING_ENABLED':'true','TRATO_VECTOR_SEARCH_ENABLED':'true','TRATO_WORKER_TOKEN':'worker'})
 class ScopedAssistantIntegrationTests(unittest.TestCase):
  def test_explicit_scope_roundtrip_cites_ready_original_while_pending_stays_pending(self):
-  repo=Repo();store=SummaryStore();gateway=VectorGateway(None,store=store,redis=MemoryRedis(),processor=Processor())
+  repo=Repo();store=SummaryStore();gateway=VectorGateway(None,store=store,redis=MemoryRedis(),processor=Processor(),registry=MemoryRegistry())
   repo.summary={'summary':'Project payment and delivery terms.','topics':['payment'],'citations':[],
     'output_language':'en','model_identity':'test-model','source_fingerprint':'f'*64}
   repo.summary['summary_fingerprint']=digest(repo.summary)

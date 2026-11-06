@@ -65,6 +65,17 @@ class AIRoutesTests(unittest.TestCase):
             self.assertEqual(self.client.post('/api/v1/ai/project-plans',json={**body,'target_date':target},headers={'Idempotency-Key':str(uuid4())}).status_code,202)
             self.assertEqual(self.jobs.data['today'],'2026-11-05')
 
+    def test_plan_sources_are_validated_and_kept_in_job_context(self):
+        body={'client_id':CLIENT,'draft_id':DRAFT,'brief':'Website','budget':'600.00','target_date':'2026-11-20','output_language':'en'}
+        source={'filename':'01-initial-conversation.pdf','text':'USD 180 on design approval, USD 300 on development, USD 120 before launch.'}
+        for bad in [[{**source,'extra':'x'}],[{**source,'text':''}],[source]*6,[{**source,'text':'x'*60001}]]:
+            self.assertEqual(self.client.post('/api/v1/ai/project-plans',json={**body,'sources':bad},headers={'Idempotency-Key':JOB}).status_code,422)
+        self.assertIsNone(self.jobs.data)
+        self.assertEqual(self.client.post('/api/v1/ai/project-plans',json={**body,'sources':[source]},headers={'Idempotency-Key':JOB}).status_code,202)
+        self.assertEqual(self.jobs.data['sources'],[source])
+        self.assertEqual(self.client.post('/api/v1/ai/project-plans',json=body,headers={'Idempotency-Key':str(uuid4())}).status_code,202)
+        self.assertEqual(self.jobs.data['sources'],[])
+
     def test_project_amount_rejects_nonpositive_and_fractional_cents(self):
         body={'client_id':CLIENT,'draft_id':DRAFT,'brief':'Website','target_date':'2026-11-20','output_language':'es'}
         for budget in ['0','-1','0.001','NaN','Infinity']:

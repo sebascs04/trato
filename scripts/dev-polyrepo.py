@@ -122,7 +122,11 @@ if __name__ == '__main__':
                 children.append(subprocess.Popen([str(PYTHON),'-m','trato_api.thread_runner','--mode','connected'],cwd=REPOS/'trato-api',env=api_env))
                 children.append(subprocess.Popen([str(REPOS/'trato-worker/.venv/bin/python'),'-m','trato_worker.run','--mode','connected'],cwd=REPOS/'trato-worker',env=worker_env))
             if worker_env.get('TRATO_AI_WORKFLOWS_ENABLED')=='true':
-                children.append(subprocess.Popen([str(REPOS/'trato-worker/.venv/bin/python'),'-m','trato_worker.ai_jobs'],cwd=REPOS/'trato-worker',env=worker_env))
+                # Several consumers share the Redis group so a long document job does not block questions.
+                ai_workers=int(worker_env.get('TRATO_AI_WORKERS','3'))
+                if not 1<=ai_workers<=8:raise SystemExit('TRATO_AI_WORKERS debe estar entre 1 y 8.')
+                for _ in range(ai_workers):
+                    children.append(subprocess.Popen([str(REPOS/'trato-worker/.venv/bin/python'),'-m','trato_worker.ai_jobs'],cwd=REPOS/'trato-worker',env=worker_env))
             if worker_env.get('TRATO_REHEARSAL_EVALUATOR_ENABLED')=='true':
                 children.append(subprocess.Popen([str(REPOS/'trato-worker/.venv/bin/python'),'-m','trato_worker.rehearsal_jobs'],cwd=REPOS/'trato-worker',env=worker_env))
         frontend = REPOS / 'trato-web' if args.tools else ROOT

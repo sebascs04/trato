@@ -30,7 +30,9 @@ class InitialPayments:
         return {k:pay.get(k) for k in ('id','status','amount_minor','currency','order_id','capture_id','paid_at','project_name','conditions','stage_position')}
     def owned(self,pay):
         if pay is None:return None
-        return {**self.public(pay),**{k:pay.get(k) for k in ('conditions','output_language','created_at','updated_at','mail_status','events','last_error')},'checkout_url':self.link(pay)}
+        # sandbox lets the owner open the client's checkout to test it; Live never exposes that shortcut.
+        return {**self.public(pay),**{k:pay.get(k) for k in ('conditions','output_language','created_at','updated_at','mail_status','events','last_error')},'checkout_url':self.link(pay),
+                'sandbox':os.getenv('PAYPAL_ENVIRONMENT')=='sandbox'}
     def get(self,repo,owner,project):
         p=repo.project(project)
         if p['owner_id']!=owner:raise ApiError('PROJECT_NOT_FOUND',404)

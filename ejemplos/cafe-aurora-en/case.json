@@ -1,0 +1,20 @@
+{
+  "client": {"name": "Café Aurora", "email": "use-an-inbox-you-control@example.com"},
+  "project": {"name": "Café Aurora website", "currency": "USD", "base_amount": 600, "original_due_date": "2026-11-20"},
+  "deliverables": [
+    {"position": 1, "title": "Planning and initial UI design", "amount": 180},
+    {"position": 2, "title": "Website development", "amount": 300},
+    {"position": 3, "title": "Testing and launch", "amount": 120}
+  ],
+  "change": {"v1_amount": 240, "v1_due_date": "2026-11-25", "v2_amount": 180, "v2_due_date": "2026-11-23"},
+  "documents": [
+    {"source": "sources/01-initial-conversation.md", "pdf": "01-initial-conversation.pdf", "scenario_stage": "initial_project"},
+    {"source": "sources/02-initial-agreement.md", "pdf": "02-initial-agreement.pdf", "scenario_stage": "initial_agreement"},
+    {"source": "sources/03-change-request-store.md", "pdf": "03-change-request-store.pdf", "scenario_stage": "change_request"},
+    {"source": "sources/04-client-adjustments-addendum-v1.md", "pdf": "04-client-adjustments-addendum-v1.pdf", "scenario_stage": "addendum_v1_feedback"},
+    {"source": "sources/05-client-acceptance-addendum-v2.md", "pdf": "05-client-acceptance-addendum-v2.pdf", "scenario_stage": "addendum_v2_acceptance"},
+    {"source": "sources/06-deliverable-1-acknowledgment.md", "pdf": "06-deliverable-1-acknowledgment.pdf", "scenario_stage": "delivery_evidence_1"},
+    {"source": "sources/07-deliverable-2-acknowledgment.md", "pdf": "07-deliverable-2-acknowledgment.pdf", "scenario_stage": "delivery_evidence_2"},
+    {"source": "sources/08-deliverable-3-acknowledgment.md", "pdf": "08-deliverable-3-acknowledgment.pdf", "scenario_stage": "delivery_evidence_3"}
+  ]
+}

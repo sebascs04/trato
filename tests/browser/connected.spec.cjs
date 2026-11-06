@@ -263,7 +263,7 @@ test('a new client request is stored separately from initial agreement sources',
   await page.getByRole('button',{name:'Guardar pedido →',exact:true}).click();
   await expect(page.locator('.cloud-dialog')).not.toBeVisible();
   await expect(page.locator('#client-panel')).toContainText('Añadir una sección');
-  await page.getByRole('button',{name:'← Volver al proyecto',exact:true}).click();
+  await page.locator('.cloud-project-navigation [data-cloud-tab="acuerdo"]').click();
   await expect(page.locator('.cloud-agreement')).not.toContainText('Añadir una sección');
   await page.reload();
   await expect(page.locator('.client-banner h2')).toHaveText('Proyecto privado A');
@@ -366,7 +366,7 @@ test('a saved request separates read-only history from reviewing its source comp
   await expect(page.getByRole('button',{name:'Preparar propuesta manual →',exact:true})).toBeVisible();
   await page.getByRole('button',{name:'← Volver a los pedidos',exact:true}).click();
   await expect(page.locator('.cloud-requests')).toContainText('Pedido de tienda e inglés');
-  await page.getByRole('button',{name:'← Volver al proyecto',exact:true}).click();
+  await page.locator('.cloud-project-navigation [data-cloud-tab="acuerdo"]').click();
   await expect(page.locator('.cloud-setup-path')).toHaveCount(0);
   expect(errors).toEqual([]);
 });

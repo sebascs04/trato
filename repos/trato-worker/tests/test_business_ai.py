@@ -26,6 +26,17 @@ class BusinessAITests(unittest.TestCase):
     def test_no_reviews_cannot_produce_client_observations(self):
         with self.assertRaises(ToolError):validate(OUTPUT,{**self.data(),'reviews':[]})
         self.assertEqual(validate({**OUTPUT,'observations':[]},{**self.data(),'reviews':[]})['observations'],[])
+    def test_plan_receives_extracted_sources_and_rejects_malformed_ones(self):
+        import json
+        stages=[{'title':'Design','body':'Mockups','percent':30,'when':'After approval'},{'title':'Build','body':'Site','percent':70,'when':'After approval'}]
+        source={'filename':'conversation.pdf','text':'USD 30 for design and USD 70 for the build.'}
+        model=Model({**OUTPUT,'stages':stages})
+        run_business_ai({**self.data('project_plan'),'sources':[source]},model)
+        self.assertEqual(json.loads(model.calls[0][0][1]['content'])['sources'],[source])
+        model=Model({**OUTPUT,'stages':stages});run_business_ai(self.data('project_plan'),model)
+        self.assertEqual(json.loads(model.calls[0][0][1]['content'])['sources'],[])
+        for bad in [[{'filename':'a.pdf'}],[{**source,'extra':'x'}],'text',[source]*6]:
+            with self.assertRaises(ToolError):run_business_ai({**self.data('project_plan'),'sources':bad},Model(OUTPUT))
     def test_plan_percentages_and_minimum_cent_are_checked(self):
         stages=[{'title':'Start','body':'Deliverables','percent':40,'when':'Before work'},{'title':'Finish','body':'Delivery','percent':60,'when':'On delivery'}]
         self.assertEqual(len(validate({**OUTPUT,'stages':stages},self.data('project_plan'))['stages']),2)

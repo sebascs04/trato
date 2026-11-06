@@ -182,13 +182,15 @@ export class ConnectedWorkspace {
     if(this.historyLoaded){this.renderHistory(panel);return;}
     if(this.historyPending)return this.historyPending;
     const id=this.projectId,epoch=this.epoch,generation=this.historyGeneration;
-    panel.innerHTML=("<p class=\"cloud-notice\" role=\"status\">"+uiText("Cargando historial…")+"</p>");
+    // A background refresh keeps the current history visible instead of flashing a loading state.
+    if(this.historyProject===id&&this.projectActivity.length)this.renderHistory(panel);
+    else panel.innerHTML=("<p class=\"cloud-notice\" role=\"status\">"+uiText("Cargando historial…")+"</p>");
     const current=()=>this.active&&id===this.projectId&&epoch===this.epoch&&generation===this.historyGeneration;
     this.historyPending=(async()=>{
       try{
         const activity=await this.request(`/api/v1/projects/${id}/activity`);
         if(!current())return;
-        this.projectActivity=activity;this.historyLoaded=true;
+        this.projectActivity=activity;this.historyProject=id;this.historyLoaded=true;
         const target=this.$('[data-cloud-history]');if(target)this.renderHistory(target);
       }catch(error){
         if(current()){const target=this.$('[data-cloud-history]');if(target)target.innerHTML=`<p class="cloud-error" role="alert">${escape(error.message)}</p><p class="cloud-notice">${uiText("Vuelve a abrir Historial para reintentar.")}</p>`;}
@@ -397,7 +399,7 @@ export class ConnectedWorkspace {
     const clientField=client
       ? `<div class="cloud-project-client"><small>${uiText("CLIENTE DEL PROYECTO")}</small><strong>${escape(client.name)}</strong></div><input type="hidden" name="client" value="${client.id}">`
       : `<label class="field">${uiText("Cliente del proyecto")}<select name="client" class="context-box" required><option value="" selected disabled>${uiText("Elige un cliente guardado")}</option>${this.clients.map(item=>`<option value="${item.id}">${escape(item.name)}</option>`).join('')}</select></label>`;
-    this.show(uiText("Nuevo proyecto"),`<form data-cloud-form="project">${clientField}<label class="field">${uiText("Nombre del nuevo proyecto")}<input name="name" class="context-box" required maxlength="200" placeholder="${uiText("Por ejemplo: sitio web corporativo")}"></label><h3>${uiText('projectStart.moment')}</h3><div class="project-start-choices">${[['new','sparkles','newTitle','newCopy'],['ongoing','folder-open','ongoingTitle','ongoingCopy']].map(([value,glyph,title,copy])=>`<label class="project-start-choice"><input type="radio" name="project_start" value="${value}" ${value==='new'?'checked':''}><div>${uiIcon(glyph)}<strong>${uiText(`projectStart.${title}`)}</strong><p>${uiText(`projectStart.${copy}`)}</p></div></label>`).join('')}</div><div class="dialog-actions"><button type="submit" class="button">${uiText('projectStart.continue')}${uiIcon('arrow-right')}</button></div></form>`);
+    this.show(uiText("Nuevo proyecto"),`<form data-cloud-form="project">${clientField}<label class="field">${uiText("Nombre del nuevo proyecto")}<input name="name" class="context-box" required maxlength="200" placeholder="${uiText("Por ejemplo: sitio web corporativo")}"></label><h3>${uiText('projectStart.moment')}</h3><div class="project-start-choices">${[['new','sparkles','newTitle','newCopy']/* «Proyecto en marcha» oculto hasta revisarlo: restaurar ['ongoing','folder-open','ongoingTitle','ongoingCopy'] */].map(([value,glyph,title,copy])=>`<label class="project-start-choice"><input type="radio" name="project_start" value="${value}" ${value==='new'?'checked':''}><div>${uiIcon(glyph)}<strong>${uiText(`projectStart.${title}`)}</strong><p>${uiText(`projectStart.${copy}`)}</p></div></label>`).join('')}</div><div class="dialog-actions"><button type="submit" class="button">${uiText('projectStart.continue')}${uiIcon('arrow-right')}</button></div></form>`);
     this.modal.classList.add('cloud-project-create-dialog');
   }
   initialSources() {return this.documents.filter(doc=>doc.kind==='initial_agreement');}
@@ -437,7 +439,7 @@ export class ConnectedWorkspace {
   }
   renderRequests(panel) {
     const requests=this.documents.filter(doc=>doc.kind==='email_request');
-    panel.innerHTML=`<section class="workspace-panel cloud-requests"><button class="text-button" data-cloud-action="tab" data-cloud-tab="acuerdo">${uiText("← Volver al proyecto")}</button><div class="cloud-panel-heading cloud-section-note"><div><span class="eyebrow">${uiText("CAMBIOS DEL PROYECTO")}</span><h3>${uiText("Cambios del acuerdo")}</h3><p>${uiText("Revisa pedidos que modifican el trabajo, el precio o la fecha de entrega.")}</p></div><button class="button" data-cloud-action="upload" data-cloud-purpose="request" ${this.requestStatus?.can_register===true?'':'disabled'}>${uiText("Registrar pedido del cliente")}</button></div>${this.requestStatus?.can_register===false?("<p class=\"cloud-notice\">"+uiText("Termina o cierra el pedido abierto antes de registrar otro en este proyecto.")+"</p>"):''}${this.requestRows(requests) || ("<div class=\"cloud-empty-sources\"><strong>"+uiText("Aquí irán los nuevos pedidos")+"</strong><p>"+uiText("Cuando tu cliente pida algo adicional, guarda la conversación para revisarla por separado.")+"</p></div>")}</section>`;
+    panel.innerHTML=`<section class="workspace-panel cloud-requests"><div class="cloud-panel-heading cloud-section-note"><div><span class="eyebrow">${uiText("CAMBIOS DEL PROYECTO")}</span><h3>${uiText("Cambios del acuerdo")}</h3><p>${uiText("Revisa pedidos que modifican el trabajo, el precio o la fecha de entrega.")}</p></div><button class="button" data-cloud-action="upload" data-cloud-purpose="request" ${this.requestStatus?.can_register===true?'':'disabled'}>${uiText("Registrar pedido del cliente")}</button></div>${this.requestStatus?.can_register===false?("<p class=\"cloud-notice\">"+uiText("Termina o cierra el pedido abierto antes de registrar otro en este proyecto.")+"</p>"):''}${this.requestRows(requests) || ("<div class=\"cloud-empty-sources\"><strong>"+uiText("Aquí irán los nuevos pedidos")+"</strong><p>"+uiText("Cuando tu cliente pida algo adicional, guarda la conversación para revisarla por separado.")+"</p></div>")}</section>`;
   }
   renderRefundsSoon(panel) {
     panel.innerHTML=`<section class="workspace-panel cloud-refunds-soon" aria-label="${uiText("Devoluciones del proyecto")}"><div class="land-narrator"><div class="land-narrator-cloud" role="status"><p>${uiText('refunds.comingSoonTitle')}</p></div><img class="land-story-mascot" src="/assets/mascot/trato-guide.png" alt="" width="190" height="190"></div><button type="button" class="button secondary" data-cloud-action="tab" data-cloud-tab="acuerdo">${uiText("← Volver al proyecto")}</button></section>`;
@@ -483,11 +485,11 @@ export class ConnectedWorkspace {
     const source=data=>{
       const text=data.segments[0]?.text.trim().replace(/\s+/g,' ')||'';
       const excerpt=text.length>240?text.slice(0,240).trimEnd()+'…':text;
-      return `<article class="cloud-comparison-source"><h4>${escape(data.document.title)}</h4>
+      return `<article class="cloud-comparison-source"><h4><span class="cloud-comparison-file" aria-hidden="true">${uiIcon('file-text')}</span>${escape(data.document.title)}</h4>
         <p class="cloud-fragment">${escape(excerpt||uiText("Este archivo todavía no tiene texto para consultar. Puedes reintentar su lectura desde los archivos del proyecto."))}</p>
         <button type="button" class="text-button" data-cloud-action="text" data-cloud-id="${escape(data.document.id)}">${uiIcon('file-text')}${uiText('changeDraft.viewDocument')}</button></article>`;
     };
-    panel.innerHTML=`<section class="workspace-panel cloud-change-review"><button class="text-button" data-cloud-action="tab" data-cloud-tab="${comparison.returnTab||'solicitudes'}">${uiText("← Volver a los pedidos")}</button><div class="cloud-section-note"><span class="eyebrow">${uiText("REVISAR EL CAMBIO")}</span><h3>${escape(comparison.request.title)}</h3><p>${uiText("Compara lo que habían conversado con lo que está pidiendo ahora. Revisa si cambia el trabajo incluido, el costo o las fechas.")}</p></div>${comparison.loading?this.renderSkeleton('project',uiText("Cargando fuentes del proyecto y del pedido…")):comparison.error?`<button class="button secondary" data-cloud-action="review-change" data-cloud-id="${comparison.id}">${uiText("Volver a intentar")}</button>`:`<div class="cloud-comparison-grid"><section aria-label="${uiText("Información inicial")}"><span class="eyebrow">${uiText("LO CONVERSADO AL INICIO")}</span>${comparison.sources.map(source).join('')}</section><section aria-label="${uiText("Pedido nuevo")}"><span class="eyebrow">${uiText("LO QUE PIDE AHORA")}</span>${source(comparison.requestSource)}</section></div>`}</section>`;
+    panel.innerHTML=`<section class="workspace-panel cloud-change-review"><button class="text-button" data-cloud-action="tab" data-cloud-tab="${comparison.returnTab||'solicitudes'}">${uiText("← Volver a los pedidos")}</button><div class="cloud-section-note"><span class="eyebrow">${uiText("REVISAR EL CAMBIO")}</span><h3>${escape(comparison.request.title)}</h3><p>${uiText("Compara lo que habían conversado con lo que está pidiendo ahora. Revisa si cambia el trabajo incluido, el costo o las fechas.")}</p></div>${comparison.loading?this.renderSkeleton('project',uiText("Cargando fuentes del proyecto y del pedido…")):comparison.error?`<button class="button secondary" data-cloud-action="review-change" data-cloud-id="${comparison.id}">${uiText("Volver a intentar")}</button>`:`<div class="cloud-comparison-grid"><section class="cloud-comparison-side" data-side="initial" aria-label="${uiText("Información inicial")}"><span class="eyebrow">${uiIcon('folder-open')}${uiText("LO CONVERSADO AL INICIO")}</span>${comparison.sources.map(source).join('')}</section><section class="cloud-comparison-side" data-side="request" aria-label="${uiText("Pedido nuevo")}"><span class="eyebrow">${uiIcon('mail')}${uiText("LO QUE PIDE AHORA")}</span>${source(comparison.requestSource)}</section></div>`}</section>`;
   }
   renderSkeleton(kind='list',label=uiText("Cargando información…")) {
     return `<div class="cloud-loading" role="status" aria-busy="true" aria-label="${escape(label)}"><span class="sr-only">${escape(label)}</span><div aria-hidden="true" class="cloud-skeleton ${kind==='project'?'cloud-skeleton-project':''}"><div class="cloud-skeleton-heading"><span class="cloud-skeleton-line cloud-skeleton-title"></span><span class="cloud-skeleton-line cloud-skeleton-subtitle"></span></div>${[0,1,2].map(()=>`<div class="cloud-skeleton-row"><span class="cloud-skeleton-avatar"></span><div><span class="cloud-skeleton-line"></span><span class="cloud-skeleton-line cloud-skeleton-detail"></span></div><span class="cloud-skeleton-action"></span></div>`).join('')}</div></div>`;
@@ -562,6 +564,12 @@ export class ConnectedWorkspace {
   }
   activityLabel(event) {
     switch(event.kind){
+      case 'project_created':return uiText('history.projectCreated');
+      case 'initial_source_added':return uiText('history.initialSource',{title:event.title});
+      case 'plan_confirmed':return uiText('history.planConfirmed',{count:event.stages,amount:new Intl.NumberFormat(uiLocale(),{style:'currency',currency:event.currency}).format(event.amount_minor/100)});
+      case 'delivery_evidence_added':return uiText('history.deliveryEvidence',{number:event.stage_position});
+      case 'stage_paid':return uiText('history.stagePaid',{number:event.stage_position,amount:new Intl.NumberFormat(uiLocale(),{style:'currency',currency:event.currency}).format(event.amount_minor/100)});
+      case 'plan_completed':return uiText('history.planCompleted');
       case 'request_registered':return uiText('history.request');
       case 'adenda_sent':return uiText('history.adenda',{version:event.revision_no});
       case 'acceptance_recorded':return uiText('history.acceptance',{version:event.revision_no});
@@ -579,7 +587,7 @@ export class ConnectedWorkspace {
     }
   }
   renderHistory(panel) {
-    const icons={request_registered:'file-text',adenda_sent:'send',acceptance_recorded:'file-text',payment_requested:'mail',payment_completed:'credit-card',request_closed:'x',refund_requested:'undo-2',refund_proposal_sent:'send',refund_feedback_reviewed:'file-text',refund_acceptance_recorded:'file-text',refund_financial_authorized:'credit-card',refund_completed:'credit-card',refund_closed:'check'};
+    const icons={project_created:'folder-open',initial_source_added:'file-text',plan_confirmed:'layout-dashboard',delivery_evidence_added:'file-check',stage_paid:'credit-card',plan_completed:'circle-check',request_registered:'file-text',adenda_sent:'send',acceptance_recorded:'file-text',payment_requested:'mail',payment_completed:'credit-card',request_closed:'x',refund_requested:'undo-2',refund_proposal_sent:'send',refund_feedback_reviewed:'file-text',refund_acceptance_recorded:'file-text',refund_financial_authorized:'credit-card',refund_completed:'credit-card',refund_closed:'check'};
     const activity=[...this.projectActivity].sort((a,b)=>new Date(b.created_at)-new Date(a.created_at));
     const groups=new Map();
     for(const event of activity){
@@ -591,18 +599,27 @@ export class ConnectedWorkspace {
     const dayFormat=new Intl.DateTimeFormat(uiLocale(),{dateStyle:'long',timeZone:'America/Lima'});
     const clockFormat=new Intl.DateTimeFormat(uiLocale(),{timeStyle:'short',timeZone:'America/Lima'});
     const valid=value=>value&&Number.isFinite(Date.parse(value));
+    // Keep the groups the user opened or closed across re-renders of the same project.
+    if(this.historyOpenProject!==this.projectId){this.historyOpenProject=this.projectId;this.historyOpen=null;}
+    const opened=this.historyOpen;
     const content=[...groups.values()].map((group,index)=>{
       const days=new Map();
       for(const event of group.events){
         const day=valid(event.created_at)?dayFormat.format(new Date(event.created_at)):uiText("Fecha no registrada");
         if(!days.has(day))days.set(day,[]);days.get(day).push(event);
       }
-      return `<details class="cloud-history-request" data-activity-group-kind="${escape(group.kind)}" data-activity-group-id="${escape(group.id)}" ${index===0?'open':''}><summary><span class="cloud-history-chevron" aria-hidden="true">${uiIcon('chevron-right')}</span><span class="cloud-history-request-title">${escape(group.title)}<small>${uiText(group.kind==='refund'?'history.refundGroup':'history.changeGroup')} · ${group.events.length} ${group.events.length===1?uiText("movimiento"):uiText("movimientos")}</small></span><time datetime="${escape(group.events[0].created_at)}">${escape(date(group.events[0].created_at))}</time></summary><div class="cloud-history-days">${[...days].map(([day,events])=>`<section class="cloud-history-day"><h4>${escape(day)}</h4><ol class="cloud-project-timeline">${events.map(event=>`<li class="cloud-project-event" data-activity-kind="${escape(event.kind)}"><button type="button" class="cloud-history-event-button" data-cloud-action="history-event" data-cloud-id="${escape(event.id)}"><span class="cloud-project-event-icon" aria-hidden="true">${uiIcon(icons[event.kind])}</span><strong>${escape(this.activityLabel(event))}</strong><time datetime="${escape(event.created_at)}">${valid(event.created_at)?escape(clockFormat.format(new Date(event.created_at))):''}</time></button></li>`).join('')}</ol></section>`).join('')}</div></details>`;
+      return `<details class="cloud-history-request" data-activity-group-kind="${escape(group.kind)}" data-activity-group-id="${escape(group.id)}" ${(opened?opened.has(group.kind+':'+group.id):index===0)?'open':''}><summary><span class="cloud-history-chevron" aria-hidden="true">${uiIcon('chevron-right')}</span><span class="cloud-history-request-title">${escape(group.title)}<small>${uiText(group.kind==='refund'?'history.refundGroup':group.kind==='project'?'history.projectGroup':'history.changeGroup')} · ${group.events.length} ${group.events.length===1?uiText("movimiento"):uiText("movimientos")}</small></span><time datetime="${escape(group.events[0].created_at)}">${escape(date(group.events[0].created_at))}</time></summary><div class="cloud-history-days">${[...days].map(([day,events])=>`<section class="cloud-history-day"><h4>${escape(day)}</h4><ol class="cloud-project-timeline">${events.map(event=>`<li class="cloud-project-event" data-activity-kind="${escape(event.kind)}"><button type="button" class="cloud-history-event-button" data-cloud-action="history-event" data-cloud-id="${escape(event.id)}"><span class="cloud-project-event-icon" aria-hidden="true">${uiIcon(icons[event.kind])}</span><strong>${escape(this.activityLabel(event))}</strong><time datetime="${escape(event.created_at)}">${valid(event.created_at)?escape(clockFormat.format(new Date(event.created_at))):''}</time></button></li>`).join('')}</ol></section>`).join('')}</div></details>`;
     }).join('');
     panel.innerHTML=`<div class="cloud-project-activity">${content?`<div class="cloud-history-groups">${content}</div>`:("<p class=\"cloud-notice\">"+uiText('history.empty')+"</p>")}</div>`;
+    if(panel.dataset&&!panel.dataset.historyToggle){
+      panel.dataset.historyToggle='1';
+      panel.addEventListener('toggle',()=>{this.historyOpen=new Set([...panel.querySelectorAll('details.cloud-history-request[open]')].map(item=>item.dataset.activityGroupKind+':'+item.dataset.activityGroupId));},true);
+    }
   }
 
   historyDocuments(event) {
+    if(event.kind==='project_created')return this.documents.filter(doc=>doc.kind==='initial_agreement');
+    if(['initial_source_added','delivery_evidence_added','stage_paid'].includes(event.kind))return this.documents.filter(doc=>doc.id===event.document_id);
     if(event.kind==='request_registered')return this.documents.filter(doc=>doc.id===event.request_document_id);
     // A business event is not a document. Only use explicit scoped associations.
     const roles={adenda_sent:['addendum'],acceptance_recorded:['acceptance'],refund_requested:['request'],refund_proposal_sent:['proposal'],refund_feedback_reviewed:['feedback'],refund_acceptance_recorded:['acceptance']};

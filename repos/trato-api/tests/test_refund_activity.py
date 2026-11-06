@@ -48,14 +48,16 @@ class RefundActivityTests(unittest.TestCase):
         docs=[{'id':f'd{i:04}','title':'Request '+str(i),'created_at':T} for i in range(1001)]
         def transport(request):
             table=request.url.path.rsplit('/',1)[-1];calls.append(request)
-            if table=='projects':return httpx.Response(200,json=[{'id':project}])
+            if table=='projects':return httpx.Response(200,json=[{'id':project,'name':'Project','created_at':T}])
             self.assertEqual(request.headers['authorization'],'Bearer owner-token')
             self.assertEqual(request.url.params['project_id'],'eq.'+project)
-            if table=='documents':
+            if table=='documents' and request.url.params['kind']=='eq.email_request':
                 start=int(request.url.params['offset']);return httpx.Response(200,json=docs[start:start+int(request.url.params['limit'])])
             return httpx.Response(200,json=[])
         repo=Repository(Settings(supabase_url='https://test.invalid',supabase_key='public'),'Bearer owner-token',transport=httpx.MockTransport(transport))
-        events=repo.activity(project);self.assertEqual(len(events),1001)
-        self.assertEqual([int(r.url.params['offset']) for r in calls if r.url.path.endswith('/documents')],[0,500,1000])
-        self.assertTrue(all(e['group_kind']=='change' and e['group_id']==e['request_document_id'] for e in events))
-        self.assertEqual(len({e['id'] for e in events}),1001)
+        events=repo.activity(project);changes=[e for e in events if e['group_kind']=='change']
+        self.assertEqual(len(changes),1001)
+        self.assertEqual([e['kind'] for e in events if e['group_kind']=='project'],['project_created'])
+        self.assertEqual([int(r.url.params['offset']) for r in calls if r.url.path.endswith('/documents') and r.url.params['kind']=='eq.email_request'],[0,500,1000])
+        self.assertTrue(all(e['group_id']==e['request_document_id'] for e in changes))
+        self.assertEqual(len({e['id'] for e in changes}),1001)

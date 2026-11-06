@@ -6,6 +6,8 @@ import {icon as uiIcon} from './icons.mjs';
 const esc=value=>String(value??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const amount=minor=>new Intl.NumberFormat(uiLocale(),{style:'currency',currency:'USD'}).format(minor/100);
 const when=value=>new Intl.DateTimeFormat(uiLocale(),{dateStyle:'medium',timeStyle:'short',timeZone:'America/Lima'}).format(new Date(value));
+// A deadline is a calendar date (YYYY-MM-DD): format it without shifting the day.
+const deadlineLabel=value=>{const match=/^(\d{4})-(\d{2})-(\d{2})$/.exec(String(value||''));if(!match)return String(value||'');const day=new Date(Date.UTC(+match[1],+match[2]-1,+match[3]));return Number.isNaN(day.getTime())?String(value):new Intl.DateTimeFormat(uiLocale(),{dateStyle:'long',timeZone:'UTC'}).format(day);};
 export function installProposalWorkspace(cloud){
  installCaseAssistant(cloud);
  installChangeProposalAssistant(cloud);
@@ -52,7 +54,8 @@ export function installProposalWorkspace(cloud){
    if(!current())return;
    this.proposals=proposals;this.requestStatus=status;
    if(tab==='gestion'){this.proposalDetails=details;this.gmailReplies=replies;this.gmailReplyError=replyError;}
-   this.historyGeneration++;this.historyLoaded=false;this.historyPending=null;this.projectActivity=[];
+   // Refresh history in the background; keep the loaded entries visible meanwhile.
+   this.historyGeneration++;this.historyLoaded=false;this.historyPending=null;
    this.proposalError='';this.message='';this.notify();
   }catch(error){if(current()){this.message=`${uiText("No pudimos actualizar el estado del pedido.")} ${error.message}`;this.notify();}}
   finally{synchronizing=false;}
@@ -113,7 +116,10 @@ export function installProposalWorkspace(cloud){
   if(!comparison||comparison.loading||comparison.error||comparison.projectId!==this.projectId)return;
   const p=summary(comparison.id);
   if(this.requestStatus?.closures.some(c=>c.request_document_id===comparison.id))return;
-  panel.querySelector('.cloud-change-review')?.insertAdjacentHTML('beforeend',`<div class="cloud-tools cloud-flow-actions"><p class="cloud-notice">${p?uiText("Consulta la propuesta guardada y continúa con su revisión."):uiText("Después de revisar las fuentes, define el alcance, el adicional y la fecha de tu propuesta.")}</p><button class="button" ${p?`data-cloud-action="manage-change" data-cloud-id="${esc(comparison.id)}"`:'data-proposal-action="prepare"'}>${p?(p.business_status==='Finalizado'?uiText("Ver detalles →"):uiText("Continuar propuesta →")):uiText("Preparar propuesta manual →")}</button>${!p?("<button class=\"text-button\" data-proposal-action=\"close-request\">"+uiText("Cerrar pedido")+"</button>"):''}</div>`);
+  panel.querySelector('.cloud-change-review')?.insertAdjacentHTML('beforeend',`<div class="cloud-tools cloud-flow-actions"><p class="cloud-notice">${p?uiText("Consulta la propuesta guardada y continúa con su revisión."):uiText("Después de revisar las fuentes, define el alcance, el adicional y la fecha de tu propuesta.")}</p><button class="button" ${p?`data-cloud-action="manage-change" data-cloud-id="${esc(comparison.id)}"`:'data-proposal-action="prepare"'}>${p?(p.business_status==='Finalizado'?uiText("Ver detalles →"):uiText("Continuar propuesta →")):uiText("Preparar propuesta manual →")}</button></div>`);
+  // Closing the request is a secondary decision: keep it at the top, next to the way back.
+  const review=panel.querySelector('.cloud-change-review'),back=review?.querySelector(':scope>.text-button');
+  if(!p&&back){const top=this.document.createElement('div');top.className='cloud-review-top';back.before(top);top.append(back);top.insertAdjacentHTML('beforeend',`<button type="button" class="text-button cloud-review-close" data-proposal-action="close-request">${uiIcon('x')}${uiText("Cerrar pedido")}</button>`);}
  };
  cloud.renderChangeManagement=function(panel){
   if(this.proposalLoading){panel.innerHTML=`<div class="cloud-detail-loading"><span aria-hidden="true">${uiIcon('refresh-cw')}</span><span>${uiText("Cargando detalles…")}</span></div>${this.renderSkeleton('project',uiText("Cargando detalles del pedido…"))}`;return;}
@@ -124,12 +130,12 @@ export function installProposalWorkspace(cloud){
   const r=data.revision,current=data.proposal.current_revision_id===r.id,paid=!!data.proposal.locked_at,payment=data.payments[0],artifact=data.artifacts[0];
   const sent=data.deliveries.some(d=>d.kind==='adenda'&&d.status==='accepted_by_gmail');
   const replies=this.gmailReplies.filter(message=>message.revision_id===r.id);
-  const replyPanel=sent?`<section class="workspace-panel cloud-gmail-replies">
+  // A closed or previous version only shows replies that already exist; there is nothing left to look for.
+  const replyPanel=sent&&(current&&!paid||replies.length)?`<section class="workspace-panel cloud-gmail-replies">
    <header class="cloud-replies-heading">
     <h3>${uiIcon('mail')}${uiText("Respuestas de Gmail")}</h3>
     <div class="cloud-reply-actions">
-     <button class="text-button" data-proposal-action="refresh">${uiIcon('refresh-cw')}${uiText("Actualizar respuestas")}</button>
-     ${current&&!paid?`<button class="button secondary" data-proposal-action="gmail-sync">${uiText("Buscar respuestas en Gmail")}</button>`:''}
+     ${current&&!paid?`<button class="button secondary" data-proposal-action="gmail-sync">${uiIcon('refresh-cw')}${uiText("Buscar respuestas en Gmail")}</button>`:`<button class="text-button" data-proposal-action="refresh">${uiIcon('refresh-cw')}${uiText("Actualizar respuestas")}</button>`}
     </div>
    </header>
    ${this.gmailReplyError?`<p class="cloud-error" role="alert">${esc(this.gmailReplyError)}</p>`:''}
@@ -165,30 +171,36 @@ export function installProposalWorkspace(cloud){
   </section>`:'';
 
   const controls=[];
-  if(artifact)controls.push(`<button class="button secondary" data-proposal-action="pdf">${uiText("Ver PDF v")}${r.revision_no} ↗</button>`);
+  // Sandbox only: open the same PayPal checkout the client receives by email. Payment is still verified by the backend.
+  const sandboxCheckout=data.paypal_sandbox===true&&data.payment_required&&payment&&!paid&&payment.status!=='completed'&&/^https:\/\/(www\.)?sandbox\.paypal\.com\//.test(payment.approval_url||'')
+   ?`<aside class="sandbox-checkout" role="note">${uiIcon('info')}<div><strong>${uiText('planPayment.sandboxTitle')}</strong><p>${uiText('planPayment.sandboxHelp')}</p></div><a class="button secondary" href="${esc(payment.approval_url)}" target="_blank" rel="noopener">${uiText('planPayment.sandboxOpen')}${uiIcon('arrow-up-right')}</a></aside>`:'';
+  const secondary=[],replyDecision=[];let closeControl='';
+  if(artifact)secondary.push(`<button class="button secondary" data-proposal-action="pdf">${uiIcon('file-text')}${uiText("Ver PDF v")}${r.revision_no}${uiIcon('arrow-up-right')}</button>`);
   if(current&&!paid){
    if(!artifact)controls.push(("<button class=\"button\" data-proposal-action=\"save-pdf\">"+uiText("Guardar PDF de esta versión →")+"</button>"));
    else if(!data.reviews.length)controls.push(("<button class=\"button\" data-proposal-action=\"preview\" data-kind=\"adenda\">"+uiText("Enviar adenda →")+"</button>"));
    else if(!data.acceptances.length){
     if(!sent)controls.push(("<button class=\"button\" data-proposal-action=\"preview\" data-kind=\"adenda\">"+uiText("Enviar adenda →")+"</button>"));
-    if(sent)controls.push(("<button class=\"button secondary\" data-proposal-action=\"accept\">"+uiText("Registrar aceptación recibida →")+"</button>"));
+    if(sent)replyDecision.push(("<button class=\"button\" data-proposal-action=\"accept\">"+uiText("Registrar aceptación recibida →")+"</button>"));
    }else if(data.payment_required){
     if(!payment)controls.push(("<button class=\"button\" data-proposal-action=\"payment\">"+uiText("Preparar cobro →")+"</button>"));
     else{if(payment.status==='pending_approval'&&!data.deliveries.some(d=>d.kind==='payment'&&d.status==='accepted_by_gmail'))controls.push(("<button class=\"button\" data-proposal-action=\"preview\" data-kind=\"payment\">"+uiText("Enviar solicitud de pago →")+"</button>"));controls.push(("<button class=\"button secondary\" data-proposal-action=\"reconcile\">"+uiText("Verificar pago ↻")+"</button>"));}
    }
    const attempted=data.deliveries.some(d=>['sending','accepted_by_gmail','delivery_uncertain'].includes(d.status));
-   if(!payment&&!data.acceptances.length&&!attempted)controls.push(("<button class=\"button secondary\" data-proposal-action=\"edit\">"+uiText("Editar borrador")+"</button>"));
-   if(!payment&&!data.acceptances.length)controls.push(("<button class=\"text-button\" data-proposal-action=\"close-request\">"+uiText("Cerrar pedido")+"</button>"));
-   if(!payment&&!data.acceptances.length&&sent)controls.push(("<button class=\"text-button\" data-proposal-action=\"revise\">"+uiText("Registrar ajustes del cliente")+"</button>"));
+   if(!payment&&!data.acceptances.length&&!attempted)secondary.push(("<button class=\"button secondary\" data-proposal-action=\"edit\">"+uiText("Editar borrador")+"</button>"));
+   if(!payment&&!data.acceptances.length)closeControl=`<button type="button" class="text-button cloud-review-close" data-proposal-action="close-request">${uiIcon('x')}${uiText("Cerrar pedido")}</button>`;
+   if(!payment&&!data.acceptances.length&&sent)replyDecision.unshift(("<button class=\"button secondary\" data-proposal-action=\"revise\">"+uiText("Registrar ajustes del cliente")+"</button>"));
   }
-  panel.innerHTML=`${this.renderCaseAssistant({project:this.projectId,kind:'change',id:data.proposal.id,revision:r.id,version:r.revision_no})}<div class="cloud-tracking"><button class="text-button" data-cloud-action="tab" data-cloud-tab="solicitudes">${uiText("← Volver a los pedidos")}</button><header class="cloud-view-heading"><span class="eyebrow">${uiText("DETALLES DEL PEDIDO")}</span><h3>${esc(this.documents.find(d=>d.id===this.requestId)?.title)}</h3></header><section class="workspace-panel"><div class="cloud-panel-heading"><h3>${esc(uiText(p.business_status))}</h3><span class="badge review">${uiText("Adenda v")}${r.revision_no}${current?'':' · '+uiText('anterior')}</span></div><p>${esc(r.scope_summary)}</p><p><strong>${esc(amount(r.additional_minor))}</strong> ${uiText("· Entrega:")} ${esc(r.deadline)}</p><p>${esc(r.conditions)}</p>${renderRevisionComparison(data.previous_sent,r)}<div class="cloud-tools cloud-flow-actions">${controls.join('')}</div>${paid?("<p>"+uiText("Este cambio está finalizado y se conserva para consulta.")+"</p>"):''}</section>${p.revision_no>1?("<section class=\"workspace-panel\"><h3>"+uiText("Versiones de la adenda")+"</h3><div data-proposal-versions><button class=\"text-button\" data-proposal-action=\"versions\">"+uiText("Ver versiones anteriores")+"</button></div></section>"):''}</div>`;
+  panel.innerHTML=`<div class="cloud-tracking"><div class="cloud-review-top"><button class="text-button" data-cloud-action="tab" data-cloud-tab="solicitudes">${uiText("← Volver a los pedidos")}</button>${closeControl}</div><header class="cloud-view-heading"><span class="eyebrow">${uiText("DETALLES DEL PEDIDO")}</span><h3>${esc(this.documents.find(d=>d.id===this.requestId)?.title)}</h3></header><section class="workspace-panel"><div class="cloud-panel-heading"><h3>${esc(uiText(p.business_status))}</h3><span class="badge review">${uiText("Adenda v")}${r.revision_no}${current?'':' · '+uiText('anterior')}</span></div><div class="proposal-summary"><section><span class="proposal-summary-label">${uiText("Alcance del cambio")}</span><p>${esc(r.scope_summary)}</p></section><dl class="proposal-summary-terms"><div><dt>${uiText('changeReply.amount')}</dt><dd>${esc(amount(r.additional_minor))}</dd></div><div><dt>${uiText("Fecha de entrega")}</dt><dd>${esc(deadlineLabel(r.deadline))}</dd></div></dl>${r.conditions?`<section><span class="proposal-summary-label">${uiText("Condiciones")}</span><p>${esc(r.conditions)}</p></section>`:''}</div>${renderRevisionComparison(data.previous_sent,r)}<div class="cloud-tools cloud-flow-actions tracking-actions"><div class="tracking-secondary">${secondary.join('')}</div>${controls.length?`<div class="tracking-primary">${controls.join('')}</div>`:''}</div>${sandboxCheckout}${paid?("<p>"+uiText("Este cambio está finalizado y se conserva para consulta.")+"</p>"):''}</section>${p.revision_no>1?("<section class=\"workspace-panel\"><h3>"+uiText("Versiones de la adenda")+"</h3><div data-proposal-versions><button class=\"text-button\" data-proposal-action=\"versions\">"+uiText("Ver versiones anteriores")+"</button></div></section>"):''}</div>`;
   if(replyPanel)panel.querySelector('.cloud-tracking')?.insertAdjacentHTML('beforeend',replyPanel);
+  // What the client answered decides the next step, so those actions live with the replies.
+  if(replyDecision.length)panel.querySelector('.cloud-gmail-replies')?.insertAdjacentHTML('beforeend',`<div class="cloud-reply-decision">${replyDecision.join('')}</div>`);
  };
  function prepare(mode='create',emailReply=null,analysis=null){
   const old=mode!=='create'?cloud.proposalDetails:null,r=old?.revision,item=old?.line_items?.[0];
   const recipient=cloud.clients.find(client=>client.id===cloud.project()?.client_id)?.contact_email || '';
   cloud.proposalForm={old,mode,key:crypto.randomUUID(),saved:null,recipient,emailFeedbackId:emailReply?.id||null};
-  cloud.show(mode==='edit'?uiText("Editar borrador"):mode==='revise'?uiText("Ajustes solicitados por el cliente"):uiText("Preparar propuesta"),`<p>${uiText("Define el cambio, su adicional y la fecha de entrega. Se guardará con sus fuentes del proyecto.")}</p><form data-cloud-form="proposal-terms">${mode!=='revise'?`<section class="cloud-client-feedback"><button type="button" class="button secondary" data-change-draft-action="open" title="${uiText('changeDraft.discover')}">${uiIcon('sparkles')}${uiText('changeDraft.prepareWithTrato')}</button><p>${uiText('changeDraft.discover')}</p></section>`:''}${mode==='revise'?("<label class=\"field\">${uiText('PDF con los ajustes del cliente')}<input class=\"context-box\" type=\"file\" name=\"feedbackFile\" accept=\".pdf\" required></label><label class=\"field\">"+uiText("¿Qué pidió ajustar el cliente?")+"<textarea class=\"context-box\" name=\"feedbackNotes\" required maxlength=\"4000\"></textarea></label>"):''}<label class="field">${uiText("Alcance del cambio")}<textarea class="context-box" name="scope" required maxlength="12000">${esc(r?.scope_summary)}</textarea></label><label class="field">${uiText("Condiciones")}<textarea class="context-box" name="conditions" maxlength="12000">${esc(r?.conditions)}</textarea></label><label class="field">${uiText("Detalle del adicional")}<input class="context-box" name="description" required maxlength="1000" value="${esc(item?.description)}"></label><label class="field">${uiText("Adicional total en USD")}<input class="context-box" name="amount" inputmode="decimal" required pattern="[0-9]+([.,][0-9]{1,2})?" value="${r?(r.additional_minor/100).toFixed(2):''}" placeholder="0.10"></label><label class="field">${uiText("Fecha de entrega")}<input class="context-box" name="deadline" type="date" required value="${esc(r?.deadline)}"></label><section class="cloud-proposal-send-context"><strong>${recipient?'Enviar a '+esc(recipient):uiText("El cliente no tiene un correo registrado")}</strong><p>${recipient?uiText("Guardar y enviar conserva esta versión, genera su PDF y envía la adenda a este destinatario. Revisa el alcance, el importe y la fecha antes de continuar."):uiText("Puedes guardar el borrador. Registra el correo del cliente antes de enviarlo.")}</p></section><div class="dialog-actions"><button class="button" type="submit" name="intent" value="send" ${recipient?'':'disabled'}>${uiText("Guardar y enviar al cliente →")}</button><button class="button secondary" type="submit" name="intent" value="draft">${mode==='edit'?uiText("Guardar cambios del borrador →"):uiText("Guardar borrador")}</button></div></form>`);
+  cloud.show(mode==='edit'?uiText("Editar borrador"):mode==='revise'?uiText("Ajustes solicitados por el cliente"):uiText("Preparar propuesta"),`<p>${uiText("Define el cambio, su adicional y la fecha de entrega. Se guardará con sus fuentes del proyecto.")}</p><form data-cloud-form="proposal-terms">${mode==='create'?`<section class="change-auto"><div data-change-auto aria-live="polite"></div></section>`:mode!=='revise'?`<section class="cloud-client-feedback"><button type="button" class="button secondary" data-change-draft-action="open" title="${uiText('changeDraft.discover')}">${uiIcon('sparkles')}${uiText('changeDraft.prepareWithTrato')}</button><p>${uiText('changeDraft.discover')}</p></section>`:''}${mode==='revise'?`<section class="change-feedback-box"><label class="field">${uiText('PDF con los ajustes del cliente')}<input class="context-box" type="file" name="feedbackFile" accept=".pdf" required></label><label class="field">${uiText("¿Qué pidió ajustar el cliente?")}<textarea class="context-box" name="feedbackNotes" required maxlength="4000"></textarea></label></section>`:''}<label class="field">${uiText("Alcance del cambio")}<textarea class="context-box" name="scope" required maxlength="12000">${esc(r?.scope_summary)}</textarea></label><label class="field">${uiText("Condiciones")}<textarea class="context-box" name="conditions" maxlength="12000">${esc(r?.conditions)}</textarea></label><label class="field">${uiText("Detalle del adicional")}<input class="context-box" name="description" required maxlength="1000" value="${esc(item?.description)}"></label><label class="field">${uiText("Adicional total en USD")}<input class="context-box" name="amount" inputmode="decimal" required pattern="[0-9]+([.,][0-9]{1,2})?" value="${r?(r.additional_minor/100).toFixed(2):''}" placeholder="0.10"></label><label class="field">${uiText("Fecha de entrega")}<input class="context-box" name="deadline" type="date" required value="${esc(r?.deadline)}"></label><section class="cloud-proposal-send-context"><strong>${recipient?'Enviar a '+esc(recipient):uiText("El cliente no tiene un correo registrado")}</strong><p>${recipient?uiText("Guardar y enviar conserva esta versión, genera su PDF y envía la adenda a este destinatario. Revisa el alcance, el importe y la fecha antes de continuar."):uiText("Puedes guardar el borrador. Registra el correo del cliente antes de enviarlo.")}</p></section><div class="dialog-actions"><button class="button" type="submit" name="intent" value="send" ${recipient?'':'disabled'}>${uiText("Guardar y enviar al cliente →")}</button><button class="button secondary" type="submit" name="intent" value="draft">${mode==='edit'?uiText("Guardar cambios del borrador →"):uiText("Guardar borrador")}</button></div></form>`);
   if(emailReply){
    const form=cloud.modal.querySelector('[data-cloud-form="proposal-terms"]'),file=form?.querySelector('[name="feedbackFile"]'),notes=form?.querySelector('[name="feedbackNotes"]'),body=emailReply.reply_text||'';
    file?.closest('.field')?.remove();
@@ -215,6 +227,7 @@ export function installProposalWorkspace(cloud){
    };
    form.addEventListener('input',update);update();
   }
+  if(mode==='create')cloud.autoDraftChangeProposal?.();
  }
  async function preview(kind){
   const data=cloud.proposalDetails,value=await cloud.request(base(data)+`/email-preview?kind=${kind}`);
@@ -285,7 +298,7 @@ export function installProposalWorkspace(cloud){
   }
   if(action==='close-request'){
    this.closingRequestId=this.requestId;
-   this.show(uiText("Cerrar pedido"),`<p>${uiText("Registra por qué no continuará este pedido. Sus documentos y versiones quedarán disponibles para consulta.")}</p><form data-cloud-form="proposal-close-request"><label class="field" for="request-close-reason">${uiText("Motivo")}</label><select id="request-close-reason" class="context-box" name="reason" required><option value="" selected disabled>${uiText("Selecciona un motivo")}</option value="rejected">${uiText("El cliente rechazó la propuesta")}</option><option value="withdrawn">${uiText("El cliente retiró el pedido")}</option></select><label class="field">${uiText("Detalle")}<textarea class="context-box" name="notes" required maxlength="4000"></textarea></label><div class="dialog-actions"><button class="button" type="submit">${uiText("Cerrar pedido")}</button><button class="button secondary" type="button" data-cloud-close>${uiText("Volver")}</button></div></form>`);
+   this.show(uiText("Cerrar pedido"),`<p>${uiText("Registra por qué no continuará este pedido. Sus documentos y versiones quedarán disponibles para consulta.")}</p><form data-cloud-form="proposal-close-request"><fieldset class="close-reason-choices"><legend class="field">${uiText("Motivo")}</legend>${[['rejected','x',"El cliente rechazó la propuesta"],['withdrawn','undo-2',"El cliente retiró el pedido"]].map(([value,glyph,label])=>`<label class="close-reason-choice"><input type="radio" name="reason" value="${value}" required>${uiIcon(glyph)}<span>${uiText(label)}</span></label>`).join('')}</fieldset><label class="field">${uiText("Detalle")}<textarea class="context-box" name="notes" required maxlength="4000"></textarea></label><div class="dialog-actions"><button class="button" type="submit">${uiText("Cerrar pedido")}</button><button class="button secondary" type="button" data-cloud-close>${uiText("Volver")}</button></div></form>`);
    return;
   }
   this.run(async()=>{

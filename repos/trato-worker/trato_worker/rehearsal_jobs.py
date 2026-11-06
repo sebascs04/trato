@@ -74,6 +74,10 @@ class RehearsalConsumer:
             self.redis.hset(key, mapping={'status': 'failed', 'error_code': 'MODEL_REQUEST_FAILED'})
         except (ValueError, KeyError, TypeError):
             self.redis.hset(key, mapping={'status': 'failed', 'error_code': 'REHEARSAL_EVALUATION_FAILED'})
+        except Exception as e:
+            # Unexpected defects must fail this job visibly instead of crashing the consumer loop.
+            print(json.dumps({'error': {'code': 'REHEARSAL_WORKER_DEFECT', 'type': type(e).__name__, 'job_id': job_id}}), flush=True)
+            self.redis.hset(key, mapping={'status': 'failed', 'error_code': 'REHEARSAL_EVALUATION_FAILED'})
         # Never retry a failed/incomplete model call automatically after recovery.
         self.redis.xack(STREAM, GROUP, entry_id)
         self.redis.xdel(STREAM, entry_id)

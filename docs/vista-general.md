@@ -21,7 +21,7 @@ Inicio reutiliza el estado autorizado ya cargado. No consulta documentos, propue
 
 ## Backlog revisado
 
-Main `aa8625dae90e7961020a8782725886972b3e9b13` incorpora los pendientes del responsable de cambios y devoluciones en `docs/backlog.md`:
+Main `aa8625dae90e7961020a8782725886972b3e9b13` incorpora los pendientes de Flores en `docs/backlog.md`:
 
 - TRATO18: cierre persistente y restricciones de proyecto finalizado.
 - TRATO19: cobro inicial del proyecto mediante PayPal Sandbox, separado de las adendas.
@@ -30,4 +30,4 @@ La vista no añade controles que den por implementados esos pendientes. Cambios 
 
 ## Actualización segura del workspace
 
-La raíz local no tiene checkout Git operativo. Se comparó Main remoto contra el último snapshot publicado, se respaldaron los archivos presentes y se incorporó el único documento modificado en remoto conservando el cuerpo local. También se restauraron 18 documentos del responsable de cambios y devoluciones que faltaban, desde el snapshot publicado exacto. Registro privado: `.local/home-overview-20261104/sync.json`.
+La raíz local no tiene checkout Git operativo. Se comparó Main remoto contra el último snapshot publicado, se respaldaron los archivos presentes y se incorporó el único documento modificado en remoto conservando el cuerpo local. También se restauraron 18 documentos de Flores que faltaban, desde el snapshot publicado exacto. Registro privado: `.local/home-overview-20261104/sync.json`.

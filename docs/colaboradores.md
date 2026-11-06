@@ -6,7 +6,7 @@ El equipo prepara los accesos siguiendo [este checklist](accesos-colaboradores.m
 
 ## 1. Qué debemos entregarte
 
-| Acceso | Qué preparal equipo | Dónde se usa |
+| Acceso | Qué prepara el equipo | Dónde se usa |
 | --- | --- | --- |
 | GitHub | Invitación aceptada y permiso Write para contribuir; no hace falta Admin para abrir PR | Clon, ramas y PR |
 | Supabase, panel | Invitación Developer a la organización que contiene el proyecto | SQL, Storage, Auth y herramientas de desarrollo; no cambia el dueño del proyecto |

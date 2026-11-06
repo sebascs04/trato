@@ -31,3 +31,13 @@ class BusinessAITests(unittest.TestCase):
         self.assertEqual(len(validate({**OUTPUT,'stages':stages},self.data('project_plan'))['stages']),2)
         with self.assertRaises(ToolError):validate({**OUTPUT,'stages':[stages[0]]},self.data('project_plan'))
         with self.assertRaises(ToolError):validate({**OUTPUT,'stages':stages},{**self.data('project_plan'),'budget':'0.01'})
+    def test_review_keeps_confirmed_stages_and_validates_material_change(self):
+        from copy import deepcopy
+        stages=[{'title':'Delivery','body':'Website','percent':100,'when':'After approval'}]
+        data={**self.data('project_plan'),'mode':'review','original_stages':stages,'confirmed_stages':stages}
+        output={**OUTPUT,'stages':stages,'material_change':False}
+        self.assertFalse(validate(output,data)['material_change'])
+        changed=deepcopy(output);changed['stages'][0]['when']='Before work'
+        with self.assertRaisesRegex(ToolError,'AI_REVIEW_CHANGED_PLAN'):validate(changed,data)
+        changed=deepcopy(output);changed['material_change']='false'
+        with self.assertRaises(ToolError):validate(changed,data)

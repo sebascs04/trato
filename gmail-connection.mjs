@@ -4,20 +4,27 @@ import {icon as uiIcon} from './icons.mjs';
 export function installGmailConnection(cloud,{document=globalThis.document,window=globalThis.window,fetchFn=globalThis.fetch.bind(globalThis)}={}) {
   let popup=null, pendingUser=null, pendingState=null, pendingPurpose=null, pendingResolve=null, pendingReject=null, timeout=null, closedCheck=null, completing=false;
   const currentUser=()=>cloud.session?.session?.user?.id;
+  let statusUser=null,managerAllowed=false;
+  const canManage=()=>cloud.active&&!!currentUser()&&statusUser===currentUser()&&managerAllowed;
+  const rememberStatus=(data,user)=>{if(!cloud.active||currentUser()!==user)return false;cloud.gmailStatus=data;statusUser=user;managerAllowed=data.delivery_mode==='trato'&&data.can_manage_connection===true;return true;};
   const request=async(path,options={})=>{
     if(!cloud.active) throw new Error(uiText("Inicia sesión para conectar Gmail."));
-    const response=await fetchFn('/api/v1/integrations/gmail'+path,{...options,headers:{Authorization:`Bearer ${await cloud.session.token()}`,...(options.body?{'Content-Type':'application/json'}:{})},signal:AbortSignal.timeout(30000)});
+    const user=currentUser(),token=await cloud.session.token();
+    if(!cloud.active||currentUser()!==user)throw Error(uiText('La sesión cambió. Vuelve a iniciar la conexión.'));
+    const response=await fetchFn('/api/v1/integrations/gmail'+path,{...options,headers:{Authorization:`Bearer ${token}`,...(options.body?{'Content-Type':'application/json'}:{})},signal:AbortSignal.timeout(30000)});
     let payload;try{payload=await response.json();}catch{throw new Error(uiText("No se pudo consultar la conexión de Gmail."));}
     if(!response.ok) {
       const messages={GMAIL_TRATO_ACCOUNT_MANAGED:uiText('gmailCentral.managed'),GMAIL_TRATO_MAILBOX_MISMATCH:uiText('gmailCentral.wrongMailbox'),GMAIL_READ_PERMISSION_REQUIRED:uiText("El permiso de lectura de Gmail no está activo."),GMAIL_READ_NOT_AUTHORIZED:uiText("Google no autorizó la lectura de respuestas. Revisa los permisos de Gmail."),GMAIL_NOT_CONNECTED:uiText("Conecta Gmail desde tu perfil antes de buscar respuestas."),GMAIL_SEND_CONNECTION_REQUIRED:uiText("Conecta Gmail para enviar antes de autorizar la lectura de respuestas."),GMAIL_ACCOUNT_CHANGED:uiText("La cuenta de Gmail cambió. Mantén conectada la misma cuenta para enviar y leer respuestas."),GMAIL_SEND_PERMISSION_REQUIRED:uiText("El permiso de envío de Gmail no está activo.")};
       const denied=payload.error?.code==='GMAIL_AUTHORIZATION_DECLINED'?(pendingPurpose==='read'?uiText("Google no autorizó la lectura de respuestas. Revisa los permisos de Gmail."):uiText("Google no autorizó el acceso solicitado. Puedes seguir usando los permisos que ya concediste.")):null;
       throw new Error(denied||messages[payload.error?.code]||payload.error?.message||uiText("No se pudo conectar Gmail."));
     }
+    if(!cloud.active||currentUser()!==user)throw Error(uiText('La sesión cambió. Vuelve a iniciar la conexión.'));
     return payload.data;
   };
-  cloud.refreshGmailStatus=async()=>{cloud.gmailStatus=await request('');return cloud.gmailStatus;};
+  cloud.refreshGmailStatus=async()=>{const user=currentUser();statusUser=null;managerAllowed=false;const data=await request('');rememberStatus(data,user);return data;};
   const clearPending=()=>{if(timeout)window.clearTimeout(timeout);if(closedCheck)window.clearInterval(closedCheck);timeout=null;closedCheck=null;completing=false;popup=null;pendingUser=null;pendingState=null;pendingPurpose=null;pendingResolve=null;pendingReject=null;};
   const authorize=async(purpose,statusNode)=>new Promise((resolve,reject)=>{
+    if(!canManage()){reject(Error(uiText('gmailCentral.managed')));return;}
     if(popup&&!popup.closed){reject(new Error(uiText("Ya hay una autorización de Gmail en curso.")));return;}
     popup=window.open('about:blank','trato-gmail-authorization','popup,width=560,height=720');
     if(!popup){clearPending();reject(new Error(uiText("Permite abrir la ventana para autorizar Gmail.")));return;}
@@ -35,35 +42,41 @@ export function installGmailConnection(cloud,{document=globalThis.document,windo
       }catch(error){const rejectPending=pendingReject;if(popup&&!popup.closed)popup.close();clearPending();rejectPending?.(error);}
     })();
   });
-  cloud.authorizeGmailRead=()=>cloud.gmailStatus?.delivery_mode==='trato'&&!cloud.gmailStatus.can_manage_connection?Promise.reject(Error(uiText('gmailCentral.pending'))):authorize('read',document.querySelector('[data-gmail-panel] [role="status"]'));
+  cloud.authorizeGmailRead=()=>authorize('read',document.querySelector('[data-gmail-panel] [role="status"]'));
   const mount=()=>{
     const modal=document.querySelector('dialog.cloud-dialog[open]');
     if(!cloud.active || !modal?.querySelector('.cloud-identity') || modal.querySelector('[data-gmail-panel]'))return;
-    const panel=document.createElement('section');panel.dataset.gmailPanel='';panel.className='cloud-integration gmail-account-panel';panel.setAttribute('aria-label','Gmail');
-    const icon=document.createElement('span');icon.className='cloud-integration-icon cloud-gmail-icon';icon.textContent='G';icon.setAttribute('aria-hidden','true');
+    const user=currentUser(),connections=modal.querySelector('.cloud-account-connections');
+    if(!connections)return;
+    connections.hidden=true;statusUser=null;managerAllowed=false;
+    const panel=document.createElement('section');panel.dataset.gmailPanel='';panel.className='cloud-integration gmail-account-panel';panel.setAttribute('aria-label',uiText('gmailCentral.title'));panel.hidden=true;
+    const icon=document.createElement('span');icon.className='cloud-integration-icon cloud-gmail-icon';icon.innerHTML=uiIcon('mail');icon.setAttribute('aria-hidden','true');
     const content=document.createElement('div');content.className='cloud-integration-content';
     const heading=document.createElement('div');heading.className='cloud-integration-heading';
-    const title=document.createElement('h3');title.textContent='Gmail';
+    const title=document.createElement('h3');title.textContent=uiText('gmailCentral.title');
     const badge=document.createElement('span');badge.className='cloud-connection-badge';badge.textContent=uiText("Consultando");
     const status=document.createElement('p');status.className='cloud-integration-status';status.setAttribute('role','status');status.textContent=uiText("Consultando conexión…");
-    const button=document.createElement('button');button.type='button';button.className='button secondary';button.textContent=uiText("Conectar Gmail");button.disabled=true;
+    const button=document.createElement('button');button.type='button';button.className='button secondary';button.textContent=uiText("Conectar Gmail");button.disabled=true;button.hidden=true;
     heading.append(title,badge);content.append(heading,status);panel.append(icon,content,button);modal.querySelector('.cloud-integrations').prepend(panel);
-    let connected=false;
+    let connected=false,permissionError=null;
+    const current=()=>cloud.active&&currentUser()===user&&panel.isConnected&&modal.open;
     const update=data=>{
-      cloud.gmailStatus=data;
+      if(!current()||!rememberStatus(data,user))return;
+      permissionError?.remove();permissionError=null;
       connected=Boolean(data.connected);button.disabled=!data.configured;
       panel.dataset.connection=connected?'connected':data.configured?'available':'unavailable';
       badge.textContent=connected?uiText("Conectado"):data.configured?uiText("Sin conectar"):uiText("No disponible");
       status.textContent=connected?(data.can_read?uiText("Gmail puede enviar mensajes y leer respuestas de adendas."):uiText("Gmail está conectado para enviar. La lectura de respuestas se autoriza cuando la solicites.")):data.configured?uiText('Envía tus adendas y solicitudes de pago.'):uiText("La conexión no está disponible en este momento.");
       const central=data.delivery_mode==='trato';
-      button.hidden=central&&!data.can_manage_connection;
+      button.hidden=!canManage();button.disabled=!canManage()||!data.configured;panel.hidden=!canManage();connections.hidden=!canManage();
       title.textContent=central?uiText('gmailCentral.title'):'Gmail';panel.setAttribute('aria-label',title.textContent);
       if(central){icon.innerHTML=uiIcon('mail');status.textContent=data.error_code?uiText('gmailCentral.wrongMailbox'):connected?uiText('gmailCentral.ready'):uiText(data.can_manage_connection?'gmailCentral.setupRequired':'gmailCentral.pending');}
       button.textContent=central?uiText(connected?'gmailCentral.disconnect':'gmailCentral.connect'):connected?uiText('Desconectar Gmail'):uiText('Conectar Gmail');
     };
-    const fail=error=>{panel.dataset.connection='error';badge.textContent=uiText("Revisar conexión");status.textContent=error.message;button.disabled=false;};
+    const fail=error=>{if(!current())return;panel.dataset.connection='error';badge.textContent=uiText('Revisar conexión');status.textContent=error.message;const allowed=canManage();button.hidden=!allowed;button.disabled=!allowed;panel.hidden=!allowed;connections.hidden=!allowed;if(!allowed){permissionError=permissionError||document.createElement('p');permissionError.className='cloud-error';permissionError.setAttribute('role','alert');permissionError.textContent=error.message;modal.querySelector('.cloud-identity').after(permissionError);}};
     request('').then(update).catch(fail);
     button.addEventListener('click',async()=>{
+      if(!current()||!canManage())return;
       if(connected){
         button.disabled=true;
         try {const data=await request('/disconnect',{method:'POST',body:'{}'});update(data);if(!data.revoked)status.textContent=uiText("Gmail desconectado de Trato. Puedes revisar también el acceso desde tu cuenta de Google.");}
@@ -81,10 +94,10 @@ export function installGmailConnection(cloud,{document=globalThis.document,windo
     completing=true;
     try{
       const result=await request('/complete',{method:'POST',body:JSON.stringify({state:data.state,...(data.error?{error:data.error}:{code:data.code})})});
-      cloud.gmailStatus=result;
+      rememberStatus(result,pendingUser);
       const resolvePending=pendingResolve;
       if(panel)panel.remove();mount();resolvePending?.(result);
-    }catch(error){const rejectPending=pendingReject;if(panel){panel.querySelector('[role="status"]').textContent=error.message;panel.querySelector('button').disabled=false;}rejectPending?.(error);}
+    }catch(error){const rejectPending=pendingReject;if(panel){panel.querySelector('[role="status"]').textContent=error.message;panel.querySelector('button').hidden=!canManage();panel.querySelector('button').disabled=!canManage();}rejectPending?.(error);}
     finally{if(popup && !popup.closed)popup.close();clearPending();}
   };
   window.addEventListener('message',onMessage);

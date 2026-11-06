@@ -49,7 +49,7 @@ Un pedido nuevo válido puede guardarse aunque sea el primer archivo. Se señala
 
 El contexto del sobre debe proceder de una API confiable. La validación de UUID y la vinculación persistente no sustituyen la autorización contra los datos del proyecto. Este consumidor no es un endpoint público.
 
-Al conectar la API real, también debe rechazarse un proyecto cuyo cliente esté archivado (`clients.deleted_at`), usando la guardia de dominio que preparal equipo (`private.ensure_active_project`). La comprobación se aplica al admitir una orden y antes de persistir sus resultados; un contexto previamente válido no autoriza escribir después de archivar el cliente.
+Al conectar la API real, también debe rechazarse un proyecto cuyo cliente esté archivado (`clients.deleted_at`), usando la guardia de dominio que prepara P1 (`private.ensure_active_project`). La comprobación se aplica al admitir una orden y antes de persistir sus resultados; un contexto previamente válido no autoriza escribir después de archivar el cliente.
 
 ## Ejecutar una prueba local explícita
 

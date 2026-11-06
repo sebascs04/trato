@@ -98,18 +98,21 @@ test('a completed reply replaces the pending question without duplication and fo
  assert.doesNotMatch(panel.innerHTML,/data-pending-question|project-assistant-empty|aria-busy="true"/);assert.equal(scroll.scrollTop,1200);dispose();
 });
 
-test('expanding answer sources scrolls both the chat and the outer page to the composer',async()=>{
+test('opening sources of an earlier reply preserves its reading position and never jumps to the composer',async()=>{
  const {installProjectAssistant}=await import('../project-assistant.mjs');
  const events=new Map(),calls=[];
  const chat={scrollTop:0,scrollHeight:1400,clientHeight:400};
- const form={scrollIntoView:options=>calls.push(options)};
+ const form={scrollIntoView:()=>{throw Error('Source reading must not reveal the composer');}};
+ const summary={scrollIntoView:options=>calls.push(options)};
  const panel={innerHTML:'',querySelector:()=>chat};
  const cloud={active:true,tab:'asistente',navigationOwner:'owner-a',projectId:'project-a',session:{key:'session'},storage:{getItem:()=>null,setItem(){}},document:{addEventListener:(name,fn)=>events.set(name,fn),removeEventListener(){},defaultView:{scrollY:500}},syncChrome(){},notify(){this.renderProjectAssistant(panel);},async request(){return {entries:[{id:'turn-1',position:1,result:answer()}],next_before:null};}};
  const dispose=installProjectAssistant(cloud);cloud.renderProjectAssistant(panel);await new Promise(resolve=>setImmediate(resolve));
- const details={open:true,isConnected:true,matches:()=>true,closest:selector=>selector==='.project-assistant-log'?chat:{querySelector:()=>form}};
- chat.scrollTop=0;events.get('toggle')({target:details});await new Promise(resolve=>setImmediate(resolve));
- assert.equal(chat.scrollTop,1400);assert.deepEqual(calls,[{block:'end',behavior:'instant'}]);
- details.open=false;events.get('toggle')({target:details});await new Promise(resolve=>setImmediate(resolve));assert.equal(calls.length,1);dispose();
+ const details={open:true,isConnected:true,matches:()=>true,querySelector:()=>summary,closest:selector=>selector==='.project-assistant-log'?chat:{querySelector:()=>form}};
+ chat.scrollTop=180;events.get('toggle')({target:details});await new Promise(resolve=>setImmediate(resolve));
+ assert.equal(chat.scrollTop,180);assert.deepEqual(calls,[{block:'nearest',behavior:'instant'}]);
+ cloud.renderProjectAssistant(panel);assert.equal(chat.scrollTop,180);
+ details.open=false;chat.scrollTop=150;events.get('toggle')({target:details});await new Promise(resolve=>setImmediate(resolve));
+ assert.equal(calls.length,1);cloud.renderProjectAssistant(panel);assert.equal(chat.scrollTop,150);dispose();
 });
 
 test('restored last question stays hidden until history and the current job have both loaded',async()=>{

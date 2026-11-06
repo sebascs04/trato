@@ -32,6 +32,14 @@ class PaymentDocumentsTest(unittest.TestCase):
         self.assertEqual(attachments[0].get_payload(decode=True),PDF)
         self.assertEqual(attachments[0].get_content_type(),'application/pdf')
         self.assertEqual(attachments[0].get_filename(),'adenda-v2.pdf')
+        html=parsed.get_body(preferencelist=('html',)).get_content()
+        self.assertIn('Importe de prueba',html)
+        self.assertIn('USD 180.00',html)
+        self.assertIn(f'href="{item.approval_url}"',html)
+        self.assertIn('src="cid:mascot@trato"',html)
+        mascot=next(part for part in parsed.walk() if part.get('Content-ID')=='<mascot@trato>')
+        self.assertEqual(mascot.get_content_disposition(),'inline')
+        self.assertEqual(mascot.get_content_type(),'image/png')
         for subtype in ['plain','html']:
             self.assertIn('Adjuntamos la adenda',parsed.get_body(preferencelist=(subtype,)).get_content())
 

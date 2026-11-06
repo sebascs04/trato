@@ -50,6 +50,11 @@ class ProcessorVectorClient:
             raise ApiError('VECTOR_INDEX_INCOMPLETE', 502)
         return result
 
+    def remove_file(self,owner,client_id,project_id,file_id):
+        result=self.request('remove-file',{'owner_id':owner,'client_id':client_id,'project_id':project_id,'file_id':file_id})
+        if result!={'removed':True,'embedding_identity':PROFILE_ID}:raise ApiError('VECTOR_DELETE_INCOMPLETE',502)
+        return result
+
     def search(self, owner, client_id, project_id, files, query, limit):
         result = self.request('search', {'owner_id': owner, 'client_id': client_id, 'project_id': project_id,
             'files': [{'id': f['id'], 'generation': f['generation']} for f in files], 'query': query, 'limit': limit})

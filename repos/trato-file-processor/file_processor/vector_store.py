@@ -159,6 +159,18 @@ class WeaviateStore:
                 raise VectorError('VECTOR_INDEX_INCOMPLETE', 503)
             return {'objects': len(records), 'embedding_identity': PROFILE_ID}
 
+    def remove_file(self,owner,client_id,project_id,file_id):
+        from weaviate.classes.query import Filter
+        filters=Filter.all_of([Filter.by_property(k).equal(v) for k,v in {'owner_id':owner,'client_id':client_id,'project_id':project_id,'file_id':file_id}.items()])
+        with self.connection() as client:
+            self.validate(client)
+            col=client.collections.use(COLLECTION).with_tenant(self.tenant(owner))
+            result=col.data.delete_many(where=filters)
+            if result.failed:raise VectorError('VECTOR_DELETE_INCOMPLETE',503)
+            if col.query.fetch_objects(filters=filters,limit=1,return_properties=['file_id']).objects:
+                raise VectorError('VECTOR_DELETE_INCOMPLETE',503)
+        return {'removed':True,'embedding_identity':PROFILE_ID}
+
     def search(self, owner, client_id, project_id, files, query, limit):
         from weaviate.classes.query import Filter, HybridFusion, MetadataQuery
         if not isinstance(query, str) or not query.strip() or len(query.encode()) > 4096:

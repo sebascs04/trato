@@ -17,8 +17,10 @@ def audit(event,trace_id,**fields):
     if _AUDIT is None:
         _AUDIT=logging.getLogger('trato.rehearsal.sources');_AUDIT.setLevel(logging.INFO);_AUDIT.propagate=False
         handler=logging.StreamHandler(sys.stdout);handler.setFormatter(logging.Formatter('%(message)s'));_AUDIT.addHandler(handler)
-        private=Path(__file__).resolve().parents[3]/'.local'
-        if private.is_dir():
+        # The private audit file exists only in a local monorepo checkout; containers log to stdout only.
+        parents=Path(__file__).resolve().parents
+        private=parents[3]/'.local' if len(parents)>3 else None
+        if private is not None and private.is_dir():
             (private/'logs').mkdir(exist_ok=True)
             handler=RotatingFileHandler(private/'logs/rehearsal-sources.jsonl',maxBytes=2000000,backupCount=2,encoding='utf-8')
             handler.setFormatter(logging.Formatter('%(message)s'));_AUDIT.addHandler(handler)

@@ -44,7 +44,8 @@ class ModelPreferences:
     def get(self, request, owner):
         allowed, default = self.configuration()
         editable = self.can_select(request, owner)
-        return {'can_select': editable, 'selected_model': self.for_request(request, owner), 'default_model': default,
+        selected = self.for_request(request, owner)
+        return {'can_select': editable, 'selected_model': selected, 'selected_model_name': CATALOG[selected], 'default_model': default,
                 'scope': 'ai_workflows', 'models': [{'id': m, 'name': CATALOG[m], 'family': 'lite' if 'lite' in m else 'pro' if 'pro' in m else 'argon' if 'argon' in m else 'flash'} for m in allowed] if editable else []}
     def save(self, request, owner, model):
         if not self.can_select(request, owner): raise ApiError('MODEL_SELECTION_FORBIDDEN', 403)

@@ -25,6 +25,9 @@ class Repo:
         return {'reviews':[{'id':'review','version':1,'body':'The project used clear deliverables.'}], 'next_offset':None}
 class AIRoutesTests(unittest.TestCase):
     def setUp(self):
+        from datetime import date
+        from unittest.mock import patch
+        clock=patch('trato_api.ai_routes.project_today',return_value=date(2026,11,5));clock.start();self.addCleanup(clock.stop)
         self.owner='owner';self.jobs=Jobs();app=FastAPI()
         app.include_router(build_ai_router(None,lambda:self.owner,Repo,self.jobs,Preferences()))
         @app.exception_handler(ApiError)
@@ -53,3 +56,27 @@ class AIRoutesTests(unittest.TestCase):
         body={'client_id':CLIENT,'name':'Project','plan_job_id':JOB,'stages':[{'title':'Delivery','body':'Deliver work','percent':100,'when':'On review'}]}
         response=TestClient(app).post('/api/v1/ai/projects',json=body,headers={'Idempotency-Key':DRAFT})
         self.assertEqual(response.status_code,201);writer.assert_called_once_with(None,'owner',DRAFT,JOB,self.jobs.data)
+
+    def test_delivery_date_rejects_past_and_allows_today_and_future(self):
+        body={'client_id':CLIENT,'draft_id':DRAFT,'brief':'Website','budget':'600.00','target_date':'2026-11-04','output_language':'es'}
+        self.assertEqual(self.client.post('/api/v1/ai/project-plans',json=body,headers={'Idempotency-Key':JOB}).status_code,422)
+        self.assertIsNone(self.jobs.data)
+        for target in ['2026-11-05','2026-11-20']:
+            self.assertEqual(self.client.post('/api/v1/ai/project-plans',json={**body,'target_date':target},headers={'Idempotency-Key':str(uuid4())}).status_code,202)
+            self.assertEqual(self.jobs.data['today'],'2026-11-05')
+
+    def test_project_amount_rejects_nonpositive_and_fractional_cents(self):
+        body={'client_id':CLIENT,'draft_id':DRAFT,'brief':'Website','target_date':'2026-11-20','output_language':'es'}
+        for budget in ['0','-1','0.001','NaN','Infinity']:
+            self.assertEqual(self.client.post('/api/v1/ai/project-plans',json={**body,'budget':budget},headers={'Idempotency-Key':JOB}).status_code,422)
+        self.assertIsNone(self.jobs.data)
+        self.assertEqual(self.client.post('/api/v1/ai/project-plans',json={**body,'budget':'0.01'},headers={'Idempotency-Key':JOB}).status_code,202)
+
+    def test_confirming_edited_stages_requires_review_of_the_exact_plan(self):
+        original=[{'title':'Delivery','body':'Website','percent':100,'when':'After delivery'}]
+        confirmed=[{**original[0],'when':'After client acknowledgment'}]
+        self.jobs.owner='owner';self.jobs.data={'workflow':'project_plan','client_id':CLIENT,'draft_id':DRAFT,'brief':'Brief','budget':'100.00','target_date':'2026-12-01','reviews':[],'output_language':'es'}
+        old_get=self.jobs.get
+        self.jobs.get=lambda owner,id,*args:{**old_get(owner,id,*args),'result':{**old_get(owner,id,*args)['result'],'stages':original}}
+        response=self.client.post('/api/v1/ai/projects',json={'client_id':CLIENT,'name':'Project','plan_job_id':JOB,'stages':confirmed},headers={'Idempotency-Key':DRAFT})
+        self.assertEqual(response.status_code,409);self.assertEqual(response.json()['error']['code'],'AI_PLAN_REVIEW_REQUIRED')

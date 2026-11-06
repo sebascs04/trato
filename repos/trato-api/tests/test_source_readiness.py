@@ -1,7 +1,7 @@
 """Document reading state stays distinct from vector preparation state."""
 from copy import deepcopy
 from unittest import TestCase
-from test_vector_routes import Repo,Store,MemoryRedis,Processor,OWNER,PROJECT,FILE
+from test_vector_routes import Repo,Store,MemoryRedis,MemoryRegistry,Processor,OWNER,PROJECT,FILE
 from trato_api.vector_routes import VectorGateway
 
 
@@ -16,7 +16,7 @@ class ReadinessRepo(Repo):
 class SourceReadinessTests(TestCase):
     def snapshot(self,extraction):
         repo=ReadinessRepo(extraction)
-        return VectorGateway(None,store=Store(),redis=MemoryRedis(),processor=Processor()).snapshot(repo,OWNER,PROJECT)[1][0]
+        return VectorGateway(None,store=Store(),redis=MemoryRedis(),processor=Processor(),registry=MemoryRegistry()).snapshot(repo,OWNER,PROJECT)[1][0]
     def test_reserved_but_unrequested_reading_is_not_an_active_job(self):
         file=self.snapshot({'id':'extraction','status':'queued','worker_thread_id':None})
         self.assertEqual(file['status'],'source_pending')

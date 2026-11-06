@@ -155,3 +155,20 @@ class SelectedSourceTests(unittest.TestCase):
   backend=self.backend([FILE]);backend.foreign=True;model=Model(backend)
   with self.assertRaisesRegex(ToolError,'INVALID_TOOL_RESPONSE'):
    run_project_assistant({**data(),'source_document_ids':[FILE]},model,backend,JOB,EXEC)
+
+class SavedPlanToolTests(unittest.TestCase):
+ def test_plan_tool_returns_project_bound_evidence_without_vector_queries(self):
+  from trato_worker.project_assistant import ProjectTools
+  backend=Backend();original=backend.request
+  def request(method,path,**kwargs):
+   if path.endswith('/memory'):return original(method,path,**kwargs)
+   body=kwargs['json']
+   if body['tool']=='catalog':
+    catalog=original(method,path,**kwargs);catalog['tools'].append({'name':'read_project_plan','description':'Retrieves the saved plan.','when_to_use':'Use for planned deliverables and payments.','parameters':{'type':'object','additionalProperties':False,'required':[],'properties':{}}});return catalog
+   if body['tool']=='read_project_plan':
+    record={'file_id':PROJECT,'title':'Initial project plan','generation':'a'*64,'source_kind':'plan','text':'{"budget":"600.00"}'};record['source_id']=digest(record);return {'sources':[record]}
+   raise AssertionError('Unexpected vector tool')
+  backend.request=request
+  tools=ProjectTools(backend,JOB,EXEC,data());result=tools.execute('read_project_plan',{})
+  self.assertEqual(result['sources'][0]['source_kind'],'plan');self.assertIn(result['sources'][0]['source_id'],tools.sources)
+  self.assertEqual(tools.used,['read_project_plan'])

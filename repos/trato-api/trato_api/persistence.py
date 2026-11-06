@@ -90,7 +90,7 @@ class Repository:
         return self.rpc('soft_delete_project',{'p_project_id':uuid(project_id)})
 
     def list_projects(self,client_id=None):
-        params={'select':'id,client_id,name,status,created_at,document_totals:documents(count),request_totals:documents(count),refund_totals:refund_settlements(count)','request_totals.kind':'eq.email_request','order':'created_at.desc','limit':100}
+        params={'select':'id,client_id,name,status,created_at,document_totals:documents(count),request_totals:documents(count),refund_totals:refund_settlements(count)','request_totals.kind':'eq.email_request','document_totals.deleted_at':'is.null','request_totals.deleted_at':'is.null','order':'created_at.desc','limit':100}
         if client_id is not None:params['client_id']='eq.'+uuid(client_id)
         return self.rows('projects',params)
 
@@ -134,7 +134,7 @@ class Repository:
         select = ('id,project_id,title,kind,original_filename,mime_type,size_bytes,sha256,origin_status,created_at,'
                   'document_extractions(id,status,error_code,worker_thread_id,worker_threads(status,phase)),') + ','.join((artifacts, acceptances, feedback))
         rows = self.rows('documents', {'select': select,
-                                       'project_id': 'eq.' + project['id'], 'order': 'created_at.desc', 'limit': 100})
+                                       'project_id': 'eq.' + project['id'], 'deleted_at':'is.null', 'order': 'created_at.desc', 'limit': 100})
         ids='in.('+','.join(row['id'] for row in rows)+')' if rows else None
         refund_links={}
         contexts=self.rows('document_upload_contexts',{'select':'*','document_id':ids,
@@ -206,7 +206,7 @@ class Repository:
         return rows
 
     def document(self, document_id):
-        rows = self.rows('documents', {'select': '*', 'id': 'eq.' + uuid(document_id)})
+        rows = self.rows('documents', {'select': '*', 'id': 'eq.' + uuid(document_id), 'deleted_at':'is.null'})
         if not rows:
             raise ApiError('DOCUMENT_NOT_FOUND', 404)
         return rows[0]
@@ -302,8 +302,10 @@ class Repository:
 
     def reserve(self, project_id, title, kind, filename, mime, data, key, *, context=None):
         self.project(project_id)
-        return self.rpc('reserve_document_with_context', {'p_project_id': uuid(project_id), 'p_title': title, 'p_kind': kind,
+        result=self.rpc('reserve_document_with_context', {'p_project_id': uuid(project_id), 'p_title': title, 'p_kind': kind,
             'p_filename': filename, 'p_mime': mime, 'p_size': len(data), 'p_sha256': sha256(data).hexdigest(), 'p_key': key, 'p_context': context or {}})
+        if result['document'].get('deleted_at'):raise ApiError('DOCUMENT_RETIRED',409)
+        return result
 
     def upload(self, document, data):
         path = '/storage/v1/object/' + BUCKET + '/' + quote(document['storage_path'], safe='/')

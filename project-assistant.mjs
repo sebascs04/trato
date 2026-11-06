@@ -16,7 +16,7 @@ export function validateProjectAnswer(value,projectId){
  if(value.answer_basis!==undefined&&!['documents','conversation'].includes(value.answer_basis)||value.status==='answered'&&value.answer_basis!=='conversation'&&!value.citations.length)throw Error('AI_JOB_INVALID');
  for(const citation of value.citations){
   const source=value.sources.find(s=>s.source_id===citation.source_id);
-  if(!source||!['summary','original'].includes(source.source_kind)||typeof source.file_id!=='string'||typeof citation.quote!=='string'||!citation.quote.trim())throw Error('AI_JOB_INVALID');
+  if(!source||!['summary','original','plan'].includes(source.source_kind)||typeof source.file_id!=='string'||typeof citation.quote!=='string'||!citation.quote.trim())throw Error('AI_JOB_INVALID');
  }
  return value;
 }
@@ -218,7 +218,7 @@ export function installProjectAssistant(cloud){
  }
  function citations(value){return value.citations.map(citation=>{
   const source=value.sources.find(s=>s.source_id===citation.source_id);
-  return `<article class="project-assistant-source"><span>${text(source.source_kind==='summary'?'referenceLabel':'documentLabel')}</span><button type="button" data-assistant-action="source" data-document-id="${esc(source.file_id)}">${icon('file-text')}${esc(source.title||text('documentLabel'))}${icon('arrow-up-right')}</button><blockquote>${esc(citation.quote)}</blockquote>${source.locator?`<small>${text(source.locator.kind==='page'?'page':'sectionLabel')} ${esc(source.locator.page??source.locator.paragraph??source.locator.section??'')}</small>`:''}</article>`;
+  return `<article class="project-assistant-source"><span>${text(source.source_kind==='plan'?'planLabel':source.source_kind==='summary'?'referenceLabel':'documentLabel')}</span><button type="button" data-assistant-action="${source.source_kind==='plan'?'plan':'source'}" data-document-id="${esc(source.file_id)}">${icon('file-text')}${esc(source.source_kind==='plan'?text('planLabel'):source.title||text('documentLabel'))}${icon('arrow-up-right')}</button><blockquote>${esc(citation.quote)}</blockquote>${source.locator?`<small>${text(source.locator.kind==='page'?'page':'sectionLabel')} ${esc(source.locator.page??source.locator.paragraph??source.locator.section??'')}</small>`:''}</article>`;
  }).join('');}
  cloud.renderProjectAssistant=function(panel){
   let state;
@@ -227,7 +227,7 @@ export function installProjectAssistant(cloud){
   const job=state.job.state,pending=['queued','running'].includes(job.status),failed=['failed','unavailable'].includes(job.status);
   const citations=value=>value.citations.map(citation=>{
    const source=value.sources.find(s=>s.source_id===citation.source_id);
-   return `<article class="project-assistant-source"><span>${text(source.source_kind==='summary'?'summarySource':'originalSource')}</span><button type="button" data-assistant-action="source" data-document-id="${esc(source.file_id)}">${icon('file-text')}${esc(source.title)}${icon('arrow-up-right')}</button><blockquote>${esc(citation.quote)}</blockquote>${source.locator?`<small>${text(source.locator.kind==='page'?'page':'paragraph')} ${esc(source.locator[source.locator.kind])}</small>`:''}</article>`;
+   return `<article class="project-assistant-source"><span>${text(source.source_kind==='summary'?'summarySource':'originalSource')}</span><button type="button" data-assistant-action="${source.source_kind==='plan'?'plan':'source'}" data-document-id="${esc(source.file_id)}">${icon('file-text')}${esc(source.title)}${icon('arrow-up-right')}</button><blockquote>${esc(citation.quote)}</blockquote>${source.locator?`<small>${text(source.locator.kind==='page'?'page':'paragraph')} ${esc(source.locator[source.locator.kind])}</small>`:''}</article>`;
   }).join('');
   const submitted=typeof job.payload?.question==='string'&&!!job.payload.question.trim();
   const unanswered=submitted&&!state.entries.some(entry=>entry.id===job.id);
@@ -275,7 +275,8 @@ export function installProjectAssistant(cloud){
   if(action==='process')prepare(state,button.dataset.documentId);
   if(action==='reload-history')restore(state);
   if(action==='older')restore(state,state.nextBefore);
-  if(action==='source')cloud.run(()=>cloud.previewDocument(button.dataset.documentId));
+  if(action==='plan'){cloud.tab='plan';cloud.notify();}
+  if(action==='source'){state.followPage=false;state.revealPage=false;cloud.run(()=>cloud.previewDocument(button.dataset.documentId));}
   if(action==='use-ready'&&!state.sourceLoading&&!state.sourceError&&!state.job.state.uncertain&&!['queued','running'].includes(state.job.state.status)){
    const {ready}=documentSelection(state.sourceFiles);if(!ready.length||ready.length>100)return;
    state.selectedDocuments=structuredClone(ready);state.sourceOpen=false;paint(state);
@@ -302,14 +303,15 @@ export function installProjectAssistant(cloud){
  cloud.document.addEventListener('scroll',scroll,true);
  const toggle=event=>{
   const details=event.target;
-  if(!context||!visible(context)||!details.open||!details.matches?.('[data-project-answer-sources]'))return;
+  if(!context||!visible(context)||!details.matches?.('[data-project-answer-sources]'))return;
   const state=context;
+  // Reading an earlier answer must not resume following the newest reply.
+  state.followPage=false;state.revealPage=false;
   queueMicrotask(()=>{
-   if(!visible(state)||!details.open||details.isConnected===false)return;
+   if(!visible(state)||details.isConnected===false)return;
+   if(details.open)details.querySelector?.('summary')?.scrollIntoView?.({block:'nearest',behavior:'instant'});
    const chat=details.closest('.project-assistant-log');
-   if(chat){chat.scrollTop=chat.scrollHeight;state.chatScroll=chatScrollPosition(chat);}
-   const form=details.closest('.project-assistant')?.querySelector('[data-project-question]');
-   form?.scrollIntoView?.({block:'end',behavior:'instant'});
+   if(chat)state.chatScroll={...chatScrollPosition(chat),follow:false};
    state.pageScroll=cloud.document.defaultView?.scrollY;
   });
  };

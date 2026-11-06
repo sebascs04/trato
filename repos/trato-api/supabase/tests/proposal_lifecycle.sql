@@ -39,7 +39,7 @@ update public.clients set contact_email='a@trato.invalid' where id='aaaaaaaa-aaa
 set local role authenticated;
 set local request.jwt.claim.sub='11111111-1111-4111-8111-111111111111';
 set local request.jwt.claims='{"sub":"11111111-1111-4111-8111-111111111111","role":"authenticated"}';
-do $$ declare data jsonb; result jsonb; repeated jsonb; stale jsonb; revision uuid; proposal uuid; acceptance uuid; revision2 uuid; pay jsonb; first_draft uuid;
+do $$ declare data jsonb; result jsonb; repeated jsonb; stale jsonb; revision uuid; proposal uuid; acceptance uuid; revision2 uuid; pay jsonb; first_draft uuid; mail jsonb; claim jsonb;
 begin
  data:=jsonb_build_object('project_id','aaaaaaaa-0001-4000-8000-000000000001','request_document_id','dddddddd-0000-4000-8000-000000000002',
  'terms',jsonb_build_object('scope_summary','Two new deliverables','conditions','Review before sending.','currency','USD','deadline',(current_date+14)::text,
@@ -105,7 +105,32 @@ begin
  if (select count(*) from public.proposal_events where revision_id=revision and event_type in('revision_created','draft_updated'))<>1 then raise exception 'PDF save event missing or duplicated'; end if;
  perform public.proposal_command('review',jsonb_build_object('proposal_id',proposal,'expected_revision_id',revision,'document_id','dddddddd-0000-4000-8000-000000000003','confirmed',true),'review-a');
  if (select generation from public.project_agreement_heads where project_id='aaaaaaaa-0001-4000-8000-000000000001')<>0 then raise exception 'Review changed head'; end if;
- perform pg_temp.test_sent(proposal,revision);
+ mail:=jsonb_build_object('proposal_id',proposal,'revision_id',revision,'kind','adenda',
+  'recipient','a@trato.invalid','message_hash',repeat('a',64));
+ claim:=pg_temp.test_backend('mail_reserve',mail);
+ if claim->>'acquired'<>'true' then raise exception 'First mail attempt was blocked'; end if;
+ mail:=mail||jsonb_build_object('delivery_id',claim->>'id');
+ perform pg_temp.test_backend('mail_finish',mail||'{"status":"failed","error_code":"GMAIL_RECONNECT_REQUIRED"}'::jsonb);
+ begin
+  perform pg_temp.test_backend('mail_reserve',mail||jsonb_build_object('message_hash',repeat('b',64)));
+  raise exception 'Changed mail context allowed to retry';
+ exception when sqlstate 'PT409' then
+  if sqlerrm<>'EMAIL_CONTEXT_CHANGED' then raise; end if;
+ end;
+ repeated:=pg_temp.test_backend('mail_reserve',mail);
+ if repeated->>'acquired'<>'true' or repeated->>'id'<>claim->>'id' or repeated->>'error_code' is not null then
+  raise exception 'OAuth retry did not reacquire the same delivery';
+ end if;
+ repeated:=pg_temp.test_backend('mail_reserve',mail);
+ if repeated->>'acquired'<>'false' or repeated->>'status'<>'sending' then raise exception 'Duplicate attempt reserved'; end if;
+ perform pg_temp.test_backend('mail_finish',mail||'{"status":"failed","error_code":"GMAIL_SEND_NOT_AUTHORIZED"}'::jsonb);
+ repeated:=pg_temp.test_backend('mail_reserve',mail);
+ if repeated->>'acquired'<>'true' or repeated->>'id'<>claim->>'id' then
+  raise exception 'Definitive Gmail rejection did not reacquire the same delivery';
+ end if;
+ perform pg_temp.test_backend('mail_finish',mail||'{"status":"accepted_by_gmail","message_id":"synthetic-message"}'::jsonb);
+ repeated:=pg_temp.test_backend('mail_reserve',mail);
+ if repeated->>'acquired'<>'false' or repeated->>'status'<>'accepted_by_gmail' then raise exception 'Completed delivery retried'; end if;
  begin
   perform public.proposal_command('accept',jsonb_build_object('proposal_id',proposal,'expected_revision_id',revision,'document_id','dddddddd-0000-4000-8000-000000000003','confirmed',true,'review_notes','Reviewed'),'same-pdf');
   raise exception 'Original outgoing PDF counted as return';

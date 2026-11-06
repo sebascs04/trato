@@ -110,6 +110,9 @@ class AIConsumer:
                         from .change_proposal import run_change_proposal
                         result=run_change_proposal(data,selected_model,client,job_id,execution_id)
                     else:result=run_project_assistant(data,selected_model,client,job_id,execution_id)
+                elif data.get('workflow')=='change_reply':
+                    from .change_reply import run_change_reply
+                    result=run_change_reply(data,selected_model)
                 elif data.get('workflow')=='process_file':
                     if os.getenv('TRATO_FILE_PROCESSING_ENABLED')!='true':raise ToolError('FILE_PROCESSING_NOT_CONFIGURED')
                     from .file_pipeline.runtime import build_file_pipeline

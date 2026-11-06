@@ -28,8 +28,8 @@ async function bootTrato() {
       installReputationWorkspace(window.TratoCloud);
       const {installProjectPlanning}=await import('/project-planning.mjs');
       installProjectPlanning(window.TratoCloud);
-      const {installInitialPayments}=await import('/initial-payments.mjs');
-      installInitialPayments(window.TratoCloud);
+      const {installPlanPayments}=await import('/plan-payments.mjs');
+      installPlanPayments(window.TratoCloud);
       const {installVisitorLanding}=await import('/visitor-landing.mjs');
       installVisitorLanding(window.TratoCloud);
       const {installProposalWorkspace} = await import('/proposal-workspace.mjs');
@@ -38,8 +38,6 @@ async function bootTrato() {
       installRefundWorkspace(window.TratoCloud);
       const {installGmailConnection} = await import('/gmail-connection.mjs');
       installGmailConnection(window.TratoCloud);
-      const {installSandboxCheckout} = await import('/sandbox-checkout.mjs');
-      installSandboxCheckout(window.TratoCloud);
       const {installProjectAssistant}=await import('/project-assistant.mjs');
       installProjectAssistant(window.TratoCloud);
       const {installDemoWorkspace}=await import('/demo-workspace.mjs');

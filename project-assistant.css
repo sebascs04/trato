@@ -75,5 +75,27 @@ body.case-agent-open{overflow:hidden}
 .change-draft-detail { padding: 8px 0; border-top: 1px solid var(--line); }
 .change-draft-detail summary { cursor: pointer; color: var(--purple); font-size: 13px; }
 .change-draft-detail p { margin-top: 8px; }
-.change-draft-composer .dialog-actions { margin: 0; gap: 8px; }
+.change-draft-composer .dialog-actions {
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin: 14px 0 0;
+}
+.change-draft-composer .dialog-actions .button {
+  justify-content: center;
+  min-height: 42px;
+}
 .change-draft-composer textarea.context-box { min-height: 64px; }
+
+.case-assistant-entry {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px 16px;
+}
+.case-assistant-entry small {
+  max-width: 44ch;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.6;
+}

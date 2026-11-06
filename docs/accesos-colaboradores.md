@@ -1,4 +1,4 @@
-# Accesos que preparal equipo para una colaboradora
+# Accesos que prepara el equipo para una colaboradora
 
 Este documento acompaña al [manual de instalación](colaboradores.md). No contiene correos privados, claves ni credenciales. La auditoría o este checklist no acreditan que una invitación ya se haya enviado/aceptado. Registrar esos estados por un canal privado.
 

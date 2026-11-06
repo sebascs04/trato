@@ -4,7 +4,7 @@ import unittest
 from types import SimpleNamespace
 from trato_api.errors import ApiError
 from trato_api.proposals.workflow import ProposalWorkflow
-from paypal.email import EmailDeliveryError
+from paypal.email import EmailDeliveryError, build_proposal_email
 
 class WorkflowTest(unittest.TestCase):
  def setUp(self):
@@ -35,6 +35,10 @@ class WorkflowTest(unittest.TestCase):
   result=self.flow.send(self.repo,'owner','p','r','adenda',preview['digest'])
   self.assertEqual(result['status'],'accepted_by_gmail');self.assertEqual(self.sent[0][1].agreement.content,self.content)
   self.assertEqual(self.sent[0][3]['expected_sender'],'sender@example.com')
+  message=build_proposal_email(preview['sender'],self.sent[0][1],'delivery')
+  self.assertEqual(preview['body_html'],message.get_body(preferencelist=('html',)).get_content())
+  self.assertIn('Alcance del cambio',preview['body_html'])
+  self.assertIn('USD 0.10',preview['body_html'])
   self.assertEqual([c[1] for c in self.commands],['mail_reserve','mail_finish'])
  def test_draft_can_preview_but_cannot_send_until_its_review_is_recorded(self):
   self.snapshot['reviews']=[];self.snapshot['proposal']['status']='draft'
@@ -54,6 +58,19 @@ class WorkflowTest(unittest.TestCase):
  def test_changed_digest_never_sends(self):
   with self.assertRaises(ApiError):self.flow.send(self.repo,'owner','p','r','adenda','0'*64)
   self.assertEqual(self.sent,[]);self.assertEqual(self.commands,[])
+ def test_verified_contact_appears_in_preview_and_is_bound_to_confirmation(self):
+  legacy=self.flow.preview(self.repo,'owner','p','r','adenda')
+  contact='freelancer@example.com'
+  preview=self.flow.preview(self.repo,'owner','p','r','adenda',freelancer_email=contact)
+  self.assertIn('Proyecto: Proyecto',preview['body'])
+  self.assertIn('Correo del freelancer: '+contact,preview['body'])
+  self.assertIn(contact,preview['body_html'])
+  with self.assertRaises(ApiError) as caught:
+   self.flow.send(self.repo,'owner','p','r','adenda',preview['digest'],freelancer_email='changed@example.com')
+  self.assertEqual(caught.exception.code,'EMAIL_PREVIEW_CHANGED')
+  self.flow.send(self.repo,'owner','p','r','adenda',preview['digest'],freelancer_email=contact)
+  self.assertEqual(self.sent[0][1].freelancer_email,contact)
+  self.assertEqual(self.commands[0][2]['message_hash'],legacy['digest'])
  def test_superseded_revision_is_rejected_before_send(self):
   self.snapshot['proposal']['current_revision_id']='new'
   with self.assertRaises(ApiError):self.flow.preview(self.repo,'owner','p','r','adenda')

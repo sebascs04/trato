@@ -17,6 +17,7 @@ from .model_preferences import ModelPreferences
 from .vector_routes import VectorGateway,source
 from .vector_contract import digest
 from .assistant_memory import AssistantMemory
+from .plan_context import PLAN_TOOL,plan_source
 
 MEMORY_TOOL={'name':'search_conversation_history','description':'Retrieves matching messages from the current conversation archive.','when_to_use':'Use when an earlier statement or detail is needed beyond the available conversation context.','parameters':{'type':'object','additionalProperties':False,'required':['query'],'properties':{'query':{'type':'string','minLength':1,'maxLength':4096}}}}
 QUERY={'type':'string','minLength':1,'maxLength':4096}
@@ -59,7 +60,7 @@ class MemoryAnswer(Strict):
  missing_information:list[str]=Field(max_length=8)
 class Call(Strict):
  execution_id:UUID
- tool:Literal['catalog','search_document_summaries','read_document_summary','search_document_text','search_conversation_history']
+ tool:Literal['catalog','search_document_summaries','read_document_summary','search_document_text','search_conversation_history','read_project_plan']
  params:dict=Field(default_factory=dict)
 class Query(Strict):
  query:str=Field(min_length=1,max_length=4096)
@@ -99,7 +100,7 @@ class ProjectAssistant:
  def catalog_files(self,repo,owner,project):
   result=[]
   for offset in range(0,1001,100):
-   rows=repo.rows('documents',{'select':'id,title,kind','project_id':'eq.'+project['id'],'owner_id':'eq.'+owner,'order':'created_at.desc,id.asc','limit':100,'offset':offset})
+   rows=repo.rows('documents',{'select':'id,title,kind','deleted_at':'is.null','project_id':'eq.'+project['id'],'owner_id':'eq.'+owner,'order':'created_at.desc,id.asc','limit':100,'offset':offset})
    result.extend(rows)
    if len(result)>1000:raise ApiError('VECTOR_INVENTORY_LIMIT',413)
    if len(rows)<100:break
@@ -120,7 +121,7 @@ class ProjectAssistant:
    if selected is not None:
     if not set(selected).issubset({document['id'] for document in documents}):raise ApiError('DOCUMENT_NOT_FOUND',404)
     documents=[document for document in documents if document['id'] in selected]
-   return {'workflow':'project_assistant','project_id':project['id'],'tools':TOOLS+([MEMORY_TOOL] if data.get('memory') is not None else []),'documents':documents,
+   return {'workflow':'project_assistant','project_id':project['id'],'tools':TOOLS+([MEMORY_TOOL] if data.get('memory') is not None else [])+([PLAN_TOOL] if data.get('memory') is not None and not data.get('source_document_ids') and not data.get('case_context') else []),'documents':documents,
     **({'source_scope':{'document_ids':selected,'complete_project':False}} if selected is not None else {}),
     **({'case_context':data['case_context']} if data.get('case_context') else {})}
   if item.tool=='search_conversation_history':
@@ -130,7 +131,10 @@ class ProjectAssistant:
    result=self.memory.call(owner,project['id'],'search',{'query':params.query,'revision':data['memory']['revision']})
    return {'sources':[],'messages':result['messages'],'project_id':project['id']}
   try:
-   if item.tool=='read_document_summary':
+   if item.tool=='read_project_plan':
+    if item.params or data.get('memory') is None or data.get('source_document_ids') or data.get('case_context'):raise ApiError('AI_TOOL_NOT_ALLOWED',422)
+    record=plan_source(repo,owner,project);rows=[record] if record else []
+   elif item.tool=='read_document_summary':
     params=Document.model_validate(item.params)
     if data.get('source_document_ids') is not None and str(params.document_id) not in data['source_document_ids']:raise ApiError('DOCUMENT_NOT_FOUND',404)
     value=source(repo,owner,project,str(params.document_id))
@@ -194,6 +198,10 @@ class ProjectAssistant:
    record=stored.get(citation['source_id']);quote=citation['quote']
    if record is None or not isinstance(quote,str) or not quote.strip() or quote not in record['text']:raise ApiError('AI_INVALID_CITATION',502)
    file_id=record['file_id']
+   if record['source_kind']=='plan':
+    current=plan_source(repo,owner,project)
+    if data.get('source_document_ids') or data.get('case_context') or current is None or current['source_id']!=record['source_id']:raise ApiError('AI_CONTEXT_INVALID',409)
+    canonical.append({k:record[k] for k in ('source_id','file_id','title','source_kind','generation')});continue
    if data.get('source_document_ids') is not None and file_id not in data['source_document_ids']:raise ApiError('AI_INVALID_CITATION',502)
    if file_id not in checked:checked[file_id]=source(repo,owner,project,file_id)
    if checked[file_id]['generation']!=record['generation']:raise ApiError('VECTOR_SOURCE_CHANGED',409)

@@ -6,7 +6,7 @@ from uuid import uuid4
 from trato_api.vector_routes import VectorGateway,summary_record,source
 from trato_api.vector_contract import digest
 from trato_api.errors import ApiError
-from test_vector_routes import Repo,Store,MemoryRedis,Processor,OWNER,PROJECT,FILE
+from test_vector_routes import Repo,Store,MemoryRedis,MemoryRegistry,Processor,OWNER,PROJECT,FILE
 class SummaryStore(Store):
  def __init__(self):super().__init__();self.summary_record=None;self.summary_reads=0;self.tamper=None;self.summary_scope=None
  def write_summary(self,owner,record):self.summary_record=deepcopy(record)
@@ -40,7 +40,7 @@ class MixedSummaryRepo(SummaryRepo):
 class SummaryTests(TestCase):
  def setUp(self):
   self.repo=SummaryRepo();self.store=SummaryStore();self.redis=MemoryRedis()
-  self.gateway=VectorGateway(None,store=self.store,redis=self.redis,processor=Processor())
+  self.gateway=VectorGateway(None,store=self.store,redis=self.redis,processor=Processor(),registry=MemoryRegistry())
   # Summary source fingerprint is the pipeline extraction fingerprint, not the raw inventory generation.
   self.repo.summary={'summary':'The agreement sets revisions and payment conditions.','topics':['scope'],'citations':[],
     'output_language':'en','model_identity':'test-model','source_fingerprint':'f'*64}

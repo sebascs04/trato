@@ -10,17 +10,24 @@ export async function mountModelPreference(cloud) {
   loading.className='model-settings-loading';loading.setAttribute('role','status');
   loading.setAttribute('aria-label',uiText('modelSettings.loading'));loading.innerHTML=icon('refresh-cw');
   section.append(loading);identity.after(section);
-  const valid=()=>section.isConnected&&cloud.modal===modal&&modal.open;
+  const user=cloud.session?.session?.user?.id;
+  const valid=()=>section.isConnected&&cloud.modal===modal&&modal.open&&cloud.active&&user===cloud.session?.session?.user?.id;
   const load=async()=>{
     section.replaceChildren(loading);
     try {
       const data=await cloud.request('/api/v1/profile/model');
       if(!valid())return;
-      if(!data.can_select){section.remove();return;}
+      if(typeof data.selected_model_name!=='string'||!data.selected_model_name.trim())throw Error('MODEL_SETTINGS_INVALID');
       section.replaceChildren();
       const heading=cloud.document.createElement('div');heading.className='cloud-model-heading';
       const mark=cloud.document.createElement('span');mark.className='cloud-model-mark';mark.innerHTML=icon('sparkles');
-      const label=cloud.document.createElement('label');label.htmlFor='profile-model';label.textContent=uiText('modelSettings.title');
+      const label=cloud.document.createElement(data.can_select===true?'label':'span');if(data.can_select===true)label.htmlFor='profile-model';label.textContent=uiText('modelSettings.title');
+      heading.append(mark,label);
+      if(data.can_select!==true){
+        const selected=cloud.document.createElement('strong');selected.className='cloud-model-current';selected.textContent=data.selected_model_name;
+        const note=cloud.document.createElement('p');note.textContent=uiText('modelSettings.readOnlyDescription');
+        section.append(heading,selected,note);return;
+      }
       const description=cloud.document.createElement('p');description.textContent=uiText('modelSettings.description');
       const form=cloud.document.createElement('form');form.className='cloud-model-form';
       const select=cloud.document.createElement('select');select.id='profile-model';select.className='context-box';
@@ -39,7 +46,7 @@ export async function mountModelPreference(cloud) {
         }catch{if(valid())status.textContent=uiText('modelSettings.error');}
         finally{if(valid()){select.disabled=false;button.disabled=select.value===data.selected_model;}}
       });
-      heading.append(mark,label);form.append(select,button);section.append(heading,description,form,status);
+      form.append(select,button);section.append(heading,description,form,status);
     }catch{
       if(!valid())return;
       const error=cloud.document.createElement('p');error.className='cloud-error';error.textContent=uiText('modelSettings.error');

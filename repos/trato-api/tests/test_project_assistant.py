@@ -3,7 +3,7 @@ from types import SimpleNamespace
 from unittest import TestCase
 from unittest.mock import patch
 from uuid import uuid4
-from trato_api.project_assistant import ProjectAssistant,Call,TOOLS,MEMORY_TOOL
+from trato_api.project_assistant import ProjectAssistant,Call,TOOLS,MEMORY_TOOL,PLAN_TOOL
 from trato_api.errors import ApiError
 from trato_api.ai_jobs import PREFIX
 from test_vector_routes import Repo,OWNER,CLIENT,PROJECT,FILE
@@ -36,7 +36,7 @@ class AssistantAccessTests(TestCase):
  def test_catalog_has_generic_metadata_and_rejects_parameters(self):
   call=Call(execution_id=self.lease,tool='catalog',params={})
   catalog=self.service.execute(self.id,call)
-  self.assertEqual(catalog['tools'],TOOLS+[MEMORY_TOOL])
+  self.assertEqual(catalog['tools'],TOOLS+[MEMORY_TOOL,PLAN_TOOL])
   self.assertTrue(all(t['description'] and t['when_to_use'] for t in TOOLS))
   with self.assertRaisesRegex(ApiError,'AI_TOOL_INVALID'):self.service.execute(self.id,Call(execution_id=self.lease,tool='catalog',params={'project_id':str(uuid4())}))
  def test_foreign_document_and_extra_scope_are_rejected(self):

@@ -197,6 +197,7 @@ class RefundWorkflow:
         if self.gmail is None:raise ApiError('GMAIL_NOT_CONNECTED',409)
         content=self.gmail_call('read_attachment',owner,response['provider_message_id'],metadata['attachment_id'])
         if not import_file:return content,metadata['filename']
-        document=repo.reserve(data['settlement']['project_id'],f"Gmail refund {response_id} {index+1}",'reference',metadata['filename'],'application/pdf',content,'refund-attachment-'+response_id+'-'+str(index))['document']
+        document=repo.reserve(data['settlement']['project_id'],f"Gmail refund {response_id} {index+1}",'reference',metadata['filename'],'application/pdf',content,'refund-attachment-'+response_id+'-'+str(index),
+            context={'purpose':'refund_evidence','refund_case_id':parent,'snapshot_id':response['snapshot_id']})['document']
         repo.upload(document,content);repo.queue_document(document['id'])
         return {'document_id':document['id'],'sha256':document['sha256']}

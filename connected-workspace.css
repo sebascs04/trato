@@ -552,6 +552,39 @@ body.cloud-design{--bg:#faf9fc;--paper:#fff;--surface:#fff;--surface-soft:#f7f5f
 @keyframes cloud-file-loading{0%{transform:translateX(-110%)}100%{transform:translateX(330%)}}
 @media(prefers-reduced-motion:reduce){.cloud-file-loading-track:after{animation:none;width:100%;opacity:.5}}
 
+/* Overview: original agreement beside the current situation, without another menu. */
+.cloud-summary-layout{display:grid;grid-template-columns:minmax(0,1fr) minmax(240px,300px);align-items:start;gap:24px}.cloud-summary-layout>.cloud-agreement{margin:0}.cloud-summary-aside{display:grid;gap:18px}.cloud-summary-aside .cloud-summary-attention{display:grid;grid-template-columns:36px minmax(0,1fr);gap:12px;margin:0;padding:22px}.cloud-summary-aside .cloud-summary-symbol{width:36px;height:36px;border-radius:10px}.cloud-summary-aside .cloud-summary-attention>.button{grid-column:2;margin:2px 0 0;justify-self:start;font-size:12px}.cloud-summary-current,.cloud-summary-inventory{padding:22px;border:1px solid var(--line);border-radius:14px;background:var(--surface)}.cloud-summary-current h4{font-size:16px;font-weight:500;line-height:1.5;margin:10px 0 0}.cloud-summary-inventory .cloud-summary-totals{display:grid;grid-template-columns:1fr;gap:0;margin:12px 0 0;padding:0;border:0;background:transparent}.cloud-summary-inventory .cloud-summary-totals>div{flex-direction:row-reverse;justify-content:space-between;align-items:center;gap:14px;padding:12px 0}.cloud-summary-inventory .cloud-summary-totals>div+div{border-top:1px solid var(--line)}.cloud-summary-inventory .cloud-summary-totals strong{font-size:22px}.cloud-summary-inventory .cloud-summary-totals span{font-size:13px}.cloud-summary-layout .cloud-client-row{gap:18px;flex-wrap:wrap}.cloud-summary-layout .cloud-client-row>div{min-width:0}.cloud-summary-layout .cloud-client-row strong,.cloud-summary-layout .cloud-client-meta{overflow-wrap:anywhere}.cloud-summary-layout .cloud-client-row>.text-button{flex-shrink:0}
+@media(max-width:850px){.cloud-summary-layout{grid-template-columns:1fr}.cloud-summary-aside{grid-template-columns:repeat(2,minmax(0,1fr))}}@media(max-width:600px){.cloud-summary-aside{grid-template-columns:1fr}}
+
+.cloud-document-row>.cloud-document-processing-error,.cloud-document-row>.cloud-document-processing-review,.cloud-document-row>.ai-activity{grid-column:1;grid-row:2}.cloud-document-row>.cloud-document-actions{grid-column:2;grid-row:1 / span 2}.cloud-document-processing-error{display:flex;align-items:center;gap:12px;font-size:12px;color:var(--muted);padding-left:46px}.cloud-document-processing-error>.text-button{display:inline-flex;align-items:center;gap:5px;min-height:36px;font-size:12px}.cloud-document-processing-error .ui-icon{width:14px;height:14px}.cloud-document-processing-review{font-size:12px;color:var(--muted);margin:4px 0 0;padding-left:46px}.cloud-document-row>.ai-activity{margin:0;padding:8px 0 0 46px;justify-content:flex-start;min-height:42px}.cloud-document-row>.ai-activity .ai-activity-orbit,.cloud-document-row>.ai-activity .ai-activity-mascot{width:36px;height:36px;min-width:36px;margin:0}.cloud-document-row>.ai-activity strong{font-size:12px}
+
+/* Give each document section room after the previous section ends. */
+.cloud-design .cloud-doc-groups{display:grid;gap:14px;border:0;border-radius:0;overflow:visible}.cloud-design .cloud-doc-groups>.cloud-document-group{margin:0;border:1px solid var(--line);border-radius:12px;overflow:hidden}.cloud-design .cloud-doc-groups>.cloud-document-group:last-child{border-bottom:1px solid var(--line)}
+
+/* Business history: one case at a time, dates once per day, detail on demand. */
+.cloud-project-history .cloud-history-views{padding:4px;gap:3px;border-radius:11px}.cloud-project-history .cloud-history-views .button{min-height:36px;padding:8px 13px;font-size:13px}
+.cloud-project-activity .cloud-history-groups{display:grid;gap:16px;border:0;background:transparent}
+.cloud-project-activity .cloud-history-request{border:1px solid var(--line);border-radius:14px;background:var(--paper,#fff);overflow:hidden}
+.cloud-project-activity .cloud-history-request>summary{padding:20px;gap:14px;background:transparent}
+.cloud-project-activity .cloud-history-request[open]>summary{border-bottom:1px solid var(--line)}
+.cloud-project-activity .cloud-history-request-title{font-size:15px;font-weight:550;line-height:1.5;overflow-wrap:anywhere}
+.cloud-project-activity .cloud-history-request-title small{margin-top:5px;font-size:12px;font-weight:400;color:var(--muted)}
+.cloud-history-days{padding:6px 20px 18px}.cloud-history-day h4{margin:20px 10px 9px;color:var(--muted);font-size:12px;font-weight:500;line-height:1.5}
+.cloud-history-request .cloud-history-day .cloud-project-timeline{padding:0}
+.cloud-project-activity .cloud-history-day .cloud-project-event{position:relative;display:block;padding:0;border:0}
+.cloud-project-activity .cloud-history-day .cloud-project-event::before{content:'';position:absolute;left:26px;top:0;bottom:0;width:1px;background:var(--line);pointer-events:none}
+.cloud-project-activity .cloud-history-day .cloud-project-event:first-child::before{top:50%}.cloud-project-activity .cloud-history-day .cloud-project-event:last-child::before{bottom:50%}.cloud-project-activity .cloud-history-day .cloud-project-event:only-child::before{display:none}
+.cloud-project-activity .cloud-history-event-button{position:relative;display:grid;grid-template-columns:33px minmax(0,1fr) auto;align-items:center;gap:14px;width:100%;padding:12px 10px;border:0;border-radius:10px;text-align:left;background:transparent;color:inherit;font:inherit;cursor:pointer}
+.cloud-project-activity .cloud-history-event-button:hover{background:var(--purple-soft,#f2edf9)}.cloud-project-activity .cloud-history-event-button:focus-visible,.cloud-history-document:focus-visible{outline:2px solid var(--purple);outline-offset:2px}
+.cloud-project-activity .cloud-history-event-button .cloud-project-event-icon{position:relative;background:var(--paper,#fff)}
+.cloud-project-activity .cloud-history-event-button strong{font-size:14px;font-weight:450;line-height:1.6;overflow-wrap:anywhere}.cloud-project-activity .cloud-history-event-button time{font-size:12px;color:var(--muted);white-space:nowrap}
+.cloud-history-dialog{width:min(640px,calc(100vw - 40px));max-width:640px}.cloud-history-detail{padding-top:8px}.cloud-history-case{font-size:16px;line-height:1.6;margin:0 0 8px;overflow-wrap:anywhere}.cloud-history-detail>time{font-size:13px;color:var(--muted)}
+.cloud-history-documents{margin-top:28px;padding-top:20px;border-top:1px solid var(--line)}.cloud-history-documents h3{margin:0 0 12px;font-size:14px;font-weight:500}.cloud-history-document{display:flex;align-items:center;gap:12px;width:100%;padding:14px 12px;margin-top:8px;border:1px solid var(--line);border-radius:10px;color:inherit;background:transparent;text-align:left;font:inherit;font-size:14px;cursor:pointer}.cloud-history-document:hover{background:var(--purple-soft)}.cloud-history-document span{flex:1;overflow-wrap:anywhere}.cloud-history-document .ui-icon{width:18px;height:18px;flex-shrink:0;color:var(--purple)}
+@media(max-width:600px){.cloud-project-activity .cloud-history-request>summary{padding:16px;grid-template-columns:16px minmax(0,1fr)}.cloud-project-activity .cloud-history-request>summary>time{grid-column:2}.cloud-history-days{padding:4px 10px 14px}.cloud-project-activity .cloud-history-event-button{gap:10px}.cloud-project-activity .cloud-history-event-button strong{font-size:13px}.cloud-project-activity .cloud-history-event-button time{font-size:11px}}
+
+.cloud-project-activity .cloud-history-request:last-child{border-bottom:1px solid var(--line)}
+.cloud-project-activity .cloud-history-event-button time{grid-column:auto;margin:0;text-align:right}
+
 .cloud-design .cloud-mail-dialog .upload-modal-header {
   position: sticky;
   top: 0;

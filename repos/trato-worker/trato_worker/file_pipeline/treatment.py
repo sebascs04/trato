@@ -1,5 +1,6 @@
 """Purpose-specific semantic gate, selected by the backend, never by file text."""
 import json
+import logging
 from .evidence import literal_excerpts, reference_catalog, reference_schema, resolve_reference
 from .contracts import Assessment, PURPOSES, PipelineError, fingerprint
 
@@ -33,10 +34,10 @@ The backend supplies {purpose}, {expected_category}, {purpose_criteria}, {filena
 Read all supplied segments. Check whether they describe the expected type of source. Lack of optional background does not make unrelated content relevant. Distinguish an unrelated document from an ambiguous but potentially relevant one. Never invent missing terms, a comparison baseline or a relationship with a client.
 ## TASK
 1. Assess the source against purpose_criteria. Classify detected_category using the supplied enum. Use other for clearly unrelated material and unclear when the document cannot be classified reliably.
-2. Set relevance to supported when the expected category is supported, unrelated for plainly unrelated material, and unclear for ambiguity or a different plausible project-document category. If reference_context explicitly contradicts the connection, do not claim a match.
+2. Keep relevance and detected_category consistent: supported requires detected_category to equal the supplied expected_category exactly; unrelated requires detected_category=other; unclear describes ambiguity or a different plausible project-document category. When purpose_criteria defines a broad documentary role, assess that role rather than replacing it with a narrower topic. If reference_context explicitly contradicts the connection, do not claim a match.
 3. Explain the conclusion briefly and list material observations, such as the client's requested additions. Each observation and the conclusion must cite short exact quotes from supplied segments. Do not translate quotes. All citations must point to this document, never to reference_context. Select reference_id from source_catalog for each citation. Each reference binds one exact original quote to its source segment. Return only the reference_id for evidence; the host resolves its original segment_id and quote. Do not retype, paraphrase or combine excerpts.
 4. Generate reason, observations and clarification_questions directly in output_language (es or en). Ask concrete clarification questions only when relevance is unclear. If unrelated, explain why; do not invent questions to rescue it.
-5. Never establish identity, authenticity, legal assent, payment, refund entitlement or fraud. Never make business changes, request tools or output permissions. The host decides whether processing continues, pauses or stops.
+5. Before returning, check that relevance and detected_category satisfy step 2. Never copy the example category for a different purpose. Never establish identity, authenticity, legal assent, payment, refund entitlement or fraud. Never make business changes, request tools or output permissions. The host decides whether processing continues, pauses or stops.
 ## FORMAT
 Return only JSON with detected_category, relevance, reason, evidence, observations and clarification_questions. evidence contains reference_id from source_catalog. Each observation contains text and evidence. Example structure only: {"detected_category":"change_request","relevance":"supported","reason":"The source contains a request for additional work.","evidence":[{"reference_id":"r1"}],"observations":[{"text":"A supported requested item","evidence":[{"reference_id":"r1"}]}],"clarification_questions":[]}. All content must derive from the supplied source; never copy example values or invent segment IDs.'''
 
@@ -72,6 +73,9 @@ class PurposeAgent:
                    'output_language': manifest.output_language, 'reference_context': manifest.reference_context,
                    'segments': extraction['segments']}
         schema = Assessment.model_json_schema()
+        schema['properties']['detected_category']['description'] = (
+            'If relevance is supported this must be ' + CATEGORIES[manifest.purpose] +
+            '. If relevance is unrelated this must be other. Otherwise use the category actually supported by the source.')
         # Keep source text out of the provider schema. Resolve references on the
         # host, retaining the same external Assessment with exact original quotes.
         catalog = reference_catalog(
@@ -107,6 +111,9 @@ class PurposeAgent:
         # Do not fix contradictory model decisions by inventing a fallback assessment.
         if ((result.relevance == 'supported' and result.detected_category != CATEGORIES[manifest.purpose])
             or (result.relevance == 'unrelated' and result.detected_category != 'other')):
+            logging.getLogger(__name__).warning(
+                'file_treatment_inconsistent file_id=%s purpose=%s expected=%s detected=%s relevance=%s',
+                manifest.file_id, manifest.purpose, CATEGORIES[manifest.purpose], result.detected_category, result.relevance)
             raise PipelineError('TREATMENT_INCONSISTENT_RESPONSE')
         decision = {'supported': 'continue', 'unclear': 'needs_clarification', 'unrelated': 'rejected'}[result.relevance]
         return {'decision': decision, 'reason': result.reason, 'human_review_required': True,

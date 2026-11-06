@@ -15,7 +15,7 @@ export function installProposalWorkspace(cloud){
  });
  cloud.requestStatus=null;cloud.proposals=[];cloud.proposalDetails=null;cloud.proposalRetryRevision=null;cloud.proposalLoading=false;cloud.proposalError='';
  cloud.gmailReplies=[];cloud.gmailReplyError='';cloud.gmailImportedFeedbackDocs=new Map();cloud.gmailProjectId=cloud.projectId||'';
- const originalDocuments=cloud.renderDocuments.bind(cloud),originalLoad=cloud.loadProject.bind(cloud),originalReview=cloud.renderChangeReview.bind(cloud),originalRows=cloud.requestRows.bind(cloud),originalClick=cloud.click.bind(cloud),originalSubmit=cloud.submit.bind(cloud),originalReset=cloud.reset.bind(cloud);
+ const originalLoad=cloud.loadProject.bind(cloud),originalReview=cloud.renderChangeReview.bind(cloud),originalRows=cloud.requestRows.bind(cloud),originalClick=cloud.click.bind(cloud),originalSubmit=cloud.submit.bind(cloud),originalReset=cloud.reset.bind(cloud);
  cloud.reset=function(){originalReset();this.requestStatus=null;this.proposals=[];this.proposalDetails=null;this.proposalRetryRevision=null;this.proposalLoading=false;this.proposalError='';this.gmailReplies=[];this.gmailReplyError='';this.gmailImportedFeedbackDocs=new Map();this.gmailProjectId='';};
  cloud.loadProject=async function(){
   const id=this.projectId,epoch=this.epoch;this.requestStatus=null;this.proposals=[];this.proposalDetails=null;this.proposalRetryRevision=null;this.proposalLoading=false;this.proposalError='';
@@ -62,16 +62,6 @@ export function installProposalWorkspace(cloud){
   if(cloud.document.visibilityState==='hidden'){wasHidden=true;return;}
   if(wasHidden){wasHidden=false;void cloud.syncBusinessState();}
  });
- cloud.renderDocuments=function(panel){
-  originalDocuments(panel);
-  for(const doc of this.documents.filter(d=>d.kind==='addendum')){
-   const row=[...panel.querySelectorAll('.cloud-document-row')].find(row=>row.querySelector('.document-button')?.dataset.cloudId===doc.id);
-   if(!row)continue;
-   const button=row.querySelector('.document-button');button.dataset.cloudAction='text';
-   row.querySelector('[data-document-status]')?.remove();
-   row.querySelector('[data-cloud-action="retry"]')?.remove();
-  }
- };
  const summary=id=>cloud.proposals.find(p=>p.request_document_id===id);
  const base=data=>`/api/v1/proposals/${data.proposal.id}/revisions/${data.revision.id}`;
  const gmailFeedbackKey=(message,index)=>`${message.id}:${index}`;

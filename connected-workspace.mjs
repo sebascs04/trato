@@ -1,5 +1,7 @@
+import {AIJobClient} from './ai-jobs.mjs';
+import {renderAIActivity} from './ai-activity.mjs';
 import {mountModelPreference} from './model-preferences.mjs';
-import {uiText,uiLocale} from './i18n.mjs';
+import {uiText,uiLocale,uiLanguage} from './i18n.mjs';
 import {icon as uiIcon} from './icons.mjs';
 import {SessionClient, apiRequest} from './auth-session.mjs';
 
@@ -14,7 +16,7 @@ const date = value => !value || !Number.isFinite(new Date(value).getTime()) ? ui
 export class ConnectedWorkspace {
   constructor({document:doc=globalThis.document, location=globalThis.location, fetchFn=globalThis.fetch.bind(globalThis), storage=globalThis.sessionStorage,authReturn=null}={}) {
     this.document=doc; this.location=location; this.fetch=fetchFn; this.storage=storage;this.authReturn=authReturn;this.authReturnError=false;
-    this.active=false; this.state='loading'; this.clients=[]; this.projects=[]; this.documents=[]; this.events=[]; this.projectActivity=[];
+    this.documentProcessingJobs=new Map();this.active=false; this.state='loading'; this.clients=[]; this.projects=[]; this.documents=[]; this.events=[]; this.projectActivity=[];
     this.clientId=''; this.projectId=''; this.tab='acuerdo'; this.comparison=null; this.requestId=''; this.epoch=0; this.busy=false; this.loading=false; this.directoryLoading=false; this.message='';
     this.historyView='history';this.projectMapGeneration=0;this.resourceOpen={files:false,history:false};this.historyGeneration=0;this.historyLoaded=false;this.historyPending=null;
     this.projectsLoaded=false;this.projectsLoading=false;this.projectClientsLoaded=new Set();this.projectsPending=new Map();
@@ -80,6 +82,7 @@ export class ConnectedWorkspace {
     this.stopIngestionPolling();
     this.releaseProjectMap();
     this.historyGeneration++;this.historyLoaded=false;this.historyPending=null;this.resourceOpen={files:false,history:false};this.projectsLoaded=false;this.projectsLoading=false;this.projectClientsLoaded=new Set();this.projectsPending=new Map();
+    for(const job of this.documentProcessingJobs.values())job.dispose();this.documentProcessingJobs.clear();
     this.epoch++; this.active=false; this.state='anonymous'; this.clients=[]; this.projects=[]; this.documents=[]; this.events=[]; this.projectActivity=[];
     this.clientId=''; this.projectId=''; this.tab='acuerdo'; this.comparison=null; this.requestId=''; this.uploadCommand=null; this.message=''; this.loading=false; this.directoryLoading=false;
   }
@@ -238,7 +241,7 @@ export class ConnectedWorkspace {
   }
   show(title,html) {
     this.releasePreview();
-    this.modal.classList.remove('cloud-profile-dialog','cloud-auth-dialog','cloud-document-preview','cloud-mail-dialog','cloud-project-setup','cloud-delete-dialog','cloud-project-create-dialog');
+    this.modal.classList.remove('cloud-history-dialog','cloud-profile-dialog','cloud-auth-dialog','cloud-document-preview','cloud-mail-dialog','cloud-project-setup','cloud-delete-dialog','cloud-project-create-dialog');
     if(this.modal.open) this.modal.close();
     this.modal.innerHTML=`<div class="upload-modal-header"><div><span class="eyebrow">${uiText("TU ESPACIO EN TRATO")}</span><h2 id="cloud-dialog-title">${escape(title)}</h2></div><button type="button" class="close" data-cloud-close aria-label="${uiText("Cerrar")}" title="${uiText("Cerrar")}">${uiIcon('x')}</button></div>${html}<p class="cloud-error" data-cloud-error role="alert"></p>`;
     this.modal.showModal();
@@ -291,6 +294,7 @@ export class ConnectedWorkspace {
         const id=this.projectId, epoch=this.epoch, file=values.get('file');
         if(!file?.size || file.size>10485760) throw new Error(uiText("Selecciona un PDF o DOCX de hasta 10 MB."));
         const metadata={filename:file.name,title:values.get('title'),kind:values.get('kind')};
+        for(const key of ['purpose','revision_id','refund_case_id','snapshot_id','payment_id','request_id'])if(values.get(key))metadata[key]=values.get(key);
         const command=JSON.stringify([id,metadata,file.size,file.lastModified]);
         if(this.uploadCommand?.command!==command) this.uploadCommand={command,key:crypto.randomUUID()};
         const mime=file.name.toLowerCase().endsWith('.docx')?'application/vnd.openxmlformats-officedocument.wordprocessingml.document':'application/pdf';
@@ -316,7 +320,13 @@ export class ConnectedWorkspace {
     if(action==='project') this.openProject(id);
     if(action==='project-delete'){const project=this.projects.find(item=>item.id===id);if(project){this.show(uiText('projectStart.deleteProject'),`<section class="cloud-delete-content"><p class="cloud-delete-intro">${uiText('projectStart.deleteProjectIntro')}</p><div class="cloud-delete-project-card">${uiIcon('folder-open')}<strong>${escape(project.name)}</strong></div><p class="cloud-delete-explanation">${uiText('projectStart.deleteProjectHelp')}</p><form data-cloud-form="project-delete" data-project-id="${escape(id)}"><div class="dialog-actions"><button type="button" class="button secondary" data-cloud-close>${uiText("Cancelar")}</button><button type="submit" class="button cloud-delete-confirm">${uiText('projectStart.deleteProject')}</button></div></form></section>`);this.modal.classList.add('cloud-delete-dialog');}}
     if(action==='upload') this.openSource(target.dataset.cloudPurpose);
+    if(action==='reprocess-document'){this.retryDocumentProcessing(id);return;}
     if(action==='graph-preview'){this.historyView='map';this.tab='historial';this.notify();}
+    if(action==='history-event'){this.openHistoryEvent(id);return;}
+    if(action==='history-document'){
+      const historyEvent=target.dataset.cloudEventId,project=this.projectId,epoch=this.epoch;
+      this.run(async()=>{await this.previewDocument(id);if(project===this.projectId&&epoch===this.epoch&&this.modal.open&&this.modal.classList.contains('cloud-document-preview'))this.modal.querySelector('.cloud-preview-toolbar')?.insertAdjacentHTML('afterbegin',`<button type="button" class="text-button" data-cloud-action="history-event" data-cloud-id="${escape(historyEvent)}">${uiIcon('arrow-left')}${uiText('history.backToEvent')}</button>`);});return;
+    }
     if(action==='history-view'){this.historyView='history';this.notify();}
     if(action==='refund-preview') this.run(async()=>{const {openRefundPreview}=await import('./refund-preview.mjs');await openRefundPreview({returnFocus:target});});
     if(action==='review-change') this.run(()=>this.reviewChange(id));
@@ -395,10 +405,11 @@ export class ConnectedWorkspace {
     const extraction=Array.isArray(doc.document_extractions)?doc.document_extractions[0]:doc.document_extractions;
     return extraction?.status==='ready';
   }
-  openSource(purpose) {
+  openSource(purpose, uploadContext={}) {
     if(this.loading || !this.project()) return;
+    const contextFields=Object.entries(uploadContext).filter(([key,value])=>['purpose','revision_id','refund_case_id','snapshot_id','payment_id','request_id'].includes(key)&&value).map(([key,value])=>`<input type="hidden" name="${escape(key)}" value="${escape(value)}">`).join('');
     if(purpose==='reference'){
-      this.show(uiText('refund.addReference'),`<p>${uiText('refund.referenceHelp')}</p><form data-cloud-form="upload"><input type="hidden" name="kind" value="reference"><label class="field">${uiText('refund.referenceTitle')}<input name="title" class="context-box" required maxlength="200"></label><label class="field">${uiText('refund.referenceFile')}<input name="file" class="context-box" type="file" accept=".pdf" required></label><p>${uiText("Máximo 10 MB.")}</p><button type="submit" class="button">${uiText('refund.addReference')}</button></form>`);
+      this.show(uiText('refund.addReference'),`<p>${uiText('refund.referenceHelp')}</p><form data-cloud-form="upload"><input type="hidden" name="kind" value="reference">${contextFields}<label class="field">${uiText('refund.referenceTitle')}<input name="title" class="context-box" required maxlength="200"></label><label class="field">${uiText('refund.referenceFile')}<input name="file" class="context-box" type="file" accept=".pdf" required></label><p>${uiText("Máximo 10 MB.")}</p><button type="submit" class="button">${uiText('refund.addReference')}</button></form>`);
       return;
     }
     const initial=purpose!=='request';
@@ -421,7 +432,8 @@ export class ConnectedWorkspace {
     const metrics=[['documents',this.documents.length],['changes',this.documents.filter(doc=>doc.kind==='email_request').length],['refunds',project?.refund_totals?.[0]?.count]].filter(([,value])=>Number.isSafeInteger(value)&&value>=0);
     const totals=`<div class="cloud-summary-totals">${metrics.map(([label,value])=>`<div><strong>${new Intl.NumberFormat(uiLocale()).format(value)}</strong><span>${uiText(`projectSummary.metric.${label}`)}</span></div>`).join('')}</div>`;
     const tracking=active?`<section class="cloud-summary-attention" aria-label="${uiText('projectSummary.tracking')}"><span class="cloud-summary-symbol" aria-hidden="true">${uiIcon(refund?'undo-2':'git-compare-arrows')}</span><div><span class="eyebrow">${uiText(refund?'projectSummary.refundPending':'projectSummary.changePending')}</span><h4>${escape(active.title||uiText(refund?'Devoluciones':'Pedido del cliente'))}</h4>${proposal?.business_status?`<p>${escape(uiText(proposal.business_status))}</p>`:''}</div>${refund?`<span class="cloud-refund-soon-badge">${uiText('caseAssistant.comingSoon')}</span>`:`<button type="button" class="button secondary" data-cloud-action="tab" data-cloud-tab="solicitudes">${uiText('projectSummary.continue')}${uiIcon('arrow-right')}</button>`}</section>`:'';
-    panel.innerHTML=`<div class="cloud-project-overview cloud-summary" aria-label="${uiText("Vista general del proyecto")}"><header class="cloud-summary-heading"><h3>${uiText("Resumen del proyecto")}</h3><span>${uiText('projectSummary.sourceCount',{count:new Intl.NumberFormat(uiLocale()).format(sources.length)})}</span></header>${totals}<section class="workspace-panel cloud-agreement"><div class="cloud-panel-heading"><div><span class="eyebrow">${uiText("ACUERDO INICIAL")}</span><h3>${sources.length?uiText("Lo conversado al inicio"):uiText("Guarda lo que han conversado")}</h3></div><button class="button ${sources.length?'secondary':''}" data-cloud-action="upload" data-cloud-purpose="initial">${uiText("Añadir información")}</button></div><p class="cloud-summary-agreement-help">${uiText('projectSummary.agreementHelp')}</p>${sources.length?`<div class="cloud-source-list">${this.sourceRows(sources.slice(0,3))}</div>${sources.length>3?`<button class="text-button cloud-overview-link" data-cloud-action="tab" data-cloud-tab="documentos">${uiText('Ver todas las fuentes')}${uiIcon('arrow-right')}</button>`:''}`:`<div class="cloud-empty-sources"><p>${uiText('projectSummary.addAgreement')}</p></div>`}</section>${tracking}${this.proposalError?`<p class="cloud-error" role="alert">${uiText('Estado no disponible')}</p>`:''}</div>`;
+    const situation=tracking||`<section class="cloud-summary-current"><span class="eyebrow">${uiText('projectSummary.now')}</span><h4>${uiText(this.requestStatus?.can_register===true?'projectSummary.noOpenRequests':'Estado no disponible')}</h4></section>`;
+    panel.innerHTML=`<div class="cloud-project-overview cloud-summary" aria-label="${uiText("Vista general del proyecto")}"><header class="cloud-summary-heading"><h3>${uiText("Resumen del proyecto")}</h3></header><div class="cloud-summary-layout"><section class="workspace-panel cloud-agreement"><div class="cloud-panel-heading"><div><span class="eyebrow">${uiText("ACUERDO INICIAL")}</span><h3>${sources.length?uiText("Lo conversado al inicio"):uiText('projectSummary.noAgreement')}</h3></div></div><p class="cloud-summary-agreement-help">${uiText('projectSummary.agreementHelp')}</p>${sources.length?`<div class="cloud-source-list">${this.sourceRows(sources.slice(0,3))}</div>${sources.length>3?`<button class="text-button cloud-overview-link" data-cloud-action="tab" data-cloud-tab="documentos">${uiText('Ver todas las fuentes')}${uiIcon('arrow-right')}</button>`:''}`:`<button type="button" class="text-button cloud-overview-link" data-cloud-action="tab" data-cloud-tab="plan">${uiText('projectSummary.openPlan')}${uiIcon('arrow-right')}</button>`}</section><aside class="cloud-summary-aside">${situation}<section class="cloud-summary-inventory"><span class="eyebrow">${uiText('projectSummary.inProject')}</span>${totals}</section></aside></div>${this.proposalError?`<p class="cloud-error" role="alert">${uiText('Estado no disponible')}</p>`:''}</div>`;
   }
   renderRequests(panel) {
     const requests=this.documents.filter(doc=>doc.kind==='email_request');
@@ -574,48 +586,104 @@ export class ConnectedWorkspace {
       if(!groups.has(key))groups.set(key,{kind,id,title:event.group_title??event.request_title??uiText('history.externalRefund'),events:[]});
       groups.get(key).events.push(event);
     }
-    const content=[...groups.values()].map((group,index)=>`<details class="cloud-history-request" data-activity-group-kind="${escape(group.kind)}" data-activity-group-id="${escape(group.id)}" ${index===0?'open':''}><summary><span class="cloud-history-chevron" aria-hidden="true">${uiIcon('chevron-right')}</span><span class="cloud-history-request-title">${escape(group.title)}<small>${uiText(group.kind==='refund'?'history.refundGroup':'history.changeGroup')} · ${group.events.length} ${group.events.length===1?uiText("movimiento"):uiText("movimientos")}</small></span><time datetime="${escape(group.events[0].created_at)}">${escape(date(group.events[0].created_at))}</time></summary><ol class="cloud-project-timeline">${group.events.map(event=>`<li class="cloud-project-event" data-activity-kind="${escape(event.kind)}"><span class="cloud-project-event-icon" aria-hidden="true">${uiIcon(icons[event.kind])}</span><div><strong>${escape(this.activityLabel(event))}</strong></div><time datetime="${escape(event.created_at)}">${escape(date(event.created_at))}</time></li>`).join('')}</ol></details>`).join('');
-    panel.innerHTML=`<div class="workspace-panel cloud-project-activity"><div class="cloud-activity-heading"><span>${uiText('history.heading')}</span><span>${uiText("Más recientes primero")}</span></div>${content?`<div class="cloud-history-groups">${content}</div>`:("<p class=\"cloud-notice\">"+uiText('history.empty')+"</p>")}</div>`;
+    const dayFormat=new Intl.DateTimeFormat(uiLocale(),{dateStyle:'long',timeZone:'America/Lima'});
+    const clockFormat=new Intl.DateTimeFormat(uiLocale(),{timeStyle:'short',timeZone:'America/Lima'});
+    const valid=value=>value&&Number.isFinite(Date.parse(value));
+    const content=[...groups.values()].map((group,index)=>{
+      const days=new Map();
+      for(const event of group.events){
+        const day=valid(event.created_at)?dayFormat.format(new Date(event.created_at)):uiText("Fecha no registrada");
+        if(!days.has(day))days.set(day,[]);days.get(day).push(event);
+      }
+      return `<details class="cloud-history-request" data-activity-group-kind="${escape(group.kind)}" data-activity-group-id="${escape(group.id)}" ${index===0?'open':''}><summary><span class="cloud-history-chevron" aria-hidden="true">${uiIcon('chevron-right')}</span><span class="cloud-history-request-title">${escape(group.title)}<small>${uiText(group.kind==='refund'?'history.refundGroup':'history.changeGroup')} · ${group.events.length} ${group.events.length===1?uiText("movimiento"):uiText("movimientos")}</small></span><time datetime="${escape(group.events[0].created_at)}">${escape(date(group.events[0].created_at))}</time></summary><div class="cloud-history-days">${[...days].map(([day,events])=>`<section class="cloud-history-day"><h4>${escape(day)}</h4><ol class="cloud-project-timeline">${events.map(event=>`<li class="cloud-project-event" data-activity-kind="${escape(event.kind)}"><button type="button" class="cloud-history-event-button" data-cloud-action="history-event" data-cloud-id="${escape(event.id)}"><span class="cloud-project-event-icon" aria-hidden="true">${uiIcon(icons[event.kind])}</span><strong>${escape(this.activityLabel(event))}</strong><time datetime="${escape(event.created_at)}">${valid(event.created_at)?escape(clockFormat.format(new Date(event.created_at))):''}</time></button></li>`).join('')}</ol></section>`).join('')}</div></details>`;
+    }).join('');
+    panel.innerHTML=`<div class="cloud-project-activity">${content?`<div class="cloud-history-groups">${content}</div>`:("<p class=\"cloud-notice\">"+uiText('history.empty')+"</p>")}</div>`;
+  }
+
+  historyDocuments(event) {
+    if(event.kind==='request_registered')return this.documents.filter(doc=>doc.id===event.request_document_id);
+    // A business event is not a document. Only use explicit scoped associations.
+    const roles={adenda_sent:['addendum'],acceptance_recorded:['acceptance'],refund_requested:['request'],refund_proposal_sent:['proposal'],refund_feedback_reviewed:['feedback'],refund_acceptance_recorded:['acceptance']};
+    if(!roles[event.kind])return [];
+    return this.documents.filter(doc=>event.group_kind==='refund'
+      ?(doc.refund_links||[]).some(link=>link.settlement_id===event.group_id&&roles[event.kind].includes(link.role)&&(event.revision_no==null||link.version_no===event.revision_no))
+      :(doc.request_links||[]).some(link=>link.request_document_id===event.request_document_id&&roles[event.kind].includes(link.role)&&(event.revision_no==null||link.revision_no===event.revision_no)));
+  }
+  openHistoryEvent(id) {
+    const event=this.projectActivity.find(item=>item.id===id);if(!event)return;
+    const documents=this.historyDocuments(event);
+    this.show(this.activityLabel(event),`<section class="cloud-history-detail"><p class="cloud-history-case">${escape(event.group_title??event.request_title??uiText('history.externalRefund'))}</p><time datetime="${escape(event.created_at)}">${escape(date(event.created_at))}</time>${documents.length?`<section class="cloud-history-documents"><h3>${uiText('history.relatedDocuments')}</h3>${documents.map(doc=>`<button type="button" class="cloud-history-document" data-cloud-action="history-document" data-cloud-id="${escape(doc.id)}" data-cloud-event-id="${escape(event.id)}">${uiIcon('file-text')}<span>${escape(doc.title)}</span>${uiIcon('arrow-up-right')}</button>`).join('')}</section>`:''}</section>`);
+    this.modal.classList.add('cloud-history-dialog');
   }
 
 
+  documentProcessingNotice(doc) {
+    const state=this.documentProcessingJobs.get(`${this.navigationOwner}:${this.projectId}:${doc.id}`)?.state;
+    if(state&&['queued','running'].includes(state.status))return renderAIActivity({label:uiText('documentRecovery.processing'),compact:true});
+    const outcome=state?.status==='completed'?state.result:doc.processing_outcome;
+    if(outcome&&['rejected','needs_clarification'].includes(outcome.status))return `<p class="cloud-document-processing-review" role="status">${uiText('documentRecovery.review')}</p>`;
+    if(state&&['failed','unavailable'].includes(state.status)||outcome?.status==='error')return `<div class="cloud-document-processing-error" role="alert"><span>${uiText('documentRecovery.failed')}</span><button type="button" class="text-button" data-cloud-action="reprocess-document" data-cloud-id="${escape(doc.id)}">${uiIcon('refresh-cw')}${uiText('projectAssistant.retry')}</button></div>`;
+    return '';
+  }
+  async retryDocumentProcessing(id) {
+    const doc=this.documents.find(file=>file.id===id);if(!this.active||!doc||!this.sourceReady(doc))return;
+    const owner=this.navigationOwner,project=this.projectId,key=`${owner}:${project}:${id}`;
+    const existing=this.documentProcessingJobs.get(key)?.state;
+    const outcome=existing?.status==='completed'?existing.result:doc.processing_outcome;
+    if(outcome&&['rejected','needs_clarification'].includes(outcome.status))return;
+    if(!existing&&outcome?.status!=='error')return;
+    let job=this.documentProcessingJobs.get(key);
+    if(!job){job=new AIJobClient({cloud:this,scope:`document-recovery:${project}:${id}`,onChange:state=>{
+      if(state.status==='completed'&&(state.result?.kind!=='file_processing'||state.result?.file_id!==id||!['processed','rejected','needs_clarification'].includes(state.result?.status)))throw Object.assign(new Error('AI_JOB_INVALID'),{code:'AI_JOB_INVALID'});
+      if(this.active&&this.navigationOwner===owner&&this.projectId===project&&this.tab==='documentos')this.notify();
+    }});this.documentProcessingJobs.set(key,job);}
+    this.documentLibraryOpenGroups={project,groups:new Set([...this.document.querySelectorAll('.cloud-document-group[open]')].map(group=>group.dataset.documentKind+':'+(group.dataset.documentRequest||'')))};
+    await job.start(`/api/v1/projects/${project}/documents/${id}/process`,{output_language:uiLanguage()});
+  }
   renderDocuments(panel) {
-    const newest=(a,b)=>new Date(b.created_at)-new Date(a.created_at);
-    const requests=new Map(this.documents.filter(doc=>doc.kind==='email_request').map(doc=>[doc.id,{kind:'request',id:doc.id,title:doc.title,docs:[{...doc,documentRole:uiText("Pedido del cliente")}]}]));
-    const initial=[],other=[],unlinked=[],refundGroups=new Map();
+    const oldest=(a,b)=>new Date(a.created_at)-new Date(b.created_at)||String(a.id||'').localeCompare(String(b.id||''));
+    const newest=(a,b)=>oldest(b,a);
+    const requests=new Map(this.documents.filter(doc=>doc.kind==='email_request').map(doc=>[doc.id,{kind:'request',id:doc.id,title:doc.title,created_at:doc.created_at,docs:[{...doc,documentRole:uiText("Pedido del cliente"),documentOrder:0}]}]));
+    const initial=[],other=[],unlinked=[],pendingRefund=[],refundGroups=new Map();
     for(const doc of this.documents){
       if(doc.kind==='email_request')continue;
       if(doc.kind==='initial_agreement'){initial.push(doc);continue;}
       if(doc.refund_links?.length){
         for(const link of doc.refund_links){
-          if(!refundGroups.has(link.settlement_id))refundGroups.set(link.settlement_id,{kind:'refund',id:link.settlement_id,title:uiText('refundDoc.closureDocuments'),docs:[]});
-          refundGroups.get(link.settlement_id).docs.push({...doc,documentRole:uiText(`refundDoc.role.${link.role}`)+' · v'+link.version_no});
+          if(!refundGroups.has(link.settlement_id))refundGroups.set(link.settlement_id,{kind:'refund',id:link.settlement_id,title:uiText('refundDoc.closureDocuments'),created_at:link.case_created_at,docs:[]});
+          refundGroups.get(link.settlement_id).docs.push({...doc,documentRole:uiText(`refundDoc.role.${link.role}`)+(link.version_no?' · v'+link.version_no:''),documentVersion:link.version_no,documentOrder:{proposal:1,feedback:2,acceptance:3}[link.role]??4});
         }
         if(!doc.request_links?.length)continue;
       }
+      if(!doc.refund_links?.length&&['refund_request','refund_evidence'].includes(doc.upload_context?.purpose)){pendingRefund.push(doc);continue;}
       const links=doc.request_links || [];
       if(!links.length){(doc.kind==='addendum'?unlinked:other).push(doc);continue;}
       for(const link of links){
         if(!requests.has(link.request_document_id))requests.set(link.request_document_id,{kind:'request',id:link.request_document_id,title:uiText("Pedido vinculado · fuente no incluida en esta lista"),docs:[]});
         const group=requests.get(link.request_document_id);
-        const role={addendum:uiText("Adenda"),acceptance:uiText("Aceptación"),feedback:uiText("Respuesta del cliente")}[link.role];
-        const documentRole=`${role} · v${link.revision_no}`;
+        const role={addendum:uiText("Adenda"),acceptance:uiText("Aceptación"),feedback:uiText("Respuesta del cliente"),response:uiText('documentLibrary.returned'),reference:uiText('Referencia')}[link.role];
+        const documentRole=role+(link.revision_no?` · v${link.revision_no}`:'');
         const existing=group.docs.find(item=>item.id===doc.id);
         if(existing){if(!existing.documentRole.includes(documentRole))existing.documentRole+=` / ${documentRole}`;}
-        else group.docs.push({...doc,documentRole});
+        else group.docs.push({...doc,documentRole,documentVersion:link.revision_no,documentOrder:{addendum:1,feedback:2,response:3,acceptance:3,reference:4}[link.role]??4});
       }
     }
-    const sections=[...requests.values(),...refundGroups.values()].map(group=>({...group,docs:group.docs.sort(newest)}));
-    sections.sort((a,b)=>newest(a.docs[0],b.docs[0]));
-    if(initial.length)sections.push({kind:'initial_agreement',title:uiText("Acuerdo inicial"),docs:initial.sort(newest)});
+    const groups=[...requests.values(),...refundGroups.values()];
+    groups.sort((a,b)=>oldest({id:a.id,created_at:a.created_at??[...a.docs].sort(oldest)[0]?.created_at},{id:b.id,created_at:b.created_at??[...b.docs].sort(oldest)[0]?.created_at}));
+    const sections=initial.length?[{kind:'initial_agreement',title:uiText("Acuerdo inicial"),docs:initial.sort(newest)}]:[];
+    for(const group of groups){
+      group.docs.sort(newest);
+      sections.push(group);
+    }
+    if(pendingRefund.length)sections.push({kind:'refund_pending',title:uiText('documentLibrary.pendingRefund'),docs:pendingRefund.sort(newest)});
     if(other.length)sections.push({kind:'reference',title:uiText("Otros documentos del proyecto"),docs:other.sort(newest)});
     if(unlinked.length)sections.push({kind:'unlinked',title:uiText("Adendas sin pedido vinculado"),docs:unlinked.sort(newest)});
     const row=doc=>{
       const extraction=Array.isArray(doc.document_extractions)?doc.document_extractions[0]:doc.document_extractions;
-      return `<div class="cloud-document-row"><button type="button" class="document-button" data-cloud-action="text" data-cloud-id="${escape(doc.id)}" title="${uiText("Ver")} ${escape(doc.title)}"><span class="cloud-document-file-icon" aria-hidden="true">${uiIcon('file-text')}</span><span class="cloud-document-file"><strong>${escape(doc.title)}</strong><small>${doc.documentRole?escape(doc.documentRole)+' · ':''}${doc.mime_type==='application/pdf'?'PDF':'Word'} · ${escape(date(doc.created_at))}</small>${extraction?.status!=='ready'?`<span class="cloud-document-read-status" data-document-status>${extraction?.status==='error'?uiText("Lectura pendiente"):uiText("Pendiente de lectura")}</span>`:''}</span></button><div class="cloud-document-actions"><button class="cloud-icon-button" data-cloud-action="download" data-cloud-id="${escape(doc.id)}" aria-label="${uiText("Descargar original")} ${escape(doc.title)}" title="${uiText("Descargar original")}">${uiIcon('download')}</button>${extraction?.status!=='ready'?`<button class="cloud-icon-button" data-cloud-action="retry" data-cloud-id="${escape(doc.id)}" aria-label="${uiText("Reintentar lectura de")} ${escape(doc.title)}" title="${uiText("Reintentar lectura")}">${uiIcon('refresh-cw')}</button>`:''}</div></div>`;
+      return `<div class="cloud-document-row"><button type="button" class="document-button" data-cloud-action="text" data-cloud-id="${escape(doc.id)}" title="${uiText("Ver")} ${escape(doc.title)}"><span class="cloud-document-file-icon" aria-hidden="true">${uiIcon('file-text')}</span><span class="cloud-document-file"><strong>${escape(doc.title)}</strong><small>${doc.documentRole?escape(doc.documentRole)+' · ':''}${doc.mime_type==='application/pdf'?'PDF':'Word'} · ${escape(date(doc.created_at))}</small>${extraction?.status!=='ready'?`<span class="cloud-document-read-status" data-document-status>${extraction?.status==='error'?uiText("Lectura pendiente"):uiText("Pendiente de lectura")}</span>`:''}</span></button>${this.documentProcessingNotice(doc)}<div class="cloud-document-actions"><button class="cloud-icon-button" data-cloud-action="download" data-cloud-id="${escape(doc.id)}" aria-label="${uiText("Descargar original")} ${escape(doc.title)}" title="${uiText("Descargar original")}">${uiIcon('download')}</button>${extraction?.status!=='ready'?`<button class="cloud-icon-button" data-cloud-action="retry" data-cloud-id="${escape(doc.id)}" aria-label="${uiText("Reintentar lectura de")} ${escape(doc.title)}" title="${uiText("Reintentar lectura")}">${uiIcon('refresh-cw')}</button>`:''}</div></div>`;
     };
-    const content=sections.map(({kind,id,title,docs},index)=>`<details class="cloud-document-group" data-document-kind="${kind}" ${id?`data-document-request="${escape(id)}"`:''} ${index===0?'open':''}><summary><span class="cloud-document-chevron" aria-hidden="true">${uiIcon('chevron-right')}</span><span>${kind==='request'?'Pedido · ':''}${escape(title)}</span><span class="cloud-document-count">${docs.length} ${docs.length===1?uiText("archivo"):uiText("archivos")}</span></summary><div class="document-list">${docs.map(row).join('')}</div></details>`).join('');
-    panel.innerHTML=`<div class="knowledge-layout document-library"><div class="workspace-panel"><div class="library-header"><div><span class="eyebrow">${uiText("BASE DE CONOCIMIENTO")}</span><h3>${uiText("Documentos del proyecto")}</h3></div><button type="button" class="button secondary" data-cloud-action="upload" data-cloud-purpose="reference">${uiText("refund.addReference")}</button></div><div class="cloud-library-meta"><span>${this.documents.length} ${this.documents.length===1?uiText("archivo"):uiText("archivos")}</span><span>${uiText("Por pedido · actividad más reciente primero")}</span></div><div class="cloud-doc-groups">${content || ("<p class=\"cloud-section-note\">"+uiText("Los archivos que añadas al proyecto aparecerán aquí.")+"</p>")}</div></div></div>`;
+    const content=sections.map(({kind,id,title,docs},index)=>`<details class="cloud-document-group" data-document-kind="${kind}" ${id?`data-document-request="${escape(id)}"`:''} ${this.documentLibraryOpenGroups?.project===this.projectId?(this.documentLibraryOpenGroups.groups.has(kind+':'+(id||''))?'open':''):index===0?'open':''}><summary><span class="cloud-document-chevron" aria-hidden="true">${uiIcon('chevron-right')}</span><span>${kind==='request'?uiText('Pedido ·')+' ':''}${escape(title)}</span><span class="cloud-document-count">${docs.length} ${docs.length===1?uiText("archivo"):uiText("archivos")}</span></summary><div class="document-list">${docs.map(row).join('')}</div></details>`).join('');
+    panel.innerHTML=`<div class="knowledge-layout document-library"><div class="workspace-panel"><div class="library-header"><div><span class="eyebrow">${uiText("BASE DE CONOCIMIENTO")}</span><h3>${uiText("Documentos del proyecto")}</h3></div></div><div class="cloud-library-meta"><span>${this.documents.length} ${this.documents.length===1?uiText("archivo"):uiText("archivos")}</span><span>${uiText('documentLibrary.order')}</span></div><div class="cloud-doc-groups">${content || ("<p class=\"cloud-section-note\">"+uiText("Los archivos que añadas al proyecto aparecerán aquí.")+"</p>")}</div></div></div>`;
   }
 
   syncChrome() {

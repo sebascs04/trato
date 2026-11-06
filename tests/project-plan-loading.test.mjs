@@ -5,7 +5,7 @@ import {renderAIActivity} from '../ai-activity.mjs';
 function fixture(){
  let resolve,reject;
  const pending=new Promise((ok,fail)=>{resolve=ok;reject=fail;});
- const cloud={navigationOwner:'owner-a',session:{key:'test'},active:true,tab:'plan',projectId:'project-a',location:{hash:'#clientes'},clients:[],project:()=>({id:'project-a',client_id:'client-a',name:'Project A'}),reset(){},submit(){},click(){},document:{addEventListener(){}} ,request:()=>pending};
+ const cloud={navigationOwner:'owner-a',session:{key:'test'},active:true,tab:'plan',projectId:'project-a',location:{hash:'#clientes'},clients:[],initialSources:()=>[],sourceRows:()=>'',project:()=>({id:'project-a',client_id:'client-a',name:'Project A'}),reset(){},submit(){},click(){},document:{addEventListener(){}} ,request:()=>pending};
  installProjectPlanning(cloud);
  const panel={innerHTML:''};cloud.renderProjectPlan(panel);
  return {cloud,panel,resolve,reject};

@@ -86,7 +86,8 @@ class RefundPdfService:
             if sha256(content).hexdigest()!=artifact['sha256']:raise ApiError('REFUND_PDF_HASH_MISMATCH',409)
             return {'settlement':repo.settlement(settlement_id),'artifact':artifact}
         content=render_pdf(artifact);digest=sha256(content).hexdigest()
-        document=repo.reserve(data['settlement']['project_id'],f"Refund v{data['snapshot']['version_no']}",'addendum',f"refund-{artifact['id']}.pdf",'application/pdf',content,'refund-pdf-'+artifact['id'])['document']
+        document=repo.reserve(data['settlement']['project_id'],f"Refund v{data['snapshot']['version_no']}",'addendum',f"refund-{artifact['id']}.pdf",'application/pdf',content,'refund-pdf-'+artifact['id'],
+            context={'purpose':'refund_evidence','refund_case_id':settlement_id,'snapshot_id':snapshot_id})['document']
         repo.upload(document,content)
         artifact=self.backend().command(owner,'attach_pdf',{'settlement_id':settlement_id,'snapshot_id':snapshot_id,'document_id':document['id'],'sha256':digest})
         return {'settlement':repo.settlement(settlement_id),'artifact':artifact}

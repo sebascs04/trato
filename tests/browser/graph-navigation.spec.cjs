@@ -18,21 +18,21 @@ async function mount(page,{language='es',graph=data}={}){
   window.calls=[];const {openProjectGraph}=await import('/graph-live.mjs');
   window.cleanup=await openProjectGraph({projectId:'p',container:document.querySelector('#map'),request:async path=>{window.calls.push(path);return path.endsWith('/sync')?{status:'ready'}:data;}});
  },graph);
- await expect(page.locator('[data-live-node]')).toHaveCount(7);return errors;
+ await expect(page.locator('[data-live-node]')).toHaveCount(6);return errors;
 }
 test('map arranges hierarchical branches and labels selectable directed relationships',async({page})=>{
  const errors=await mount(page);
  await expect(page.locator('[data-live-node="projects:p"]')).toHaveAttribute('data-live-depth','0');
  await expect(page.locator('[data-live-node="documents:request"]')).toHaveAttribute('data-live-depth','1');
- await expect(page.locator('[data-live-node="change_proposals:proposal"]')).toHaveAttribute('data-live-depth','2');
- await expect(page.locator('[data-live-node="proposal_revisions:revision"]')).toHaveAttribute('data-live-depth','3');
- await expect(page.locator('[data-live-edge]')).toHaveCount(7);
- await expect(page.locator('[data-live-edge="e3"] text')).toHaveText('Responde al pedido');
+ await expect(page.locator('[data-live-node="change_proposals:proposal"]')).toHaveCount(0);
+ await expect(page.locator('[data-live-node="proposal_revisions:revision"]')).toHaveAttribute('data-live-depth','2');
+ await expect(page.locator('[data-live-edge]')).toHaveCount(5);
+ await expect(page.locator('[data-live-edge="version-request:e4"] text')).toHaveText('Tiene como propuesta');
  const before=await page.locator('.gd-scene').getAttribute('style');
  await page.getByRole('button',{name:'Ajustar',exact:true}).click();
  await page.locator('[data-live-edge="e0"]').focus();await page.keyboard.press('Enter');
  await expect(page.locator('.gd-inspector')).toBeVisible();
- await expect(page.locator('.gd-inspector')).toContainText('Contiene');
+ await expect(page.locator('.gd-inspector')).toContainText('Tiene como acuerdo inicial');
  await expect(page.locator('.gd-inspector')).toContainText('Origen');
  await expect(page.locator('.gd-inspector')).toContainText('Destino');
  await expect(page.locator('.gd-inspector')).toContainText('Acuerdo inicial');
@@ -87,15 +87,15 @@ test('modal map keeps navigation controls visible and preserves its close action
 test('only selected-node connections show verbs and the legend explains arrow directions',async({page})=>{
  const errors=await mount(page);
  await expect(page.locator('[data-live-edge="e0"] text')).toBeVisible();
- await expect(page.locator('[data-live-edge="e3"] text')).toBeHidden();
+ await expect(page.locator('[data-live-edge="version-request:e4"] text')).toBeHidden();
  await page.getByRole('button',{name:'Detalles',exact:true}).click();
- await page.locator('.gd-inspector [data-live-select="change_proposals:proposal"]').click();
+ await page.locator('[data-live-node="proposal_revisions:revision"]').evaluate(el=>el.click());
  await expect(page.locator('[data-live-edge="e0"] text')).toBeHidden();
- for(const id of ['e2','e3','e4'])await expect(page.locator(`[data-live-edge="${id}"] text`)).toBeVisible();
+ for(const id of ['version-request:e4','e5'])await expect(page.locator(`[data-live-edge="${id}"] text`)).toBeVisible();
  await expect(page.locator('.gd-connection-legend')).toContainText('Entra al nodo seleccionado');
  await expect(page.locator('.gd-connection-legend')).toContainText('Sale hacia otro nodo');
- await expect(page.locator('.gd-inspector [data-live-select="projects:p"] small')).toHaveText('← Incluye propuesta');
- await expect(page.locator('.gd-inspector [data-live-select="documents:request"] small')).toHaveText('→ Responde al pedido');
+ await expect(page.locator('.gd-inspector [data-live-select="proposal_acceptances:acceptance"] small')).toHaveText('← Acepta esta adenda');
+ await expect(page.locator('.gd-inspector [data-live-select="documents:request"] small')).toHaveText('← Tiene como propuesta');
  expect(errors).toEqual([]);
 });
 test('direction legend follows English UI without translating project content',async({page})=>{
@@ -104,7 +104,7 @@ test('direction legend follows English UI without translating project content',a
  await expect(page.getByLabel('Connection directions')).toContainText('Enters the selected node');
  await expect(page.getByLabel('Connection directions')).toContainText('Goes out to another node');
  await expect(page.locator('.gd-inspector')).toContainText('Sitio de la cafetería');
- await expect(page.locator('[data-live-edge="e2"] text')).toHaveText('Includes proposal');
+ await expect(page.locator('[data-live-edge="e0"] text')).toHaveText('Has as its initial agreement');
  expect(errors).toEqual([]);
 });
 test('business view hides technical nodes and preserves verified document evidence',async({page})=>{
@@ -134,16 +134,16 @@ test('business view hides technical nodes and preserves verified document eviden
  expect(errors).toEqual([]);
 });
 
-test('current adenda uses one connection and marks the version without duplicating the arrow',async({page})=>{
+test('current adenda stays a single business version without an internal current-version label',async({page})=>{
  const graph={...data,edges:[...data.edges,{edge_key:'current',source:'change_proposals:proposal',target:'proposal_revisions:revision',kind:'CURRENT_REVISION'}]};
  const errors=await mount(page,{graph});
- await expect(page.locator('[data-live-edge]')).toHaveCount(7);
- await expect(page.locator('[data-live-node="proposal_revisions:revision"]')).toContainText('Versión actual');
+ await expect(page.locator('[data-live-edge]')).toHaveCount(5);
+ await expect(page.locator('[data-live-node="proposal_revisions:revision"]')).toContainText('Aceptada');
  await page.getByRole('button',{name:'Detalles',exact:true}).click();
- await page.locator('.gd-inspector [data-live-select="change_proposals:proposal"]').click();
- await expect(page.locator('.gd-inspector [data-live-select="proposal_revisions:revision"]')).toHaveCount(1);
+ await page.locator('[data-live-node="proposal_revisions:revision"]').evaluate(el=>el.click());
+ await expect(page.locator('[data-live-node="proposal_revisions:revision"]')).toHaveCount(1);
  await expect(page.locator('.gd-inspector')).not.toContainText('Tiene como vigente');
- const marked=await page.evaluate(async graph=>{const {presentProjectGraph}=await import('/graph-live.mjs');return presentProjectGraph(graph).edges.find(e=>e.edge_key==='e4');},graph);
+ const marked=await page.evaluate(async graph=>{const {presentProjectGraph}=await import('/graph-live.mjs');return presentProjectGraph(graph).edges.find(e=>e.edge_key==='version-request:e4');},graph);
  expect(marked.current_revision_edge).toBe('current');expect(graph.edges).toHaveLength(8);expect(errors).toEqual([]);
 });
 test('automatic layout packs related branches without overlapping their cards',async({page})=>{
@@ -176,12 +176,12 @@ for(const language of ['es','en'])test(`readable default zoom and selected label
   return {minimumWidth:Math.min(...cards.map(c=>c.w)),labels:labels.length,
    overlaps:labels.some((label,i)=>cards.some(card=>hits(label,card))||labels.slice(i+1).some(other=>hits(label,other)))};
  });
- expect(result.minimumWidth).toBeGreaterThanOrEqual(200);expect(result.labels).toBe(3);expect(result.overlaps).toBe(false);
+ expect(result.minimumWidth).toBeGreaterThanOrEqual(200);expect(result.labels).toBe(2);expect(result.overlaps).toBe(false);
  await page.getByRole('button',{name:language==='es'?'Detalles':'Details',exact:true}).click();
- await page.locator('.gd-inspector [data-live-select="change_proposals:proposal"]').click();
+ await page.locator('[data-live-node="proposal_revisions:revision"]').evaluate(el=>el.click());
  await page.getByRole('button',{name:language==='es'?'Ampliar mapa':'Expand map',exact:true}).click();
  await expect(page.locator('[data-live-scale]')).toHaveText('100%');
- const card=await page.locator('[data-live-node="change_proposals:proposal"]').boundingBox(),panel=await page.locator('.gd-inspector').boundingBox();
+ const card=await page.locator('[data-live-node="proposal_revisions:revision"]').boundingBox(),panel=await page.locator('.gd-inspector').boundingBox();
  expect(card.x+card.width).toBeLessThan(panel.x);
 });
 
@@ -196,7 +196,7 @@ for(const language of ['es','en'])test(`initial agreement is centered and actual
   const points=[...route.matchAll(/[ML](-?[\d.]+) (-?[\d.]+)/g)].map(match=>[Number(match[1]),Number(match[2])]);
   for(let i=1;i<points.length;i++)expect(points[i][0]===points[i-1][0]||points[i][1]===points[i-1][1]).toBe(true);
  }
- await expect(page.locator('[data-live-edge]')).toHaveCount(data.edges.length);
+ await expect(page.locator('[data-live-edge]')).toHaveCount(5);
  // Presentation alignment must not invent an agreement→request relationship.
  await expect(page.locator('.gd-edge[aria-label*="Acuerdo inicial"][aria-label*="Catálogo nuevo"]')).toHaveCount(0);
  await page.getByRole('button',{name:language==='es'?'Ir al proyecto':'Go to project',exact:true}).click();
@@ -251,5 +251,5 @@ for(const language of ['es','en'])test(`relationship badges keep every arrow awa
   }
   return {badges:badges.length,hits};
  });
- expect(result.badges).toBe(4);expect(result.hits).toEqual([]);
+ expect(result.badges).toBe(3);expect(result.hits).toEqual([]);
 });

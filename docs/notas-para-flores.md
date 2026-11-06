@@ -1,5 +1,14 @@
 # Notas para ti, el responsable de cambios y devoluciones
 
+## 5 noviembre: mapa con documentos e hitos clave
+
+Decisión del responsable del proyecto en [Mapa de hitos clave](mapa-hitos-clave.md). Una tarjeta por versión de adenda, PDF en su detalle; aceptación y pago separados. Se pliega la propuesta intermedia y los documentos duplicados. Conectar rechazo/retiro cuando tu flujo exponga registros reales, sin deducirlos de errores o ausencia de pago. Cambio solo visual preparado localmente, sin modificar tu lógica financiera. La lectura visible ahora sigue Pedido → Tiene como propuesta → Adenda; si la adenda también usa ese pedido como fuente, se conserva en el detalle y se muestra una sola flecha. Proyecto → Acuerdo inicial tiene una etiqueta específica. Ver el mismo documento para evidencia y ejemplos.
+
+
+## 5 noviembre: contexto de archivos desde la reserva
+
+Ver [Auditoría de subidas y fix de vínculos](auditoria-subidas-documentos-20261105.md). Requiere las migraciones de document_upload_context antes de usar el API actualizado. Incluye el contexto de adendas/devoluciones antes de Storage y reintento manual de fallos técnicos; no cambia la aprobación ni ejecución de pagos/devoluciones. Lote local pendiente de publicación.
+
 Actualizado: 1 noviembre 2026. Lote preparado localmente; confirmar publicacion/merge antes de asumir que main ya lo contiene. No se cambiaron ni rotaron tus credenciales. No recrear el cluster o la coleccion Weaviate compartidos.
 
 ## Weaviate

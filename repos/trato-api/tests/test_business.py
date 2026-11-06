@@ -38,8 +38,9 @@ class Repo:
         if project_id != PROJECT:
             raise ApiError('PROJECT_NOT_FOUND', 404)
 
-    def reserve(self, *args):
+    def reserve(self, *args, **kwargs):
         self.calls.append('reserve')
+        self.context=kwargs.get('context')
         return {'document': {'id': DOCUMENT, 'original_filename': 'correo.pdf', 'mime_type': 'application/pdf'},
                 'extraction': {'status': 'queued'}}
 
@@ -70,6 +71,15 @@ class BusinessTests(unittest.TestCase):
         self.assertEqual(response.status_code, 202)
         self.assertTrue(response.json()['persisted'])
         self.assertEqual(repo.calls, ['authorize', 'reserve', 'upload', 'queue'])
+
+    def test_adjustment_upload_records_revision_context_before_original_or_worker(self):
+        repo=Repo()
+        with self.client(repo) as client:
+            response=client.post(f'/api/v1/projects/{PROJECT}/documents?filename=adjustments.pdf&title=Adjustments&kind=reference&purpose=addendum_adjustments&revision_id={DOCUMENT}',
+                content=b'%PDF-',headers={'Authorization':'Bearer user-a','Content-Type':'application/pdf','Idempotency-Key':'adjustments-1'})
+        self.assertEqual(response.status_code,202)
+        self.assertEqual(repo.calls,['authorize','reserve','upload','queue'])
+        self.assertEqual(repo.context,{'purpose':'addendum_adjustments','revision_id':DOCUMENT})
 
     def test_foreign_project_is_rejected_before_reservation_or_upload(self):
         repo = Repo()

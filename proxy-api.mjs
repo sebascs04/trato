@@ -20,7 +20,7 @@ export function proxyApiRequest(req, res, base = process.env.TRATO_API_URL || `h
   for (const name of ['authorization','content-type','content-length','idempotency-key','accept-language']) {
     if (req.headers[name]) headers[name] = req.headers[name];
   }
-  if(url.pathname==='/api/v1/webhooks/paypal'){
+  if(['/api/v1/webhooks/paypal','/api/v1/refunds/webhooks/paypal'].includes(url.pathname)){
     for(const name of ['paypal-auth-algo','paypal-cert-url','paypal-transmission-id','paypal-transmission-sig','paypal-transmission-time']){
       if(req.headers[name])headers[name]=req.headers[name];
     }

@@ -161,10 +161,10 @@ class FilePipeline:
                 return fingerprint([state['source_fingerprint'], manifest.purpose,
                                     manifest.output_language, *identity])
 
-            def validate_treatment(raw):
+            def validate_treatment(raw, cached=False):
                 treatment = Treatment.model_validate(raw)
                 if identity is not None and (treatment.model_identity, treatment.prompt_fingerprint) != identity:
-                    raise PipelineError('TREATMENT_IDENTITY_MISMATCH')
+                    raise PipelineError('TREATMENT_CACHE_INVALID' if cached else 'TREATMENT_IDENTITY_MISMATCH')
                 from .treatment import CATEGORIES
                 by_id = {segment['segment_id']: segment['text'] for segment in state['extraction']['segments']}
                 if treatment.coverage != {'status': 'all_segments_processed', 'segment_ids': list(by_id)}:
@@ -178,7 +178,7 @@ class FilePipeline:
 
             cached = self.backend.load_artifact(manifest.model_dump(), 'treatment', cache_key(identity)) if identity else None
             raw = cached if cached is not None else handler(manifest.model_copy(deep=True), deepcopy(state['extraction']))
-            treatment = validate_treatment(raw)
+            treatment = validate_treatment(raw, cached=cached is not None)
             key = cache_key((treatment.model_identity, treatment.prompt_fingerprint))
             value = treatment.model_dump()
             try:
@@ -190,7 +190,7 @@ class FilePipeline:
                 saved = self.backend.load_artifact(manifest.model_dump(), 'treatment', key)
                 if saved is None:
                     raise
-                treatment = validate_treatment(saved)
+                treatment = validate_treatment(saved, cached=True)
                 if cache_key((treatment.model_identity, treatment.prompt_fingerprint)) != key:
                     raise PipelineError('TREATMENT_IDENTITY_MISMATCH')
                 value = treatment.model_dump()

@@ -133,6 +133,7 @@ def build_business_router(settings, services, require_user, repository_factory=N
     @router.post('/projects/{project_id}/documents')
     async def upload(project_id: str, request: Request, filename: str, title: str,
                      kind: str = 'reference', purpose: str | None = None, revision_id: str | None = None,
+                     refund_case_id: str | None = None, snapshot_id: str | None = None, payment_id: str | None = None, request_id: str | None = None,
                      repo=Depends(repository)):
         project_id = uuid(project_id)
         key = request.headers.get('idempotency-key', '')
@@ -150,17 +151,18 @@ def build_business_router(settings, services, require_user, repository_factory=N
             raise ApiError('UNSUPPORTED_FORMAT', 415)
         # Authorize before accepting the body or storing an original.
         await run_in_threadpool(repo.project, project_id)
-        bindings={}
-        if purpose is not None:
-            if purpose!='addendum_adjustments' or kind!='reference' or revision_id is None:
-                raise ApiError('FILE_PURPOSE_CONTEXT_INVALID',422)
-            revisions=await run_in_threadpool(repo.rows,'proposal_revisions',{'select':'id','id':'eq.'+uuid(revision_id),'project_id':'eq.'+project_id})
-            if len(revisions)!=1:raise ApiError('FILE_PURPOSE_CONTEXT_INVALID',409)
-            bindings={'revision_id':revisions[0]['id']}
+        context={k:uuid(v) for k,v in {'revision_id':revision_id,'refund_case_id':refund_case_id,
+            'snapshot_id':snapshot_id,'payment_id':payment_id,'request_id':request_id}.items() if v is not None}
+        if purpose is not None:context['purpose']=purpose
+        if revision_id is not None and (purpose!='addendum_adjustments' or kind!='reference'):
+            raise ApiError('FILE_PURPOSE_CONTEXT_INVALID',422)
+        if purpose is not None and purpose not in ('addendum_adjustments','refund_request','refund_evidence','supporting_reference','delivery_evidence'):
+            raise ApiError('FILE_PURPOSE_CONTEXT_INVALID',422)
+        bindings={k:v for k,v in context.items() if k not in ('purpose','request_id')}
         data = await read_bytes(request, 10485760)
         if not data.startswith(expected_magic):
             raise ApiError('FORMAT_MISMATCH', 422)
-        reservation = await run_in_threadpool(repo.reserve, project_id, title, kind, filename, mime, data, key)
+        reservation = await run_in_threadpool(repo.reserve, project_id, title, kind, filename, mime, data, key, context=context)
         from .file_processing import remember_options
         await run_in_threadpool(remember_options,settings,repo,reservation['document'],request.headers.get('accept-language','es'),purpose,bindings)
         result = await run_in_threadpool(ingestion, repo, services, reservation, data)

@@ -178,20 +178,28 @@ export function installProjectAssistant(cloud){
    const entries=page.entries.map(entry=>({id:entry.id,position:entry.position,result:validateProjectAnswer(entry.result,state.project)}));
    if(entries.some(entry=>typeof entry.id!=='string'||!Number.isSafeInteger(entry.position)))throw Error('AI_JOB_INVALID');
    state.entries=before?[...entries,...state.entries.filter(entry=>!entries.some(older=>older.id===entry.id))]:entries;
-   state.nextBefore=page.next_before;state.loading=false;paint(state);
+   state.nextBefore=page.next_before;
    if(!before&&state.job.state.id&&['queued','running','unavailable'].includes(state.job.state.status))await state.job.check();
+   if(!current(state))return;
+   state.loading=false;
+   if(!before&&(state.entries.length||state.job.state.payload?.question)&&state.followPage!==false){state.chatScroll=null;state.followPage=true;state.revealPage=true;}
+   paint(state);
   }catch(error){if(current(state)){state.loading=false;state.historyError=error.code||'AI_JOB_INVALID';paint(state);}}
  }
  function stateForProject(){
   if(context&&context.project===cloud.projectId&&context.owner===cloud.navigationOwner)return context;
   context?.job.dispose();context?.processingJob?.dispose();
   const owner=cloud.navigationOwner,project=cloud.projectId;
-  const state={owner,project,key:`${cloud.session.key}:project-assistant:${owner}:${project}`,draft:'',agentOpen:false,ids:[],entries:[],loading:false,historyError:'',sourceFiles:[],readings:new Map(),selectedDocuments:null,sourceOpen:false,sourceLoading:true,sourceError:'',sourceNotice:'',preparing:'',processingId:'',processingJob:null,processingGeneration:null,processingSnapshots:new Map(),processingStarts:new Map()};
+  const state={owner,project,key:`${cloud.session.key}:project-assistant:${owner}:${project}`,draft:'',agentOpen:false,followPage:true,pageScroll:cloud.document.defaultView?.scrollY,ids:[],entries:[],loading:false,historyError:'',sourceFiles:[],readings:new Map(),selectedDocuments:null,sourceOpen:false,sourceLoading:true,sourceError:'',sourceNotice:'',preparing:'',processingId:'',processingJob:null,processingGeneration:null,processingSnapshots:new Map(),processingStarts:new Map()};
   const stored=cloud.storage.getItem(state.key);
   if(stored!==null){const record=JSON.parse(stored);if(record.version!==1||!Array.isArray(record.ids)||record.ids.some(id=>typeof id!=='string'||!/^[a-f0-9-]{36}$/.test(id)))throw Error('AI_JOB_INVALID');state.ids=record.ids;if(record.readings!==undefined){if(!Array.isArray(record.readings)||record.readings.some(reading=>typeof reading.fileId!=='string'||typeof reading.jobId!=='string'||reading.status!=='requested'||!['queued','processing'].includes(reading.jobStatus)))throw Error('AI_JOB_INVALID');for(const {fileId,...reading} of record.readings)state.readings.set(fileId,reading);}}
   context=state;
   state.job=new AIJobClient({cloud,scope:'project-assistant:'+project,onChange:job=>{
    if(!current(state))return;
+   if(job.status!==state.lastJobStatus){
+    state.lastJobStatus=job.status;
+    if(state.followPage&&(!state.chatScroll||state.chatScroll.follow))state.revealPage=true;
+   }
    if(job.status==='completed'){
     const result=validateProjectAnswer(job.result,project);
     const entry=state.entries.find(e=>e.id===job.id);
@@ -221,12 +229,31 @@ export function installProjectAssistant(cloud){
    const source=value.sources.find(s=>s.source_id===citation.source_id);
    return `<article class="project-assistant-source"><span>${text(source.source_kind==='summary'?'summarySource':'originalSource')}</span><button type="button" data-assistant-action="source" data-document-id="${esc(source.file_id)}">${icon('file-text')}${esc(source.title)}${icon('arrow-up-right')}</button><blockquote>${esc(citation.quote)}</blockquote>${source.locator?`<small>${text(source.locator.kind==='page'?'page':'paragraph')} ${esc(source.locator[source.locator.kind])}</small>`:''}</article>`;
   }).join('');
-  panel.innerHTML=`<section class="workspace-panel project-assistant" aria-label="${text('title')}"><header><div><span class="eyebrow">${text('eyebrow')}</span><h3>${text('title')}</h3><p>${text('intro')}</p></div><button type="button" class="button secondary" data-assistant-action="open-sources" aria-expanded="${state.sourceOpen}">${icon('file-text')}${text('projectDocuments')}</button></header><div class="project-assistant-log" role="log" aria-live="polite">${state.nextBefore?`<button type="button" class="text-button" data-assistant-action="older" ${state.loading?'disabled':''}>${text('olderMessages')}</button>`:''}${state.loading?`<p role="status">${text('loadingHistory')}</p>`:state.entries.map(entry=>`<article class="project-assistant-exchange"><p class="project-assistant-question"><strong>${text('you')}</strong>${esc(entry.result.question)}</p><div class="project-assistant-answer"><strong><img class="project-assistant-avatar" src="/assets/mascot/trato-guide.png" alt="" width="38" height="38">${text('answer')}</strong><p>${esc(entry.result.answer)}</p>${answerScopeMarkup(entry.result)}${entry.result.missing_information.length?`<ul>${entry.result.missing_information.map(info=>`<li>${esc(info)}</li>`).join('')}</ul>`:''}${entry.result.citations.length?`<details><summary>${text('sources')}</summary><div class="project-assistant-sources">${citations(entry.result)}</div></details>`:''}</div></article>`).join('')||`<div class="project-assistant-empty">${icon('messages-square')}<h4>${text('emptyTitle')}</h4><p>${text('emptyCopy')}</p></div>`}</div>${pending?renderAIActivity({label:text(job.status==='queued'?'queued':'thinking'),hint:text('waitHint')}):''}${failed?`<p class="cloud-error" role="alert">${messageError(job.error)}</p><button type="button" class="button secondary" data-assistant-action="retry">${text(job.uncertain?'retrySubmission':'retry')}</button>${['VECTOR_NO_SOURCES','VECTOR_SOURCE_NOT_READY','VECTOR_INDEX_INCOMPLETE','VECTOR_SUMMARY_INDEX_INCOMPLETE','FILE_SUMMARY_NOT_READY'].includes(job.error)?`<button type="button" class="text-button" data-assistant-action="open-sources">${text('scopeChoose')}</button>`:''}`:''}${state.historyError?`<p class="cloud-error" role="alert">${messageError(state.historyError)}</p><button type="button" class="text-button" data-assistant-action="reload-history">${text('retry')}</button>`:''}${state.selectedDocuments?documentScopeMarkup(state.sourceFiles,state.selectedDocuments,'data-assistant-action',pending||job.uncertain):''}${state.sourceOpen?sourcePanel(state):''}<form data-project-question><label class="field" for="project-assistant-question">${text('questionLabel')}</label><textarea class="context-box" id="project-assistant-question" name="question" rows="3" maxlength="4000" required ${pending||state.loading||state.historyError?'disabled':''} placeholder="${text('placeholder')}">${esc(state.draft)}</textarea><div class="project-assistant-compose"><small>${text('scopeNote')}</small><button type="submit" class="button" ${pending||state.loading||state.historyError?'disabled':''}>${text('ask')}${icon('send')}</button></div></form></section>`;
+  const submitted=typeof job.payload?.question==='string'&&!!job.payload.question.trim();
+  const unanswered=submitted&&!state.entries.some(entry=>entry.id===job.id);
+  const questionMarkup=question=>`<div class="project-assistant-user-message"><span class="project-assistant-user-avatar" aria-hidden="true">${esc(cloud.profile?.textContent?.trim()||'')||icon('user-round')}</span><p class="project-assistant-question"><strong>${text('you')}</strong>${esc(question)}</p></div>`;
+  const activity=pending?renderAIActivity({label:text(job.status==='queued'?'queued':'thinking'),hint:text('waitHint')}):'';
+  const failure=failed?`<div class="project-assistant-failure" role="alert"><button type="button" class="text-button project-assistant-retry" data-assistant-action="retry" title="${text('retry')}" aria-label="${text('messageRetry')}">${icon('refresh-cw')}${text('messageRetry')}</button></div>`:'';
+  panel.innerHTML=`<section class="workspace-panel project-assistant" aria-label="${text('title')}"><header><div><span class="eyebrow">${text('eyebrow')}</span><h3>${text('title')}</h3><p>${text('intro')}</p></div></header><div class="project-assistant-log" role="log" aria-live="polite">${state.nextBefore?`<button type="button" class="text-button" data-assistant-action="older" ${state.loading?'disabled':''}>${text('olderMessages')}</button>`:''}${state.loading?`<div class="project-assistant-loading">${renderAIActivity({label:text('loadingHistory'),compact:true})}</div>`:state.entries.map(entry=>`<article class="project-assistant-exchange">${questionMarkup(entry.result.question)}<div class="project-assistant-answer"><strong><img class="project-assistant-avatar" src="/assets/mascot/trato-guide.png" alt="" width="38" height="38">${text('answer')}</strong><p>${esc(entry.result.answer)}</p>${answerScopeMarkup(entry.result)}${entry.result.missing_information.length?`<ul>${entry.result.missing_information.map(info=>`<li>${esc(info)}</li>`).join('')}</ul>`:''}${entry.result.citations.length?`<details data-project-answer-sources><summary>${text('sources')}</summary><div class="project-assistant-sources">${citations(entry.result)}</div></details>`:''}</div></article>`).join('')||(!submitted?`<div class="project-assistant-empty">${icon('messages-square')}<h4>${text('emptyTitle')}</h4><p>${text('emptyCopy')}</p></div>`:'')}${state.loading?'':unanswered?`<article class="project-assistant-exchange" data-pending-question>${questionMarkup(job.payload.question)}${activity}${failure}</article>`:activity+failure}</div>${state.historyError?`<p class="cloud-error" role="alert">${messageError(state.historyError)}</p><button type="button" class="text-button" data-assistant-action="reload-history">${text('retry')}</button>`:''}<form data-project-question><label class="field" for="project-assistant-question">${text('questionLabel')}</label><textarea class="context-box" id="project-assistant-question" name="question" rows="3" maxlength="4000" required ${pending||state.loading||state.historyError?'disabled':''} placeholder="${text('placeholder')}">${esc(state.draft)}</textarea><div class="project-assistant-compose"><small>${text('scopeNote')}</small><button type="submit" class="button" ${pending||state.loading||state.historyError?'disabled':''}>${text('ask')}${icon('send')}</button></div></form></section>`;
   restoreChatScroll(panel.querySelector('.project-assistant-log'),state.chatScroll);
+  if(state.revealPage&&!state.loading){
+   state.revealPage=false;
+   queueMicrotask(()=>{
+    if(!visible(state)||!state.followPage)return;
+    const reveal=()=>{
+     if(!visible(state)||!state.followPage)return;
+     const form=cloud.document.querySelector?.('[data-project-question]');
+     form?.scrollIntoView?.({block:'end',behavior:'instant'});
+     state.pageScroll=cloud.document.defaultView?.scrollY;
+    };
+    const view=cloud.document.defaultView;
+    if(view?.requestAnimationFrame)view.requestAnimationFrame(reveal);else reveal();
+   });
+  }
  };
  async function ask(state,question){
-  state.chatScroll=null;state.draft=question;
-  await state.job.start('/api/v1/ai/project-questions',{project_id:state.project,question,output_language:uiLanguage(),...(state.selectedDocuments?{document_ids:state.selectedDocuments.map(file=>file.id)}:{})});
+  state.chatScroll=null;state.draft='';state.followPage=true;state.revealPage=true;state.pageScroll=cloud.document.defaultView?.scrollY;
+  await state.job.start('/api/v1/ai/project-questions',{project_id:state.project,question,output_language:uiLanguage()});
  }
  const submit=event=>{
   if(!event.target.matches('[data-project-question]')||!cloud.active||cloud.tab!=='asistente')return;
@@ -255,6 +282,7 @@ export function installProjectAssistant(cloud){
   }
   if(action==='all-documents'&&!state.job.state.uncertain&&!['queued','running'].includes(state.job.state.status)){state.selectedDocuments=null;paint(state);}
   if(action==='retry'&&state.job.state.payload){
+   state.chatScroll=null;state.followPage=true;state.revealPage=true;state.pageScroll=cloud.document.defaultView?.scrollY;
    const previous=state.job.state.payload,chosen=state.selectedDocuments?.map(file=>file.id);
    if(!state.job.state.uncertain&&state.job.state.status==='failed'&&JSON.stringify(previous.document_ids)!==JSON.stringify(chosen))ask(state,previous.question);
    else state.job.start(state.job.state.path,previous);
@@ -262,10 +290,32 @@ export function installProjectAssistant(cloud){
  };
  const original=cloud.syncChrome.bind(cloud);
  cloud.syncChrome=function(){original();if(context&&(!cloud.active||cloud.navigationOwner!==context.owner||cloud.projectId!==context.project)){documentsPanel?.close();context.job.dispose();context.processingJob?.dispose();context=null;}};
- const scroll=event=>{if(event.target.matches?.('.project-assistant-log')&&context&&visible(context))context.chatScroll=chatScrollPosition(event.target);};
+ const scroll=event=>{
+  if(!context||!visible(context))return;
+  if(event.target.matches?.('.project-assistant-log'))context.chatScroll=chatScrollPosition(event.target);
+  if(event.target===cloud.document){
+   const top=cloud.document.defaultView?.scrollY;
+   if(Number.isFinite(top)&&Number.isFinite(context.pageScroll)&&top<context.pageScroll-2)context.followPage=false;
+   context.pageScroll=top;
+  }
+ };
  cloud.document.addEventListener('scroll',scroll,true);
+ const toggle=event=>{
+  const details=event.target;
+  if(!context||!visible(context)||!details.open||!details.matches?.('[data-project-answer-sources]'))return;
+  const state=context;
+  queueMicrotask(()=>{
+   if(!visible(state)||!details.open||details.isConnected===false)return;
+   const chat=details.closest('.project-assistant-log');
+   if(chat){chat.scrollTop=chat.scrollHeight;state.chatScroll=chatScrollPosition(chat);}
+   const form=details.closest('.project-assistant')?.querySelector('[data-project-question]');
+   form?.scrollIntoView?.({block:'end',behavior:'instant'});
+   state.pageScroll=cloud.document.defaultView?.scrollY;
+  });
+ };
+ cloud.document.addEventListener('toggle',toggle,true);
  const keydown=event=>{if(context&&visible(context))submitChatOnEnter(event,'#project-assistant-question');if(event.key==='Escape'&&context?.sourceOpen&&!documentsPanel?.element.open){context.sourceOpen=false;paint(context);cloud.document.querySelector('[data-assistant-action=open-sources]')?.focus();}};
  cloud.document.addEventListener('keydown',keydown);
  cloud.document.addEventListener('submit',submit);cloud.document.addEventListener('input',input);cloud.document.addEventListener('click',click);
- return ()=>{documentsPanel?.dispose();cloud.document.removeEventListener('scroll',scroll,true);clearTimeout(sourceTimer);cloud.document.removeEventListener('keydown',keydown);context?.job.dispose();context?.processingJob?.dispose();cloud.document.removeEventListener('submit',submit);cloud.document.removeEventListener('input',input);cloud.document.removeEventListener('click',click);};
+ return ()=>{documentsPanel?.dispose();cloud.document.removeEventListener('toggle',toggle,true);cloud.document.removeEventListener('scroll',scroll,true);clearTimeout(sourceTimer);cloud.document.removeEventListener('keydown',keydown);context?.job.dispose();context?.processingJob?.dispose();cloud.document.removeEventListener('submit',submit);cloud.document.removeEventListener('input',input);cloud.document.removeEventListener('click',click);};
 }

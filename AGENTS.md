@@ -128,6 +128,7 @@ Preferencia del responsable del proyecto, 31/10/2026:
 - Elegir Nuevo proyecto o Proyecto en marcha abre un borrador; no crea registros remotos.
 - Crear el proyecto unicamente al confirmar la configuracion final. Los originales seleccionados permanecen locales hasta ese momento y cancelar antes no sube archivos ni deja proyectos incompletos.
 - Mantener una clave idempotente para el comando final. Si falla una subida posterior a crear el proyecto, conservar su ID y reintentar solo archivos pendientes, sin crear duplicados ni declarar exito parcial como completo.
+- Excepcion aprobada por el responsable del proyecto, 6 de noviembre de 2026: para que el planificador lea los documentos de partida, sus PDF se envian a `/api/v1/documents/extract` solo para extraer texto (`persisted:false`). No se guardan en Storage ni como documento o proyecto; el original se sube al confirmar. Si la extraccion falla se muestra el error y no se genera el plan sin el documento.
 
 ## Prioridad de integracion IA (1 noviembre 2026)
 

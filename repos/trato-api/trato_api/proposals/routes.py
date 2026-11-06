@@ -104,7 +104,8 @@ def build_proposal_router(settings,require_user,repository_factory=None,workflow
         return reply(repo.get_proposal(uuid(proposal_id),summary=True) if summary else repo.get_proposal(uuid(proposal_id)))
     @router.get('/proposals/{proposal_id}/revisions/{revision_id}')
     def get_revision(proposal_id:str,revision_id:str,repo=Depends(repository)):
-        return reply(repo.get_revision(uuid(proposal_id),uuid(revision_id)))
+        # sandbox lets the owner open the client's PayPal checkout to test it; Live never shows that shortcut.
+        return reply({**repo.get_revision(uuid(proposal_id),uuid(revision_id)),'paypal_sandbox':os.getenv('PAYPAL_ENVIRONMENT')=='sandbox'})
     if workflow is not None:
         mount_change_reply(router,repository,require_user,workflow)
 

@@ -90,9 +90,10 @@ test('reply panel shows reply text and PDF preview without rendering the quoted 
  cloud.proposalDetails={proposal:{id:'proposal-a',current_revision_id:'revision-a'},revision:{id:'revision-a',revision_no:1,additional_minor:25000,deadline:'2026-11-27'},payments:[],artifacts:[],reviews:[],acceptances:[],deliveries:[{kind:'adenda',status:'accepted_by_gmail'}]};
  cloud.gmailReplies=[{id:'reply-a',revision_id:'revision-a',received_at:'2026-10-31T00:00:00Z',from_email:'client@example.com',reply_text:'Please change to USD 140. <script>',body_text:'Please change to USD 140.\n> ORIGINAL QUOTED USD 250',attachment_metadata:[{filename:'offer.pdf',mime_type:'application/pdf',size_bytes:100,supported:true}]}];
  let replyPanel='';
- const panel={innerHTML:'',querySelector(){return {insertAdjacentHTML(position,html){replyPanel=html;}};}};
+ const panel={innerHTML:'',querySelector(){return {insertAdjacentHTML(position,html){replyPanel+=html;}};}};
  cloud.renderChangeManagement(panel);
  assert.match(replyPanel,/USD 140/);
+ assert.match(replyPanel,/cloud-reply-decision/);
  assert.doesNotMatch(replyPanel,/ORIGINAL QUOTED/);
  assert.doesNotMatch(replyPanel,/<script>/);
  assert.match(replyPanel,/&lt;script&gt;/);

@@ -1,5 +1,7 @@
 # Trato
 
+> **Judges / jurado:** start with **[JUDGES.md](JUDGES.md)** (English) — demo, test account and a 15-minute walkthrough.
+
 Un espacio para freelancers que conecta acuerdos, solicitudes de cambio, evidencias y pagos con PayPal.
 
 Esta publicación reúne el frontend y los servicios necesarios para compartir y ejecutar el proyecto. Cada servicio conserva su carpeta y responsabilidad; no se publican credenciales, documentos del usuario, bases locales ni entornos virtuales.

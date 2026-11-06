@@ -1,13 +1,14 @@
 """Read-only project questions using the shared structured tool dispatcher."""
 from copy import deepcopy
 from hashlib import sha256
-import json,re
+import json,logging,re
 from typing import Literal
 from pydantic import BaseModel,ConfigDict,Field,ValidationError
 from langgraph.graph import StateGraph,START,END
 from langsmith import tracing_context
 from .source_tools import ToolError,run_tool_agent
 from .assistant_memory import BackendCheckpointer,compact_memory
+LOGGER=logging.getLogger(__name__)
 
 ALLOWED_TOOLS=('search_document_summaries','read_document_summary','search_document_text')
 MEMORY_TOOLS=ALLOWED_TOOLS+('search_conversation_history',)
@@ -100,10 +101,16 @@ class ProjectTools:
    self.sources[row['source_id']]=deepcopy(row)
   self.used.append(tool);return result
 
+def _invalid(reason,fields=()):
+ # Diagnostics name the failing rule and field paths only; never the model's content.
+ LOGGER.warning(json.dumps({'event':'project_assistant_invalid_response','reason':reason,'fields':list(fields)[:12]}))
+ return ToolError('AI_INVALID_RESPONSE')
+
 def validate_answer(value,runtime):
  try:parsed=(ConversationAnswer if getattr(runtime,'memory_enabled',False) else Answer).model_validate(value)
- except ValidationError:raise ToolError('AI_INVALID_RESPONSE') from None
- if not parsed.answer.strip() or any(not s.strip() or len(s)>500 for s in parsed.missing_information):raise ToolError('AI_INVALID_RESPONSE')
+ except ValidationError as error:raise _invalid('schema',['.'.join(str(p) for p in e['loc'])+':'+e['type'] for e in error.errors()]) from None
+ if not parsed.answer.strip():raise _invalid('empty_answer')
+ if any(not s.strip() or len(s)>500 for s in parsed.missing_information):raise _invalid('missing_information_item')
  if parsed.status=='answered' and getattr(parsed,'answer_basis','documents')=='documents' and not parsed.citations:raise ToolError('AI_INVALID_CITATION')
  if getattr(runtime,'case_context',None) and parsed.status=='answered' and not any(runtime.sources.get(c.source_id,{}).get('source_kind')=='original' for c in parsed.citations):raise ToolError('AI_INVALID_CITATION')
  for citation in parsed.citations:

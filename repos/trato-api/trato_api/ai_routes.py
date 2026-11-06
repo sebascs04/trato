@@ -23,12 +23,18 @@ class ReputationInput(BaseModel):
     model_config=ConfigDict(extra='forbid')
     profile_id:UUID
     output_language:Literal['es','en']
+class PlanSourceInput(BaseModel):
+    # Text extracted without persistence by /api/v1/documents/extract; the original is uploaded only on confirmation.
+    model_config=ConfigDict(extra='forbid')
+    filename:str=Field(min_length=1,max_length=255)
+    text:str=Field(min_length=1,max_length=60000)
 class ProjectPlanInput(BaseModel):
     model_config=ConfigDict(extra='forbid')
     client_id:UUID
     draft_id:UUID
     output_language:Literal['es','en']
     brief:str=Field(min_length=1,max_length=4000)
+    sources:list[PlanSourceInput]=Field(default_factory=list,max_length=5)
     budget:Decimal=Field(gt=0,le=100000000,max_digits=11,decimal_places=2)
     target_date:date
     @field_validator('target_date')
@@ -84,14 +90,15 @@ def plan_context(repo,item):
     profile=repo.rpc('community_reputation',{'p_action':'lookup','p_data':{'public_email':email}}).get('client') if email else None
     return {'client_id':client_id,'draft_id':str(item.draft_id),'brief':item.brief,'budget':str(item.budget),
             'target_date':item.target_date.isoformat(),'today':project_today().isoformat(),
+            'sources':[source.model_dump() for source in item.sources],
             'reviews':reputation_context(repo,profile['id']) if profile else []}
 
 def build_ai_router(settings,require_user,repository_factory=None,jobs=None,preferences=None,usage_writer=None):
     router=APIRouter(prefix='/api/v1/ai');jobs=jobs if jobs is not None else AIJobs()
     preferences=preferences if preferences is not None else ModelPreferences()
     def repository(request):return (repository_factory or Repository)(settings,request.headers.get('authorization',''))
-    async def parse(request,cls):
-        try:return cls.model_validate_json(await read_bytes(request,100000))
+    async def parse(request,cls,maximum=100000):
+        try:return cls.model_validate_json(await read_bytes(request,maximum))
         except (ValidationError,ValueError):raise ApiError('AI_INVALID_INPUT',422) from None
     async def enqueue(request,owner,data):
         data['model_id']=await run_in_threadpool(preferences.for_request,request,owner)
@@ -104,7 +111,7 @@ def build_ai_router(settings,require_user,repository_factory=None,jobs=None,pref
         return await enqueue(request,owner,{'workflow':'reputation','profile_id':str(item.profile_id),'output_language':item.output_language,'reviews':reviews})
     @router.post('/project-plans')
     async def project_plan(request:Request,owner=Depends(require_user)):
-        item=await parse(request,ProjectPlanInput)
+        item=await parse(request,ProjectPlanInput,400000)
         data=await run_in_threadpool(plan_context,repository(request),item)
         return await enqueue(request,owner,{'workflow':'project_plan','output_language':item.output_language,**data})
     @router.post('/project-plans/review')
@@ -119,6 +126,7 @@ def build_ai_router(settings,require_user,repository_factory=None,jobs=None,pref
         repo=repository(request)
         if not await run_in_threadpool(repo.rows,'clients',{'select':'id','id':'eq.'+context['client_id'],'owner_id':'eq.'+owner,'deleted_at':'is.null'}):raise ApiError('CLIENT_NOT_FOUND',404)
         data={k:context[k] for k in ('client_id','draft_id','brief','budget','target_date','reviews')}
+        data['sources']=context.get('sources',[])
         return await enqueue(request,owner,{'workflow':'project_plan','mode':'review','source_plan_job_id':str(item.plan_job_id),'output_language':item.output_language,'today':project_today().isoformat(),**data,'original_stages':original['result']['stages'],'confirmed_stages':stages})
     @router.post('/projects')
     async def create_project(request:Request,owner=Depends(require_user)):

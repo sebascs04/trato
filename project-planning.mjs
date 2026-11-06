@@ -128,9 +128,26 @@ export function installProjectPlanning(cloud){
   }});
   await planReview.start('/api/v1/ai/project-plans/review',{plan_job_id:d.plan_job_id,stages:confirmedStages(d),output_language:uiLanguage()});
  }
+ // Local PDFs are only read to extract text (the API does not persist them); originals upload when the project is confirmed.
+ async function planSources(){
+  const pending=wizard;if(!pending?.files?.length)return [];
+  pending.sourceText??=new Map();const sources=[];
+  for(const {file,key} of pending.files.slice(0,5)){
+   if(!pending.sourceText.has(key)){
+    const result=await cloud.request('/api/v1/documents/extract?filename='+encodeURIComponent(file.name),{method:'POST',headers:{'Content-Type':'application/pdf'},body:file});
+    const text=String(result?.text||'').trim();if(!text)throw Error(t('pdfError'));
+    pending.sourceText.set(key,text.slice(0,60000));
+   }
+   sources.push({filename:file.name.slice(0,255),text:pending.sourceText.get(key)});
+  }
+  return sources;
+ }
  async function generatePlan(){
   const d=draft();connectPlanAI();d.error='';
-  const payload={client_id:project().client_id,draft_id:project().id,brief:d.brief,budget:d.budget,target_date:d.date,output_language:uiLanguage()};
+  let sources;
+  try{sources=await planSources();}
+  catch(error){d.error=error?.message||t('aiFailure');render();return;}
+  const payload={client_id:project().client_id,draft_id:project().id,brief:d.brief,budget:d.budget,target_date:d.date,sources,output_language:uiLanguage()};
   await planAI.start('/api/v1/ai/project-plans',payload);
  }
  function savedPlanOverview(){

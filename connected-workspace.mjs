@@ -18,7 +18,7 @@ export class ConnectedWorkspace {
     this.document=doc; this.location=location; this.fetch=fetchFn; this.storage=storage;this.authReturn=authReturn;this.authReturnError=false;
     this.documentProcessingJobs=new Map();this.active=false; this.state='loading'; this.clients=[]; this.projects=[]; this.documents=[]; this.events=[]; this.projectActivity=[];
     this.clientId=''; this.projectId=''; this.tab='acuerdo'; this.comparison=null; this.requestId=''; this.epoch=0; this.busy=false; this.loading=false; this.directoryLoading=false; this.message='';
-    this.historyView='history';this.projectMapGeneration=0;this.resourceOpen={files:false,history:false};this.historyGeneration=0;this.historyLoaded=false;this.historyPending=null;
+    this.historyView='history';this.projectMapGeneration=0;this.resourceOpen={files:false,history:false};this.historyGeneration=0;this.historyLoaded=false;this.historyPending=null;this.projectHistoryGroups=[];this.historyGroupData=new Map();this.historyGroupPending=new Map();
     this.projectsLoaded=false;this.projectsLoading=false;this.projectClientsLoaded=new Set();this.projectsPending=new Map();
     this.base=location.origin;
   }
@@ -81,7 +81,7 @@ export class ConnectedWorkspace {
     this.navigationOwner='';this.restoringNavigation=false;
     this.stopIngestionPolling();
     this.releaseProjectMap();
-    this.historyGeneration++;this.historyLoaded=false;this.historyPending=null;this.resourceOpen={files:false,history:false};this.projectsLoaded=false;this.projectsLoading=false;this.projectClientsLoaded=new Set();this.projectsPending=new Map();
+    this.historyGeneration++;this.historyLoaded=false;this.historyPending=null;this.projectHistoryGroups=[];this.historyGroupData=new Map();this.historyGroupPending=new Map();this.resourceOpen={files:false,history:false};this.projectsLoaded=false;this.projectsLoading=false;this.projectClientsLoaded=new Set();this.projectsPending=new Map();
     for(const job of this.documentProcessingJobs.values())job.dispose();this.documentProcessingJobs.clear();
     this.epoch++; this.active=false; this.state='anonymous'; this.clients=[]; this.projects=[]; this.documents=[]; this.events=[]; this.projectActivity=[];
     this.clientId=''; this.projectId=''; this.tab='acuerdo'; this.comparison=null; this.requestId=''; this.uploadCommand=null; this.message=''; this.loading=false; this.directoryLoading=false;
@@ -164,7 +164,7 @@ export class ConnectedWorkspace {
   async loadProject() {
     this.stopIngestionPolling();
     this.releaseProjectMap();
-    this.historyGeneration++;this.historyLoaded=false;this.historyPending=null;this.projectActivity=[];
+    this.historyGeneration++;this.historyLoaded=false;this.historyPending=null;this.projectHistoryGroups=[];this.historyGroupData=new Map();this.historyGroupPending=new Map();this.projectActivity=[];
     this.resourceOpen={files:false,history:false};
     const id=this.projectId, epoch=this.epoch;
     if(!id) {this.documents=[]; this.events=[]; this.projectActivity=[]; this.notify(); return;}
@@ -183,14 +183,17 @@ export class ConnectedWorkspace {
     if(this.historyPending)return this.historyPending;
     const id=this.projectId,epoch=this.epoch,generation=this.historyGeneration;
     // A background refresh keeps the current history visible instead of flashing a loading state.
-    if(this.historyProject===id&&this.projectActivity.length)this.renderHistory(panel);
-    else panel.innerHTML=("<p class=\"cloud-notice\" role=\"status\">"+uiText("Cargando historial…")+"</p>");
+    if(this.historyProject===id&&this.projectHistoryGroups.length)this.renderHistory(panel);
+    else panel.innerHTML=("<p class=\"cloud-notice\" role=\"status\">"+uiText("history.loadingGroups")+"</p>");
     const current=()=>this.active&&id===this.projectId&&epoch===this.epoch&&generation===this.historyGeneration;
     this.historyPending=(async()=>{
       try{
-        const activity=await this.request(`/api/v1/projects/${id}/activity`);
+        const groups=await this.request(`/api/v1/projects/${id}/activity/groups`);
         if(!current())return;
-        this.projectActivity=activity;this.historyProject=id;this.historyLoaded=true;
+        if(!Array.isArray(groups)||groups.some(g=>!['project','change','refund'].includes(g.group_kind)||typeof g.group_id!=='string'||!Number.isInteger(g.event_count)||g.event_count<1||!Number.isFinite(Date.parse(g.last_at))))throw Error(uiText('history.groupError'));
+        this.projectHistoryGroups=groups;this.historyProject=id;this.historyLoaded=true;
+        for(const [key,cached] of this.historyGroupData){if(!groups.some(g=>g.group_kind+':'+g.group_id===key&&cached.signature===g.last_at+':'+g.event_count))this.historyGroupData.delete(key);}
+        this.projectActivity=[...this.historyGroupData.values()].flatMap(g=>g.events);
         const target=this.$('[data-cloud-history]');if(target)this.renderHistory(target);
       }catch(error){
         if(current()){const target=this.$('[data-cloud-history]');if(target)target.innerHTML=`<p class="cloud-error" role="alert">${escape(error.message)}</p><p class="cloud-notice">${uiText("Vuelve a abrir Historial para reintentar.")}</p>`;}
@@ -243,7 +246,7 @@ export class ConnectedWorkspace {
   }
   show(title,html) {
     this.releasePreview();
-    this.modal.classList.remove('cloud-history-dialog','cloud-profile-dialog','cloud-auth-dialog','cloud-document-preview','cloud-mail-dialog','cloud-project-setup','cloud-delete-dialog','cloud-project-create-dialog');
+    this.modal.classList.remove('cloud-history-dialog','cloud-profile-dialog','cloud-auth-dialog','cloud-document-preview','cloud-mail-dialog','cloud-project-setup','cloud-delete-dialog','cloud-project-create-dialog','cloud-change-steps-dialog');
     if(this.modal.open) this.modal.close();
     this.modal.innerHTML=`<div class="upload-modal-header"><div><span class="eyebrow">${uiText("TU ESPACIO EN TRATO")}</span><h2 id="cloud-dialog-title">${escape(title)}</h2></div><button type="button" class="close" data-cloud-close aria-label="${uiText("Cerrar")}" title="${uiText("Cerrar")}">${uiIcon('x')}</button></div>${html}<p class="cloud-error" data-cloud-error role="alert"></p>`;
     this.modal.showModal();
@@ -325,6 +328,11 @@ export class ConnectedWorkspace {
     if(action==='reprocess-document'){this.retryDocumentProcessing(id);return;}
     if(action==='graph-preview'){this.historyView='map';this.tab='historial';this.notify();}
     if(action==='history-event'){this.openHistoryEvent(id);return;}
+    if(action==='history-group-retry'){
+      const panel=this.$('[data-cloud-history]'),details=target.closest('details.cloud-history-request');
+      const group=panel?.historyGroups?.get(details?.dataset.activityGroupKind+':'+details?.dataset.activityGroupId);
+      if(group)void this.fillHistoryGroup(panel,details,group);return;
+    }
     if(action==='history-document'){
       const historyEvent=target.dataset.cloudEventId,project=this.projectId,epoch=this.epoch;
       this.run(async()=>{await this.previewDocument(id);if(project===this.projectId&&epoch===this.epoch&&this.modal.open&&this.modal.classList.contains('cloud-document-preview'))this.modal.querySelector('.cloud-preview-toolbar')?.insertAdjacentHTML('afterbegin',`<button type="button" class="text-button" data-cloud-action="history-event" data-cloud-id="${escape(historyEvent)}">${uiIcon('arrow-left')}${uiText('history.backToEvent')}</button>`);});return;
@@ -586,34 +594,65 @@ export class ConnectedWorkspace {
       default:throw Error('Unsupported project activity: '+event.kind);
     }
   }
-  renderHistory(panel) {
+  async loadHistoryGroup(group) {
+    const key=group.group_kind+':'+group.group_id,signature=group.last_at+':'+group.event_count;
+    const cached=this.historyGroupData.get(key);if(cached?.signature===signature)return cached.events;
+    if(this.historyGroupPending.has(key))return this.historyGroupPending.get(key);
+    const project=this.projectId,epoch=this.epoch,generation=this.historyGeneration;
+    const current=()=>this.active&&this.projectId===project&&this.epoch===epoch&&this.historyGeneration===generation;
+    const pending=(async()=>{
+      const events=await this.request(`/api/v1/projects/${project}/activity/groups/${group.group_kind}/${encodeURIComponent(group.group_id)}`);
+      if(!Array.isArray(events)||events.some(e=>e.group_kind!==group.group_kind||e.group_id!==group.group_id||typeof e.id!=='string'))throw Error(uiText('history.groupError'));
+      if(current()){
+        this.historyGroupData.set(key,{signature,events});
+        this.projectActivity=[...this.historyGroupData.values()].flatMap(g=>g.events);
+      }
+      return events;
+    })();
+    this.historyGroupPending.set(key,pending);
+    try{return await pending;}finally{if(current()&&this.historyGroupPending.get(key)===pending)this.historyGroupPending.delete(key);}
+  }
+  async fillHistoryGroup(panel,details,group) {
+    const body=details.querySelector('.cloud-history-days'),project=this.projectId,epoch=this.epoch,generation=this.historyGeneration;
+    if(!body)return;
+    const current=()=>this.active&&this.projectId===project&&this.epoch===epoch&&this.historyGeneration===generation&&details.isConnected!==false&&details.open;
+    body.innerHTML=`<p role="status" class="cloud-notice">${uiText('history.loadingGroup')}</p>`;
+    try{
+      const events=await this.loadHistoryGroup(group);
+      if(current()){body.innerHTML=this.renderHistoryGroup({events});body.dataset.historyRendered='true';}
+    }catch(error){if(current())body.innerHTML=`<p class="cloud-error" role="alert">${uiText('history.groupError')}</p><button type="button" class="text-button" data-cloud-action="history-group-retry">${uiText('history.retryGroup')}</button>`;}
+  }
+  renderHistoryGroup(group) {
     const icons={project_created:'folder-open',initial_source_added:'file-text',plan_confirmed:'layout-dashboard',delivery_evidence_added:'file-check',stage_paid:'credit-card',plan_completed:'circle-check',request_registered:'file-text',adenda_sent:'send',acceptance_recorded:'file-text',payment_requested:'mail',payment_completed:'credit-card',request_closed:'x',refund_requested:'undo-2',refund_proposal_sent:'send',refund_feedback_reviewed:'file-text',refund_acceptance_recorded:'file-text',refund_financial_authorized:'credit-card',refund_completed:'credit-card',refund_closed:'check'};
-    const activity=[...this.projectActivity].sort((a,b)=>new Date(b.created_at)-new Date(a.created_at));
-    const groups=new Map();
-    for(const event of activity){
-      const kind=event.group_kind??'change',id=event.group_id??event.request_document_id??event.id;
-      const key=kind+':'+id;
-      if(!groups.has(key))groups.set(key,{kind,id,title:event.group_title??event.request_title??uiText('history.externalRefund'),events:[]});
-      groups.get(key).events.push(event);
-    }
     const dayFormat=new Intl.DateTimeFormat(uiLocale(),{dateStyle:'long',timeZone:'America/Lima'});
     const clockFormat=new Intl.DateTimeFormat(uiLocale(),{timeStyle:'short',timeZone:'America/Lima'});
     const valid=value=>value&&Number.isFinite(Date.parse(value));
-    // Keep the groups the user opened or closed across re-renders of the same project.
-    if(this.historyOpenProject!==this.projectId){this.historyOpenProject=this.projectId;this.historyOpen=null;}
-    const opened=this.historyOpen;
-    const content=[...groups.values()].map((group,index)=>{
-      const days=new Map();
-      for(const event of group.events){
-        const day=valid(event.created_at)?dayFormat.format(new Date(event.created_at)):uiText("Fecha no registrada");
-        if(!days.has(day))days.set(day,[]);days.get(day).push(event);
-      }
-      return `<details class="cloud-history-request" data-activity-group-kind="${escape(group.kind)}" data-activity-group-id="${escape(group.id)}" ${(opened?opened.has(group.kind+':'+group.id):index===0)?'open':''}><summary><span class="cloud-history-chevron" aria-hidden="true">${uiIcon('chevron-right')}</span><span class="cloud-history-request-title">${escape(group.title)}<small>${uiText(group.kind==='refund'?'history.refundGroup':group.kind==='project'?'history.projectGroup':'history.changeGroup')} · ${group.events.length} ${group.events.length===1?uiText("movimiento"):uiText("movimientos")}</small></span><time datetime="${escape(group.events[0].created_at)}">${escape(date(group.events[0].created_at))}</time></summary><div class="cloud-history-days">${[...days].map(([day,events])=>`<section class="cloud-history-day"><h4>${escape(day)}</h4><ol class="cloud-project-timeline">${events.map(event=>`<li class="cloud-project-event" data-activity-kind="${escape(event.kind)}"><button type="button" class="cloud-history-event-button" data-cloud-action="history-event" data-cloud-id="${escape(event.id)}"><span class="cloud-project-event-icon" aria-hidden="true">${uiIcon(icons[event.kind])}</span><strong>${escape(this.activityLabel(event))}</strong><time datetime="${escape(event.created_at)}">${valid(event.created_at)?escape(clockFormat.format(new Date(event.created_at))):''}</time></button></li>`).join('')}</ol></section>`).join('')}</div></details>`;
+    const days=new Map();
+    for(const event of group.events){
+      const day=valid(event.created_at)?dayFormat.format(new Date(event.created_at)):uiText("Fecha no registrada");
+      if(!days.has(day))days.set(day,[]);days.get(day).push(event);
+    }
+    return `${[...days].map(([day,events])=>`<section class="cloud-history-day"><h4>${escape(day)}</h4><ol class="cloud-project-timeline">${events.map(event=>`<li class="cloud-project-event" data-activity-kind="${escape(event.kind)}"><button type="button" class="cloud-history-event-button" data-cloud-action="history-event" data-cloud-id="${escape(event.id)}"><span class="cloud-project-event-icon" aria-hidden="true">${uiIcon(icons[event.kind])}</span><strong>${escape(this.activityLabel(event))}</strong><time datetime="${escape(event.created_at)}">${valid(event.created_at)?escape(clockFormat.format(new Date(event.created_at))):''}</time></button></li>`).join('')}</ol></section>`).join('')}`;
+  }
+  renderHistory(panel) {
+    const groups=new Map((this.projectHistoryGroups||[]).map(group=>[group.group_kind+':'+group.group_id,{...group,kind:group.group_kind,id:group.group_id,title:group.group_title??uiText('history.externalRefund')} ]));
+    if(this.historyOpenProject!==this.projectId){this.historyOpenProject=this.projectId;this.historyOpen=new Set();}
+    const opened=this.historyOpen||new Set();
+    const content=[...groups.values()].map(group=>{
+      const open=opened.has(group.kind+':'+group.id),cached=this.historyGroupData?.get(group.kind+':'+group.id);
+      return `<details class="cloud-history-request" data-activity-group-kind="${escape(group.kind)}" data-activity-group-id="${escape(group.id)}" ${open?'open':''}><summary><span class="cloud-history-chevron" aria-hidden="true">${uiIcon('chevron-right')}</span><span class="cloud-history-request-title">${escape(group.title)}<small>${uiText(group.kind==='refund'?'history.refundGroup':group.kind==='project'?'history.projectGroup':'history.changeGroup')} · ${group.event_count} ${group.event_count===1?uiText("movimiento"):uiText("movimientos")}</small></span><time datetime="${escape(group.last_at)}">${escape(date(group.last_at))}</time></summary><div class="cloud-history-days" ${open&&cached?'data-history-rendered="true"':''}>${open&&cached?this.renderHistoryGroup(cached):''}</div></details>`;
     }).join('');
+    panel.historyGroups=groups;
     panel.innerHTML=`<div class="cloud-project-activity">${content?`<div class="cloud-history-groups">${content}</div>`:("<p class=\"cloud-notice\">"+uiText('history.empty')+"</p>")}</div>`;
     if(panel.dataset&&!panel.dataset.historyToggle){
       panel.dataset.historyToggle='1';
-      panel.addEventListener('toggle',()=>{this.historyOpen=new Set([...panel.querySelectorAll('details.cloud-history-request[open]')].map(item=>item.dataset.activityGroupKind+':'+item.dataset.activityGroupId));},true);
+      panel.addEventListener('toggle',event=>{
+        const details=event.target;if(!details.matches?.('details.cloud-history-request'))return;
+        const key=details.dataset.activityGroupKind+':'+details.dataset.activityGroupId;
+        const body=details.querySelector('.cloud-history-days'),group=panel.historyGroups.get(key);
+        if(details.open&&group&&body&&!body.dataset.historyRendered)void this.fillHistoryGroup(panel,details,group);
+        this.historyOpen=new Set([...panel.querySelectorAll('details.cloud-history-request[open]')].map(item=>item.dataset.activityGroupKind+':'+item.dataset.activityGroupId));
+      },true);
     }
   }
 
@@ -645,12 +684,14 @@ export class ConnectedWorkspace {
     return '';
   }
   async retryDocumentProcessing(id) {
-    const doc=this.documents.find(file=>file.id===id);if(!this.active||!doc||!this.sourceReady(doc))return;
+    const doc=this.documents.find(file=>file.id===id);
+    if(!this.active||!doc||!this.sourceReady(doc)){console.info('[Trato] reprocess skipped',{active:!!this.active,found:!!doc,sourceReady:!!doc&&this.sourceReady(doc)});return;}
     const owner=this.navigationOwner,project=this.projectId,key=`${owner}:${project}:${id}`;
     const existing=this.documentProcessingJobs.get(key)?.state;
     const outcome=existing?.status==='completed'?existing.result:doc.processing_outcome;
-    if(outcome&&['rejected','needs_clarification'].includes(outcome.status))return;
-    if(!existing&&outcome?.status!=='error')return;
+    if(outcome&&['rejected','needs_clarification'].includes(outcome.status)||!existing&&outcome?.status!=='error'){
+      console.info('[Trato] reprocess skipped',{outcome:outcome?.status??null,existing:existing?.status??null});return;
+    }
     let job=this.documentProcessingJobs.get(key);
     if(!job){job=new AIJobClient({cloud:this,scope:`document-recovery:${project}:${id}`,onChange:state=>{
       if(state.status==='completed'&&(state.result?.kind!=='file_processing'||state.result?.file_id!==id||!['processed','rejected','needs_clarification'].includes(state.result?.status)))throw Object.assign(new Error('AI_JOB_INVALID'),{code:'AI_JOB_INVALID'});

@@ -86,6 +86,11 @@ def build_initial_payment_router(settings,require_user,*,workflow=None,repositor
         if not 1<=position<=8:raise ApiError('PLAN_STAGE_INVALID',422)
         from .evidence import StageEvidence
         return reply(StageEvidence(settings).pending(repository,owner,uuid(project_id),position))
+    @router.get('/projects/{project_id}/stages/{position}/evidence')
+    def stage_evidence(project_id:str,position:int,repository=Depends(repo),owner=Depends(require_user)):
+        if not 1<=position<=8:raise ApiError('PLAN_STAGE_INVALID',422)
+        from .evidence import StageEvidence
+        return reply(StageEvidence(settings).inventory(repository,owner,uuid(project_id),position))
     @router.delete('/projects/{project_id}/stages/{position}/evidence/{file_id}')
     def remove_evidence(project_id:str,position:int,file_id:str,repository=Depends(repo),owner=Depends(require_user)):
         if not 1<=position<=8:raise ApiError('PLAN_STAGE_INVALID',422)

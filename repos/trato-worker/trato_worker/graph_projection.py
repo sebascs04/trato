@@ -6,13 +6,19 @@ from neo4j import GraphDatabase
 from neo4j.exceptions import Neo4jError, DriverError
 from .connected import JobError
 
-KINDS={'Project','Document','Extraction','Proposal','Revision','Review','Acceptance','Delivery','Payment'}
+GRAPH_PROJECTION_VERSION=2
+
+KINDS={'Project','Document','Extraction','Proposal','Revision','Review','Acceptance','Delivery','Payment','Plan','PlanStage'}
 RELATIONS={'HAS_DOCUMENT','HAS_EXTRACTION','HAS_PROPOSAL','RESPONDS_TO','HAS_REVISION','CURRENT_REVISION',
  'SUPPORTED_BY','HAS_PDF','HAS_REVIEW','REVIEWED_PDF','ACCEPTS_REVISION','EVIDENCED_BY','FOR_REVISION',
- 'FOLLOWS_ACCEPTANCE','REPLACES_DRAFT','REQUESTED_CHANGES_FROM','BASED_ON_ACCEPTANCE','CURRENT_ACCEPTANCE'}
+ 'FOLLOWS_ACCEPTANCE','REPLACES_DRAFT','REQUESTED_CHANGES_FROM','BASED_ON_ACCEPTANCE','CURRENT_ACCEPTANCE','HAS_PLAN','HAS_STAGE','DELIVERY_EVIDENCE','STAGE_PAYMENT','PAYMENT_EVIDENCE'}
 
 
 def build_projection(snapshot,context):
+    if type(snapshot.get('projection_version')) is not int or snapshot['projection_version']!=GRAPH_PROJECTION_VERSION:
+        raise JobError('GRAPH_PROJECTION_VERSION_UNSUPPORTED')
+    if any(not isinstance(snapshot.get(field),list) for field in ('project_start_plans','project_start_stages','plan_stage_evidence','plan_stage_payments')):
+        raise JobError('INVALID_GRAPH_SOURCE')
     if snapshot['owner_id']!=context['owner_id'] or snapshot['project_id']!=context['project_id'] or snapshot['project']['client_id']!=context['client_id']:
         raise JobError('GRAPH_CONTEXT_CONFLICT')
     project=snapshot['project'];nodes={};edges=[]
@@ -20,8 +26,11 @@ def build_projection(snapshot,context):
     def key(table,id):
         if str(UUID(id))!=id:raise JobError('INVALID_GRAPH_SOURCE')
         return table+':'+id
-    def node(table,id,kind,props):
+    def node(table,id,kind,props,position=None):
         k=key(table,id)
+        if position is not None:
+            if type(position) is not int or not 1<=position<=8:raise JobError('INVALID_GRAPH_SOURCE')
+            k+=':'+str(position)
         nodes[k]={**{('business_kind' if k=='kind' else k):v for k,v in props.items() if v is not None},
                   'entity_key':k,'kind':kind,'owner_id':owner,'project_id':project_id,'source_id':id}
         return k
@@ -29,7 +38,7 @@ def build_projection(snapshot,context):
         if source not in nodes or target not in nodes:raise JobError('GRAPH_SOURCE_MISSING')
         e={'edge_key':source+'|'+kind+'|'+target,'source':source,'target':target,'kind':kind,**props}
         if not any(x['edge_key']==e['edge_key'] for x in edges):edges.append(e)
-    pk=node('projects',project_id,'Project',{'title':project['name'],'status':project['status'],'client_name':project['client_name']})
+    pk=node('projects',project_id,'Project',{'title':project['name'],'status':project['status'],'client_name':project['client_name'],'projection_version':GRAPH_PROJECTION_VERSION})
     for row in snapshot['documents']:
         dk=node('documents',row['id'],'Document',row);edge(pk,'HAS_DOCUMENT',dk)
     for row in snapshot['document_extractions']:
@@ -62,6 +71,39 @@ def build_projection(snapshot,context):
             if table=='proposal_payments':edge(k,'FOLLOWS_ACCEPTANCE',key('proposal_acceptances',row['acceptance_id']))
     for row in snapshot['project_agreement_heads']:
         if row['acceptance_id']:edge(pk,'CURRENT_ACCEPTANCE',key('proposal_acceptances',row['acceptance_id']))
+    plans=snapshot.get('project_start_plans',[])
+    stages=snapshot.get('project_start_stages',[])
+    evidence=snapshot.get('plan_stage_evidence',[])
+    payments=snapshot.get('plan_stage_payments',[])
+    if len(plans)>1 or (not plans and (stages or evidence or payments)):raise JobError('GRAPH_SOURCE_MISSING')
+    if plans:
+        plan=plans[0]
+        if plan['project_id']!=project_id:raise JobError('GRAPH_CONTEXT_CONFLICT')
+        pl=node('project_start_plans',project_id,'Plan',{**plan,'status':'finished' if plan.get('completed_at') else 'planned'})
+        edge(pk,'HAS_PLAN',pl)
+        stage_keys={}
+        for row in stages:
+            position=row['position']
+            if position in stage_keys:raise JobError('INVALID_GRAPH_SOURCE')
+            stage_keys[position]=node('project_start_stages',project_id,'PlanStage',row,position=position)
+            edge(pl,'HAS_STAGE',stage_keys[position])
+        evidence_keys=set()
+        for row in evidence:
+            stage=stage_keys.get(row['stage_position'])
+            if not stage:raise JobError('GRAPH_SOURCE_MISSING')
+            dk=key('documents',row['document_id']);edge(stage,'DELIVERY_EVIDENCE',dk)
+            evidence_keys.add((row['stage_position'],row['document_id']))
+        paid_positions=set()
+        for row in payments:
+            position=row['stage_position']
+            if row.get('status')!='completed' or position not in stage_keys or (position,row['evidence_document_id']) not in evidence_keys or not row.get('paid_at') or not row.get('received_payment_id'):
+                raise JobError('GRAPH_SOURCE_MISSING')
+            if position in paid_positions:raise JobError('INVALID_GRAPH_SOURCE')
+            paid_positions.add(position)
+            payment=node('project_initial_checkouts',row['id'],'Payment',{**row,'status':'completed','business_kind':'plan_stage','created_at':row['paid_at']})
+            edge(stage_keys[position],'STAGE_PAYMENT',payment)
+            edge(payment,'PAYMENT_EVIDENCE',key('documents',row['evidence_document_id']))
+        if plan.get('completed_at') and set(stage_keys)!=paid_positions:raise JobError('GRAPH_SOURCE_MISSING')
     return {'nodes':list(nodes.values()),'edges':edges}
 
 

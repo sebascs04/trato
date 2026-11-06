@@ -70,3 +70,28 @@ test('project agreement and request labels describe their real scope and the rea
  assert.match(html,/Web de Café Aurora/);assert.match(html,/Tiene como acuerdo inicial/);assert.match(html,/Tiene como propuesta/);assert.match(html,/Añadir una tienda en línea/);assert.doesNotMatch(html,/Prueba de adenda y pago|<pedido del cliente>/);
  assert.match(html,/Adenda v1/);assert.match(html,/origen → relación → destino/);
 });
+
+test('the confirmed plan is a distinct workflow with deliverables, evidence and verified payments',()=>{
+ const data=fixture();data.nodes.push(node('plan','Plan',{status:'planned'}),node('stage1','PlanStage',{position:1,title:'Design',amount:100}),node('stage2','PlanStage',{position:2,title:'Delivery',amount:100}),node('proof1','Document',{business_kind:'delivery'}),node('proof2','Document',{business_kind:'delivery'}),node('stage-paid','Payment',{business_kind:'plan_stage',amount_minor:10000,currency:'USD',status:'completed'}));
+ data.edges.push(edge('root','HAS_PLAN','plan'),edge('plan','HAS_STAGE','stage1'),edge('plan','HAS_STAGE','stage2'),edge('stage1','DELIVERY_EVIDENCE','proof1'),edge('stage2','DELIVERY_EVIDENCE','proof2'),edge('stage1','STAGE_PAYMENT','stage-paid'),edge('stage-paid','PAYMENT_EVIDENCE','proof1'));
+ const graph=presentProjectGraph(data),byId=new Map(graph.nodes.map(n=>[n.entity_key,n]));
+ for(const id of ['stage1','stage2','proof1','proof2','stage-paid'])assert.equal(byId.get(id).case_id,'plan');
+ assert.notEqual(byId.get('v2').case_id,'plan');
+ assert.ok(graph.edges.some(e=>e.kind==='PAYMENT_EVIDENCE'&&e.target==='proof1'));
+ assert.equal(graph.nodes.filter(n=>n.kind==='Payment').length,2);
+ const layout=layoutProjectGraph(graph.nodes,graph.edges),routes=routeProjectGraph(graph.edges,layout.positions),ports=new Map();
+ for(const e of graph.edges){
+  const route=routes.get(e.edge_key);assert.ok(route);
+  for(const [id,p] of [[e.source,route.start],[e.target,route.end]]){
+   if(!ports.has(id))ports.set(id,new Set());const key=JSON.stringify(p);
+   assert.ok(!ports.get(id).has(key),'incoming/outgoing relationships must never share a port');ports.get(id).add(key);
+  }
+ }
+ for(const stage of ['stage1','stage2'])assert.equal(layout.positions.get(stage).depth,layout.positions.get('plan').depth+1);
+ assert.equal(layout.positions.get('stage-paid').depth,layout.positions.get('stage1').depth+1);
+});
+test('finishing the plan is its own milestone and does not relabel the project as closed',()=>{
+ const graph=presentProjectGraph({nodes:[node('root','Project',{status:'active'}),node('plan','Plan',{status:'finished'})],edges:[edge('root','HAS_PLAN','plan')]});
+ assert.equal(graph.nodes.find(n=>n.kind==='Project').status,'active');
+ assert.equal(graph.nodes.find(n=>n.kind==='Plan').status,'finished');
+});

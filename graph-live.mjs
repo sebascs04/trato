@@ -1,18 +1,18 @@
 import {uiText,uiLocale} from './i18n.mjs';
 import {icon} from './icons.mjs';
 const esc=value=>String(value??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-const kinds={Project:[uiText("Proyecto"),'layout-dashboard'],Document:[uiText("Documento"),'file-text'],Extraction:[uiText("Texto extraído"),'file-text'],Proposal:[uiText("Propuesta"),'git-compare-arrows'],Revision:[uiText("Adenda"),'pencil'],Review:[uiText("Revisión"),'eye'],Acceptance:[uiText("Aceptación"),'file-text'],Delivery:[uiText("Envío"),'send'],Payment:[uiText("Pago"),'credit-card']};
-const links={HAS_INITIAL_AGREEMENT:uiText('graph.hasInitialAgreement'),RECEIVES_REQUEST:uiText('graph.receivesRequest'),HAS_CHANGE_PROPOSAL:uiText('graph.hasChangeProposal'),HAS_DOCUMENT:uiText("Contiene"),HAS_EXTRACTION:uiText("Tiene texto extraído"),HAS_PROPOSAL:uiText("Incluye propuesta"),RESPONDS_TO:uiText("Responde al pedido"),HAS_REVISION:uiText("Tiene adenda"),CURRENT_REVISION:uiText("Tiene como vigente"),SUPPORTED_BY:uiText("Usa como fuente"),HAS_PDF:uiText("Tiene PDF"),HAS_REVIEW:uiText("Tiene revisión"),REVIEWED_PDF:uiText("Revisa"),ACCEPTS_REVISION:uiText("Acepta esta adenda"),EVIDENCED_BY:uiText("Se respalda en"),FOR_REVISION:uiText("Corresponde a"),FOLLOWS_ACCEPTANCE:uiText("Sigue a"),REPLACES_DRAFT:uiText("Reemplaza"),REQUESTED_CHANGES_FROM:uiText("Recoge ajustes de"),BASED_ON_ACCEPTANCE:uiText("Se basa en"),CURRENT_ACCEPTANCE:uiText("Tiene acuerdo vigente")};
-const states={draft:uiText("Borrador"),active:uiText("Activo"),closed:uiText("Cerrado"),queued:uiText("Por leer"),ready:uiText("Disponible"),error:uiText("Error"),accepted:uiText("Aceptado"),ready_for_review:uiText("Por revisar"),completed:uiText("Pagado"),created:uiText("Pendiente"),sending:uiText("Enviando"),accepted_by_gmail:uiText("Envío registrado"),failed:uiText("Falló"),delivery_uncertain:uiText("Envío por verificar")};
+const kinds={Plan:[uiText('graph.initialPlan'),'layout-dashboard'],PlanStage:[uiText('graph.planStage'),'file-text'],Project:[uiText("Proyecto"),'layout-dashboard'],Document:[uiText("Documento"),'file-text'],Extraction:[uiText("Texto extraído"),'file-text'],Proposal:[uiText("Propuesta"),'git-compare-arrows'],Revision:[uiText("Adenda"),'pencil'],Review:[uiText("Revisión"),'eye'],Acceptance:[uiText("Aceptación"),'file-text'],Delivery:[uiText("Envío"),'send'],Payment:[uiText("Pago"),'credit-card']};
+const links={HAS_PLAN:uiText('graph.hasPlan'),HAS_STAGE:uiText('graph.hasStage'),DELIVERY_EVIDENCE:uiText('graph.deliveryEvidence'),STAGE_PAYMENT:uiText('graph.stagePayment'),PAYMENT_EVIDENCE:uiText('graph.paymentEvidence'),HAS_INITIAL_AGREEMENT:uiText('graph.hasInitialAgreement'),RECEIVES_REQUEST:uiText('graph.receivesRequest'),HAS_CHANGE_PROPOSAL:uiText('graph.hasChangeProposal'),HAS_DOCUMENT:uiText("Contiene"),HAS_EXTRACTION:uiText("Tiene texto extraído"),HAS_PROPOSAL:uiText("Incluye propuesta"),RESPONDS_TO:uiText("Responde al pedido"),HAS_REVISION:uiText("Tiene adenda"),CURRENT_REVISION:uiText("Tiene como vigente"),SUPPORTED_BY:uiText("Usa como fuente"),HAS_PDF:uiText("Tiene PDF"),HAS_REVIEW:uiText("Tiene revisión"),REVIEWED_PDF:uiText("Revisa"),ACCEPTS_REVISION:uiText("Acepta esta adenda"),EVIDENCED_BY:uiText("Se respalda en"),FOR_REVISION:uiText("Corresponde a"),FOLLOWS_ACCEPTANCE:uiText("Sigue a"),REPLACES_DRAFT:uiText("Reemplaza"),REQUESTED_CHANGES_FROM:uiText("Recoge ajustes de"),BASED_ON_ACCEPTANCE:uiText("Se basa en"),CURRENT_ACCEPTANCE:uiText("Tiene acuerdo vigente")};
+const states={planned:uiText('graph.planActive'),finished:uiText('graph.planCompleted'),draft:uiText("Borrador"),active:uiText("Activo"),closed:uiText("Cerrado"),queued:uiText("Por leer"),ready:uiText("Disponible"),error:uiText("Error"),accepted:uiText("Aceptado"),ready_for_review:uiText("Por revisar"),completed:uiText("Pagado"),created:uiText("Pendiente"),sending:uiText("Enviando"),accepted_by_gmail:uiText("Envío registrado"),failed:uiText("Falló"),delivery_uncertain:uiText("Envío por verificar")};
 const formatDate=value=>value?new Intl.DateTimeFormat(uiLocale(),{dateStyle:'medium',timeStyle:'short',timeZone:'America/Lima'}).format(new Date(value)):'';
-const title=n=>n.title||(n.kind==='Revision'?`${uiText("Adenda v")}${n.revision_no}`:n.kind==='Document'?n.title:n.kind==='Payment'?new Intl.NumberFormat(uiLocale(),{style:'currency',currency:n.currency}).format(n.amount_minor/100):kinds[n.kind]?.[0]||uiText("Registro"));
+const title=n=>n.title||(n.kind==='Plan'?uiText('graph.initialPlan'):null)||(n.kind==='Revision'?`${uiText("Adenda v")}${n.revision_no}`:n.kind==='Document'?n.title:n.kind==='Payment'?new Intl.NumberFormat(uiLocale(),{style:'currency',currency:n.currency}).format(n.amount_minor/100):kinds[n.kind]?.[0]||uiText("Registro"));
 // User-facing graph: keep business records, fold verified extraction paths into documents.
 // The persisted Neo4j projection and its audit metadata are never rewritten here.
 export function presentProjectGraph(data){
  const records=new Map(data.nodes.map(node=>[node.entity_key,node]));
  const replaced=new Set(data.edges.filter(e=>e.kind==='REPLACES_DRAFT').map(e=>e.target));
  const referenced=new Set(data.edges.filter(e=>['ACCEPTS_REVISION','FOR_REVISION'].includes(e.kind)).map(e=>e.target));
- const businessKinds=new Set(['Project','Document','Proposal','Revision','Acceptance','Payment']);
+ const businessKinds=new Set(['Project','Document','Proposal','Revision','Acceptance','Payment','Plan','PlanStage']);
  const nodes=data.nodes.filter(n=>businessKinds.has(n.kind)&&(!replaced.has(n.entity_key)||referenced.has(n.entity_key)));
  const visible=new Set(nodes.map(n=>n.entity_key)),edges=[];
  const currentEdges=data.edges.filter(e=>e.kind==='CURRENT_REVISION'&&visible.has(e.source)&&visible.has(e.target));
@@ -104,21 +104,22 @@ export function renderProjectGraphReading(){
 
 export function projectGraphMilestone(node){
  const milestones={created:uiText('graph.version.created'),sent:uiText('graph.version.sent'),accepted:uiText('graph.version.accepted'),rejected:uiText('graph.version.rejected')};
+ if(node.kind==='PlanStage')return uiText('graph.stageNumber',{number:node.position})+' · '+new Intl.NumberFormat(uiLocale(),{style:'currency',currency:'USD'}).format(Number(node.amount));
  return node.kind==='Revision'?milestones[node.milestone||'created']:(states[node.status]||'');
 }
 
 // Colors identify a request's story, never its payment or acceptance status.
 export function assignProjectGraphCases(graph){
- const requests=graph.nodes.filter(n=>n.kind==='Document'&&n.business_kind==='email_request').sort((a,b)=>(a.created_at||'').localeCompare(b.created_at||'')||a.entity_key.localeCompare(b.entity_key));
+ const requests=graph.nodes.filter(n=>(n.kind==='Document'&&n.business_kind==='email_request'||n.kind==='Plan')).sort((a,b)=>(a.created_at||'').localeCompare(b.created_at||'')||a.entity_key.localeCompare(b.entity_key));
  const palette=[['#7350b5','#f2edf9'],['#1476a8','#eaf5fc'],['#b15c13','#fff3e8'],['#14806e','#e8f7f3'],['#bd3c6c','#fceef4'],['#5168b5','#eef1fc'],['#7a771a','#f6f5e7'],['#a4472b','#fcf0eb']];
- const cases=requests.map((n,index)=>{const [color,soft]=palette[index]||[`hsl(${(index*137.508)%360} 55% 37%)`,`hsl(${(index*137.508)%360} 60% 96%)`];return {id:n.entity_key,index,title:n.title||uiText('graph.unnamedRequest',{number:index+1}),color,soft};});
- const memberships=new Map(graph.nodes.map(n=>[n.entity_key,new Set(n.kind==='Document'&&n.business_kind==='email_request'?[n.entity_key]:[])]));
+ const cases=requests.map((n,index)=>{const [color,soft]=palette[index]||[`hsl(${(index*137.508)%360} 55% 37%)`,`hsl(${(index*137.508)%360} 60% 96%)`];return {id:n.entity_key,index,title:n.kind==='Plan'?uiText('graph.initialPlan'):n.title||uiText('graph.unnamedRequest',{number:index+1}),color,soft};});
+ const memberships=new Map(graph.nodes.map(n=>[n.entity_key,new Set(n.kind==='Plan'||n.kind==='Document'&&n.business_kind==='email_request'?[n.entity_key]:[])]));
  for(let pass=0;pass<graph.nodes.length;pass++){
   let changed=false;
   for(const e of graph.edges){
    let from,to;
    if(['RESPONDS_TO','ACCEPTS_REVISION','FOR_REVISION','FOLLOWS_ACCEPTANCE'].includes(e.kind)){from=e.target;to=e.source;}
-   else if(['HAS_CHANGE_PROPOSAL','HAS_REVISION','HAS_PDF','EVIDENCED_BY'].includes(e.kind)){from=e.source;to=e.target;}
+   else if(['HAS_CHANGE_PROPOSAL','HAS_REVISION','HAS_PDF','EVIDENCED_BY','HAS_STAGE','DELIVERY_EVIDENCE','STAGE_PAYMENT','PAYMENT_EVIDENCE'].includes(e.kind)){from=e.source;to=e.target;}
    else continue;
    for(const id of memberships.get(from)||[])if(memberships.has(to)&&!memberships.get(to).has(id)){memberships.get(to).add(id);changed=true;}
   }
@@ -141,14 +142,16 @@ export function layoutProjectGraph(nodes,edges){
  for(const n of nodes){
   const id=n.entity_key;if(id===root)continue;
   let parent;
-  if(n.kind==='Document')parent=incoming(id,'HAS_PDF')||incoming(id,'EVIDENCED_BY')||root;
+  if(n.kind==='Document')parent=incoming(id,'DELIVERY_EVIDENCE')||incoming(id,'HAS_PDF')||incoming(id,'EVIDENCED_BY')||root;
+  else if(n.kind==='Plan')parent=incoming(id,'HAS_PLAN')||root;
+  else if(n.kind==='PlanStage')parent=incoming(id,'HAS_STAGE')||root;
   else if(n.kind==='Proposal')parent=outgoing(id,'RESPONDS_TO')||root;
   else if(n.kind==='Revision')parent=incoming(id,'HAS_CHANGE_PROPOSAL')||outgoing(id,'RESPONDS_TO')||incoming(id,'HAS_REVISION')||root;
   else if(n.kind==='Extraction')parent=incoming(id,'HAS_EXTRACTION')||root;
   else if(n.kind==='Review')parent=incoming(id,'HAS_REVIEW')||root;
   else if(n.kind==='Acceptance')parent=outgoing(id,'ACCEPTS_REVISION')||root;
   else if(n.kind==='Delivery')parent=outgoing(id,'FOR_REVISION')||root;
-  else if(n.kind==='Payment')parent=outgoing(id,'FOLLOWS_ACCEPTANCE')||outgoing(id,'FOR_REVISION')||root;
+  else if(n.kind==='Payment')parent=incoming(id,'STAGE_PAYMENT')||outgoing(id,'FOLLOWS_ACCEPTANCE')||outgoing(id,'FOR_REVISION')||root;
   parents.set(id,byId.has(parent)?parent:root);
  }
  // Cycles in source relationships must never make layout traversal loop.
@@ -247,20 +250,50 @@ async function loadStyles(){
  })));
  await stylesheet;
 }
+// One read per selection. A late success/error cannot replace the user's newer choice.
+export function createProjectGraphReader({projectId,request,isCurrent=()=>true}){
+ let epoch=0;
+ return {
+  invalidate(){epoch++;},
+  async read(option={scope:'all'},expectedGeneration){
+   const run=++epoch,scope=option.scope;
+   if(!['all','plan','change'].includes(scope)||scope==='change'&&!/^[a-f0-9-]{36}$/i.test(option.id||''))throw new Error(uiText("Las conexiones recibidas no corresponden al proyecto."));
+   const base=`/api/v1/projects/${encodeURIComponent(projectId)}/graph`;
+   const url=base+(scope==='plan'?'?scope=plan':scope==='change'?'?scope=change&request_id='+encodeURIComponent(option.id):'');
+   try{
+    const value=await request(url);
+    if(run!==epoch||!isCurrent())return null;
+    const root=value?.nodes?.find(n=>n.kind==='Project'&&n.source_id===projectId),ids=new Set((value?.nodes||[]).map(n=>n.entity_key));
+    if(!root||!Array.isArray(value.edges)||!Array.isArray(value.scopes)||!Number.isInteger(value.generation)
+     ||expectedGeneration!==undefined&&value.generation!==expectedGeneration
+     ||value.scope?.kind!==scope||(value.scope.request_id??null)!==(scope==='change'?option.id:null)
+     ||value.nodes.some(n=>n.project_id!==projectId||n.owner_id!==root.owner_id||n.generation!==value.generation)
+     ||value.edges.some(e=>!ids.has(e.source)||!ids.has(e.target)||e.owner_id!==root.owner_id||e.project_id!==projectId)
+     ||value.scopes.some(o=>!o||!['plan','change'].includes(o.scope)||typeof o.title!=='string'||typeof o.id!=='string'
+       ||o.key!==(o.scope==='plan'?'project_start_plans:':'documents:')+o.id||o.scope==='plan'&&o.id!==projectId)
+     ||new Set(value.scopes.map(o=>o.key)).size!==value.scopes.length
+     ||scope!=='all'&&!value.scopes.some(o=>o.scope===scope&&o.id===(scope==='plan'?projectId:option.id)))throw new Error(uiText("Las conexiones recibidas no corresponden al proyecto."));
+    return value;
+   }catch(error){if(run!==epoch||!isCurrent())return null;throw error;}
+  }
+ };
+}
 export async function openProjectGraph({projectId,request,returnFocus,isCurrent=()=>true,container}){
  if(!container&&document.querySelector('.gd-dialog'))return;
  await loadStyles();if(!isCurrent())return;
  const embedded=Boolean(container),dialog=container||document.createElement('dialog');
  if(!embedded){dialog.className='gd-dialog';dialog.setAttribute('aria-label',uiText("Mapa del proyecto"));document.body.append(dialog);}
  const root=document.createElement('div');root.className='graph-design graph-live'+(embedded?' graph-live-embedded':'');dialog.replaceChildren(root);
+ let scopeOptions=[],scopeBusy=false,scopeError=null;
  let generation=0,data,selected,all=[],edges=[],cases=[],byId=new Map(),objectUrl,pdfDialog,observer,disposed=false,requestFilter='all',selectedRelation=null,detailsOpen=false,expanded=false,view={x:0,y:0,scale:1},layout,routes=new Map(),viewport,scene,resizeObserver,drag,ignoreClickUntil=0;
  const current=run=>!disposed&&(embedded?root.isConnected:dialog.open)&&run===generation&&isCurrent();
+ const scopeReader=createProjectGraphReader({projectId,request,isCurrent:()=>!disposed&&(embedded?root.isConnected:dialog.open)&&isCurrent()});
  const header=()=>embedded?`<header class="gd-top"><div class="gd-heading"><h3>${uiText("Mapa del proyecto")}</h3><button class="gd-filter" data-live-refresh>${uiText("Actualizar mapa")}</button></div></header>`:`<header class="gd-top"><div class="gd-top-line"><button class="gd-back" data-live-back>${icon('arrow-left')}${uiText("Volver al proyecto")}</button><span class="gd-preview-label">${uiText("Datos del proyecto")}</span><span class="gd-brand">trato.</span></div><div class="gd-heading"><div><span class="gd-eyebrow">${uiText("SEGUIMIENTO")}</span><h1>${uiText("Mapa del proyecto")}</h1><p class="gd-intro">${uiText("Sigue las conexiones entre tus documentos, acuerdos y pagos.")}</p></div><button class="gd-filter" data-live-refresh>${uiText("Actualizar mapa")}</button></div></header>`;
- const cleanup=()=>{if(disposed)return;setExpanded(false);resizeObserver?.disconnect();disposed=true;generation++;observer?.disconnect();if(pdfDialog?.open)pdfDialog.close();if(objectUrl){URL.revokeObjectURL(objectUrl);objectUrl=null;}if(embedded)root.remove();else dialog.remove();if(returnFocus?.isConnected)returnFocus.focus();};
+ const cleanup=()=>{if(disposed)return;setExpanded(false);resizeObserver?.disconnect();disposed=true;generation++;scopeReader.invalidate();observer?.disconnect();if(pdfDialog?.open)pdfDialog.close();if(objectUrl){URL.revokeObjectURL(objectUrl);objectUrl=null;}if(embedded)root.remove();else dialog.remove();if(returnFocus?.isConnected)returnFocus.focus();};
  if(!embedded){dialog.addEventListener('close',cleanup,{once:true});dialog.showModal();}
  else {observer=new MutationObserver(()=>{if(!root.isConnected)cleanup();});observer.observe(document.body,{childList:true,subtree:true});}
  async function load(){
- const run=++generation;root.innerHTML=header()+'<p class="gd-loading" role="status">'+uiText('Actualizando las conexiones del proyecto…')+'</p>';
+ const run=++generation;scopeReader.invalidate();scopeBusy=false;scopeError=null;root.innerHTML=header()+'<p class="gd-loading" role="status">'+uiText('Actualizando las conexiones del proyecto…')+'</p>';
  try{
   let job=await request(`/api/v1/projects/${encodeURIComponent(projectId)}/graph/sync`,{method:'POST'});
   const deadline=Date.now()+90000;
@@ -272,37 +305,42 @@ export async function openProjectGraph({projectId,request,returnFocus,isCurrent=
   }
   if(!current(run))return;
   if(job.status!=='ready')throw new Error('No se pudo sincronizar el mapa. '+(job.error_code||''));
-  data=await request(`/api/v1/projects/${encodeURIComponent(projectId)}/graph`);
-  if(!current(run))return;
-  if(!Array.isArray(data.nodes)||!Array.isArray(data.edges)||!data.nodes.some(n=>n.kind==='Project'&&n.source_id===projectId)||data.nodes.some(n=>n.project_id!==projectId))throw new Error(uiText("Las conexiones recibidas no corresponden al proyecto."));
+  data=await scopeReader.read();
+  if(!current(run)||!data)return;
+  scopeOptions=data.scopes;requestFilter='all';
   ({nodes:all,edges,cases}=presentProjectGraph(data));byId=new Map(all.map(n=>[n.entity_key,n]));
   selected=byId.has(selected)?selected:all.find(n=>n.kind==='Project').entity_key;
   render();
  }catch(error){if(current(run))root.innerHTML=header()+`<section class="gd-error" role="alert"><h2>${uiText("No se pudo abrir el mapa")}</h2><p>${esc(error.message)}</p><button class="gd-filter" data-live-refresh>${uiText("Volver a intentar")}</button></section>`;}
  }
- function render(){
- const requests=all.filter(n=>n.kind==='Document'&&n.business_kind==='email_request');
- const visible=new Set(all.map(n=>n.entity_key));
- if(requestFilter!=='all'){
-  visible.clear();visible.add(requestFilter);
-  all.filter(n=>n.kind==='Project').forEach(n=>visible.add(n.entity_key));
-  const proposals=new Set(edges.filter(e=>e.kind==='RESPONDS_TO'&&e.target===requestFilter).map(e=>e.source));
-  edges.filter(e=>e.kind==='HAS_CHANGE_PROPOSAL'&&e.source===requestFilter).forEach(e=>visible.add(e.target));
-  proposals.forEach(k=>visible.add(k));
-  edges.filter(e=>e.kind==='HAS_REVISION'&&proposals.has(e.source)).forEach(e=>visible.add(e.target));
-  for(let i=0;i<3;i++)for(const e of edges){
-   if(['HAS_CHANGE_PROPOSAL','HAS_REVIEW','HAS_PDF','SUPPORTED_BY','REQUESTED_CHANGES_FROM','EVIDENCED_BY','REVIEWED_PDF'].includes(e.kind)&&visible.has(e.source))visible.add(e.target);
-   if(['RESPONDS_TO','ACCEPTS_REVISION','FOR_REVISION'].includes(e.kind)&&visible.has(e.target))visible.add(e.source);
-   if(e.kind==='HAS_EXTRACTION'&&visible.has(e.target))visible.add(e.source);
-  }
+ async function showScope(value){
+  const mapRun=generation,option=value==='all'?{scope:'all'}:scopeOptions.find(o=>o.key===value);
+  if(!option)return;
+  const expectedGeneration=data.generation;
+  requestFilter=value;scopeBusy=true;scopeError=null;selectedRelation=null;render();
+  try{
+   const scoped=await scopeReader.read(option,expectedGeneration);
+   if(!scoped||!current(mapRun))return;
+   data=scoped;scopeOptions=scoped.scopes;scopeBusy=false;
+   ({nodes:all,edges,cases}=presentProjectGraph(scoped));byId=new Map(all.map(n=>[n.entity_key,n]));
+   selected=byId.has(value)?value:all.find(n=>n.kind==='Project').entity_key;
+   render();
+  }catch(error){if(!current(mapRun))return;scopeBusy=false;scopeError=error;render();}
  }
- const viewNodes=all.filter(n=>visible.has(n.entity_key));
- const viewEdges=edges.filter(e=>visible.has(e.source)&&visible.has(e.target));
- if(!visible.has(selected))selected=requestFilter==='all'?viewNodes[0].entity_key:requestFilter;
+ function render(){
+ const requests=scopeOptions.map((o,index)=>({entity_key:o.key,label:o.scope==='plan'?uiText('graph.initialPlan'):o.title||uiText('graph.unnamedRequest',{number:index+1})}));
+ const toolbar=`<div class="gd-toolbar"><label>${uiText("Ver")} <select data-live-request aria-label="${uiText("graph.filterStory")}"><option value="all" ${requestFilter==='all'?'selected':''}>${uiText("Todo el proyecto")}</option>${requests.map(n=>`<option value="${esc(n.entity_key)}" ${n.entity_key===requestFilter?'selected':''}>${esc(n.label)}</option>`).join('')}</select></label>`;
+ if(scopeBusy||scopeError){
+  resizeObserver?.disconnect();viewport=null;scene=null;
+  root.innerHTML=header()+toolbar+'</div>'+(scopeBusy?`<p class="gd-loading" role="status">${uiText('graph.loadingScope')}</p>`:`<section class="gd-error" role="alert"><h2>${uiText("No se pudo abrir el mapa")}</h2><p>${esc(scopeError.message)}</p><button class="gd-filter" data-live-scope-retry>${uiText("Volver a intentar")}</button></section>`);
+  return;
+ }
+ const viewNodes=all,viewEdges=edges;
+ if(!byId.has(selected))selected=all.find(n=>n.kind==='Project').entity_key;
  layout=layoutProjectGraph(viewNodes,viewEdges);
  const {positions,width,height,centerX,centerY}=layout;
  routes=routeProjectGraph(viewEdges,positions);
- root.innerHTML=header()+`<div class="gd-toolbar"><label>${uiText("Ver")} <select data-live-request aria-label="${uiText("Filtrar mapa por pedido")}"><option value="all">${uiText("Todo el proyecto")}</option>${requests.map(n=>`<option value="${esc(n.entity_key)}" ${n.entity_key===requestFilter?'selected':''}>${esc(n.title)}</option>`).join('')}</select></label><span>${uiText("graph.count",{nodes:new Intl.NumberFormat(uiLocale()).format(viewNodes.length),edges:new Intl.NumberFormat(uiLocale()).format(viewEdges.length)})}</span><div class="gd-space-actions"><button class="gd-filter" data-live-details aria-expanded="${detailsOpen}">${uiText("Detalles")}</button><button class="gd-filter" data-live-expand aria-pressed="${expanded}">${expanded?uiText("Reducir mapa"):uiText("Ampliar mapa")}</button></div></div>${cases.length?`<div class="gd-case-legend" role="list" aria-label="${uiText('graph.caseLegend')}"><span class="gd-case-legend-heading">${uiText('graph.caseLegend')}</span>${cases.filter(item=>requestFilter==='all'||item.id===requestFilter).map(item=>`<span class="gd-case-legend-item" role="listitem" style="--gd-case-color:${item.color}" title="${esc(item.title)}"><i aria-hidden="true"></i>${esc(item.title)}</span>`).join('')}</div>`:''}${renderProjectGraphReading()}<div class="gd-body"><section class="gd-map" aria-label="${uiText("Relaciones del proyecto")}" tabindex="0"><div class="gd-scene" style="width:${width}px;height:${height}px"><svg class="gd-lines" viewBox="0 0 ${width} ${height}" aria-label="${uiText("Relaciones entre elementos")}"><defs><marker id="live-arrow" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="9" markerHeight="9" markerUnits="userSpaceOnUse" orient="auto"><path d="M0 0 L8 4 L0 8" fill="#9b8bd3"/></marker>${cases.map(item=>`<marker id="live-arrow-case-${item.index}" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="9" markerHeight="9" markerUnits="userSpaceOnUse" orient="auto"><path d="M0 0 L8 4 L0 8" fill="${item.color}"/></marker>`).join('')}</defs><g class="gd-orbits" aria-hidden="true">${layout.radii.map(r=>`<circle cx="${centerX}" cy="${centerY}" r="${r}"/>`).join('')}</g>${viewEdges.map(e=>{const line=routes.get(e.edge_key);return `<g class="gd-edge" ${e.case_id?`data-live-case="${esc(e.case_id)}" style="--gd-case-color:${e.case_color}"`:''} data-live-edge="${esc(e.edge_key)}" data-live-relation="${esc(e.edge_key)}" role="button" tabindex="0" aria-label="${esc(title(byId.get(e.source))+' '+(links[e.kind]||e.kind)+' '+title(byId.get(e.target)))}"><path class="gd-edge-hit" d="${line.path}"/><path class="gd-edge-line" marker-end="url(#${e.case_id?'live-arrow-case-'+e.case_index:'live-arrow'})" d="${line.path}"/><circle class="gd-port" cx="${line.start.x}" cy="${line.start.y}" r="3"/><rect class="gd-edge-label-bg" rx="5"/><text x="${line.x}" y="${line.y-7}">${esc(links[e.kind]||e.kind)}</text></g>`;}).join('')}</svg>${viewNodes.map(n=>{const p=positions.get(n.entity_key);return `<button class="gd-node ${n.kind==='Project'?'is-root':''}" style="${n.case_id?`--gd-case-color:${n.case_color};--gd-case-soft:${n.case_soft};`:''}left:${p.x}px;top:${p.y}px;height:${p.height}px;min-height:${p.height}px" ${n.case_id?`data-live-case="${esc(n.case_id)}"`:''} data-live-node="${esc(n.entity_key)}" data-live-depth="${p.depth}"><span class="gd-node-top"><span class="gd-node-icon">${icon(kinds[n.kind]?.[1]||'file-text')}</span><span class="gd-node-kind">${esc(kinds[n.kind]?.[0])}</span></span><strong>${esc(title(n))}</strong><span class="gd-node-description">${esc(projectGraphMilestone(n))}</span>${n.case_id&&n.entity_key!==n.case_id?`<span class="gd-node-case" title="${esc(n.case_title)}">${esc(n.case_title)}</span>`:''}</button>`;}).join('')}</div></section><div class="gd-map-controls" role="group" aria-label="${uiText("Navegar por el mapa")}"><button class="gd-filter" data-live-zoom="out">${uiText("Alejar")}</button><output data-live-scale aria-label="${uiText("Nivel de zoom")}">100%</output><button class="gd-filter" data-live-zoom="in">${uiText("Acercar")}</button><button class="gd-filter" data-live-fit>${uiText("Ajustar")}</button><button class="gd-filter" data-live-center>${uiText("Ir al proyecto")}</button></div><span class="gd-navigation-hint">${uiText("Arrastra para moverte · Rueda para ampliar")}</span><aside class="gd-inspector" aria-label="${uiText("Detalle del elemento seleccionado")}" aria-live="polite" ${detailsOpen?'':'hidden'}></aside></div>`;
+ root.innerHTML=header()+toolbar+`<span data-live-status role="status">${uiText("graph.count",{nodes:new Intl.NumberFormat(uiLocale()).format(viewNodes.length),edges:new Intl.NumberFormat(uiLocale()).format(viewEdges.length)})}</span><div class="gd-space-actions"><button class="gd-filter" data-live-details aria-expanded="${detailsOpen}">${uiText("Detalles")}</button><button class="gd-filter" data-live-expand aria-pressed="${expanded}">${expanded?uiText("Reducir mapa"):uiText("Ampliar mapa")}</button></div></div>${cases.length?`<div class="gd-case-legend" role="list" aria-label="${uiText('graph.caseLegend')}"><span class="gd-case-legend-heading">${uiText('graph.caseLegend')}</span>${cases.filter(item=>requestFilter==='all'||item.id===requestFilter).map(item=>`<span class="gd-case-legend-item" role="listitem" style="--gd-case-color:${item.color}" title="${esc(item.title)}"><i aria-hidden="true"></i>${esc(item.title)}</span>`).join('')}</div>`:''}${renderProjectGraphReading()}<div class="gd-body"><section class="gd-map" aria-label="${uiText("Relaciones del proyecto")}" tabindex="0"><div class="gd-scene" style="width:${width}px;height:${height}px"><svg class="gd-lines" viewBox="0 0 ${width} ${height}" aria-label="${uiText("Relaciones entre elementos")}"><defs><marker id="live-arrow" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="9" markerHeight="9" markerUnits="userSpaceOnUse" orient="auto"><path d="M0 0 L8 4 L0 8" fill="#9b8bd3"/></marker>${cases.map(item=>`<marker id="live-arrow-case-${item.index}" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="9" markerHeight="9" markerUnits="userSpaceOnUse" orient="auto"><path d="M0 0 L8 4 L0 8" fill="${item.color}"/></marker>`).join('')}</defs><g class="gd-orbits" aria-hidden="true">${layout.radii.map(r=>`<circle cx="${centerX}" cy="${centerY}" r="${r}"/>`).join('')}</g>${viewEdges.map(e=>{const line=routes.get(e.edge_key);return `<g class="gd-edge" ${e.case_id?`data-live-case="${esc(e.case_id)}" style="--gd-case-color:${e.case_color}"`:''} data-live-edge="${esc(e.edge_key)}" data-live-relation="${esc(e.edge_key)}" role="button" tabindex="0" aria-label="${esc(title(byId.get(e.source))+' '+(links[e.kind]||e.kind)+' '+title(byId.get(e.target)))}"><path class="gd-edge-hit" d="${line.path}"/><path class="gd-edge-line" marker-end="url(#${e.case_id?'live-arrow-case-'+e.case_index:'live-arrow'})" d="${line.path}"/><circle class="gd-port" cx="${line.start.x}" cy="${line.start.y}" r="3"/><rect class="gd-edge-label-bg" rx="5"/><text x="${line.x}" y="${line.y-7}">${esc(links[e.kind]||e.kind)}</text></g>`;}).join('')}</svg>${viewNodes.map(n=>{const p=positions.get(n.entity_key);return `<button class="gd-node ${n.kind==='Project'?'is-root':''}" style="${n.case_id?`--gd-case-color:${n.case_color};--gd-case-soft:${n.case_soft};`:''}left:${p.x}px;top:${p.y}px;height:${p.height}px;min-height:${p.height}px" ${n.case_id?`data-live-case="${esc(n.case_id)}"`:''} data-live-node="${esc(n.entity_key)}" data-live-depth="${p.depth}"><span class="gd-node-top"><span class="gd-node-icon">${icon(kinds[n.kind]?.[1]||'file-text')}</span><span class="gd-node-kind">${esc(kinds[n.kind]?.[0])}</span></span><strong>${esc(title(n))}</strong><span class="gd-node-description">${esc(projectGraphMilestone(n))}</span>${n.case_id&&n.entity_key!==n.case_id?`<span class="gd-node-case" title="${esc(n.case_title)}">${esc(n.case_title)}</span>`:''}</button>`;}).join('')}</div></section><div class="gd-map-controls" role="group" aria-label="${uiText("Navegar por el mapa")}"><button class="gd-filter" data-live-zoom="out">${uiText("Alejar")}</button><output data-live-scale aria-label="${uiText("Nivel de zoom")}">100%</output><button class="gd-filter" data-live-zoom="in">${uiText("Acercar")}</button><button class="gd-filter" data-live-fit>${uiText("Ajustar")}</button><button class="gd-filter" data-live-center>${uiText("Ir al proyecto")}</button></div><span class="gd-navigation-hint">${uiText("Arrastra para moverte · Rueda para ampliar")}</span><aside class="gd-inspector" aria-label="${uiText("Detalle del elemento seleccionado")}" aria-live="polite" ${detailsOpen?'':'hidden'}></aside></div>`;
  viewport=root.querySelector('.gd-map');scene=root.querySelector('.gd-scene');
  resizeObserver?.disconnect();resizeObserver=new ResizeObserver(()=>{if(!disposed&&scene?.isConnected)applyView();});resizeObserver.observe(viewport);
  viewport.addEventListener('wheel',wheel,{passive:false});
@@ -325,8 +363,8 @@ export async function openProjectGraph({projectId,request,returnFocus,isCurrent=
   placeRelationLabels();
   return;
  }
- const description=node.scope_summary||(node.business_kind==='email_request'?uiText("Conversación que respalda el pedido del cliente."):node.kind==='Acceptance'?uiText("Aceptación registrada mediante revisión manual del documento devuelto."):node.kind==='Payment'?(node.status==='completed'?uiText("Pago confirmado por el backend."):uiText("Este pago aún no está confirmado.")):uiText("Registro del proyecto y sus conexiones documentadas."));
- aside.innerHTML=close+`<span class="gd-eyebrow">${esc(kinds[node.kind]?.[0])}</span><h2>${esc(title(node))}</h2><p class="gd-detail-copy">${esc(description)}</p>${related.some(e=>e.evidence_relations?.some(source=>source.kind==='SUPPORTED_BY'))?`<p class="gd-relation-evidence">${uiText('graph.requestSourceNote')}</p>`:''}<div class="gd-connections"><h3>${uiText("Conectado con")}</h3><div class="gd-connection-legend" aria-label="${uiText("graph.directionLegend")}"><span>${icon('arrow-left')}${uiText("graph.incoming")}</span><span>${icon('arrow-right')}${uiText("graph.outgoing")}</span></div>${related.map(e=>{const other=byId.get(e.source===selected?e.target:e.source);return `<button class="gd-connection" data-live-select="${esc(other.entity_key)}">${icon(kinds[other.kind]?.[1]||'file-text')}<span>${esc(title(other))}<small>${e.source===selected?'→':'←'} ${esc(links[e.kind]||e.kind)}</small></span>${icon('chevron-right')}</button>`;}).join('')||("<p class=\"gd-detail-copy\">"+uiText("Sin conexiones registradas.")+"</p>")}</div>${node.kind==='Document'?`<button class="gd-document-action" data-live-document="${esc(node.source_id)}">${icon('file-text')}${uiText("Ver documento fuente")}</button>`:(node.documents||[]).map(doc=>`<button class="gd-document-action" data-live-document="${esc(doc.id)}">${icon('file-text')}${uiText(doc.role==='pdf'?'graph.openVersionPdf':'graph.openAcceptancePdf')}</button>`).join('')}`;
+ const description=node.scope_summary||node.deliverables||node.summary||(node.business_kind==='email_request'?uiText("Conversación que respalda el pedido del cliente."):node.kind==='Acceptance'?uiText("Aceptación registrada mediante revisión manual del documento devuelto."):node.kind==='Payment'?(node.status==='completed'?uiText("Pago confirmado por el backend."):uiText("Este pago aún no está confirmado.")):uiText("Registro del proyecto y sus conexiones documentadas."));
+ aside.innerHTML=close+`<span class="gd-eyebrow">${esc(kinds[node.kind]?.[0])}</span><h2>${esc(title(node))}</h2><p class="gd-detail-copy">${esc(description)}</p>${node.kind==='PlanStage'?`<p class="gd-detail-copy"><strong>${uiText('graph.paymentCondition')}</strong><br>${esc(node.payment_condition)}</p>`:''}${related.some(e=>e.evidence_relations?.some(source=>source.kind==='SUPPORTED_BY'))?`<p class="gd-relation-evidence">${uiText('graph.requestSourceNote')}</p>`:''}<div class="gd-connections"><h3>${uiText("Conectado con")}</h3><div class="gd-connection-legend" aria-label="${uiText("graph.directionLegend")}"><span>${icon('arrow-left')}${uiText("graph.incoming")}</span><span>${icon('arrow-right')}${uiText("graph.outgoing")}</span></div>${related.map(e=>{const other=byId.get(e.source===selected?e.target:e.source);return `<button class="gd-connection" data-live-select="${esc(other.entity_key)}">${icon(kinds[other.kind]?.[1]||'file-text')}<span>${esc(title(other))}<small>${e.source===selected?'→':'←'} ${esc(links[e.kind]||e.kind)}</small></span>${icon('chevron-right')}</button>`;}).join('')||("<p class=\"gd-detail-copy\">"+uiText("Sin conexiones registradas.")+"</p>")}</div>${node.kind==='Document'?`<button class="gd-document-action" data-live-document="${esc(node.source_id)}">${icon('file-text')}${uiText("Ver documento fuente")}</button>`:(node.documents||[]).map(doc=>`<button class="gd-document-action" data-live-document="${esc(doc.id)}">${icon('file-text')}${uiText(doc.role==='pdf'?'graph.openVersionPdf':'graph.openAcceptancePdf')}</button>`).join('')}`;
   placeRelationLabels();
  }
  function applyView(){
@@ -419,7 +457,7 @@ export async function openProjectGraph({projectId,request,returnFocus,isCurrent=
   else if(event.key==='-'){event.preventDefault();zoom(1/1.2);}
   else if(event.key==='Home'){event.preventDefault();centerProject();}
  });
- root.addEventListener('change',event=>{if(event.target.matches('[data-live-request]')){requestFilter=event.target.value;selectedRelation=null;render();}});
+ root.addEventListener('change',event=>{if(event.target.matches('[data-live-request]')){void showScope(event.target.value);}});
  root.addEventListener('click',async event=>{
  if(Date.now()<ignoreClickUntil&&viewport?.contains(event.target))return;
  const scale=event.target.closest('[data-live-zoom]');if(scale){zoom(scale.dataset.liveZoom==='in'?1.25:.8);return;}
@@ -430,7 +468,8 @@ export async function openProjectGraph({projectId,request,returnFocus,isCurrent=
  const relation=event.target.closest('[data-live-relation]');if(relation){selectedRelation=relation.dataset.liveRelation;detailsOpen=true;inspect();return;}
  if(event.target.closest('[data-live-back]')){if(embedded)cleanup();else dialog.close();return;}
  if(event.target.closest('[data-live-refresh]')){load();return;}
- const choice=event.target.closest('[data-live-node],[data-live-select]');if(choice){const fromInspector=Boolean(choice.dataset.liveSelect);selected=choice.dataset.liveNode||choice.dataset.liveSelect;selectedRelation=null;detailsOpen=true;if(!root.querySelector(`[data-live-node="${CSS.escape(selected)}"]`)){requestFilter='all';render();}else inspect();if(fromInspector)focusNode(selected);return;}
+ if(event.target.closest('[data-live-scope-retry]')){void showScope(requestFilter);return;}
+ const choice=event.target.closest('[data-live-node],[data-live-select]');if(choice){const fromInspector=Boolean(choice.dataset.liveSelect);selected=choice.dataset.liveNode||choice.dataset.liveSelect;selectedRelation=null;detailsOpen=true;inspect();if(fromInspector)focusNode(selected);return;}
  const source=event.target.closest('[data-live-document]');if(!source)return;
  const run=generation;source.disabled=true;
  try{

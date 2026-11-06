@@ -67,10 +67,11 @@ class Chunks:
     def read(self,v):return chunk_file({'schema_version':1,'file_id':v['document']['id'],
         'source_fingerprint':v['generation'],'policy':{'version':'v1','max_chars':800,'overlap_chars':100,'max_chunks':512},'segments':v['segments']})['chunks']
 class Gateway:
-    def __init__(self):self.calls=[];self.states={}
+    def __init__(self):self.calls=[];self.states={};self.registry=self
     def index(self,repo,owner,project,file):self.calls.append(file);return {'status':'ready'}
     def connection(self):return self
     def receipt_key(self,owner,file):return file
+    def put(self,owner,file,receipt):self.states[file]=json.dumps(receipt)
     def set(self,key,value):self.states[key]=value
 
 @patch.dict(os.environ,{'TRATO_FILE_PROCESSING_ENABLED':'true','TRATO_WORKER_TOKEN':'worker'})

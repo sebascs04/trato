@@ -32,6 +32,15 @@ class Terms(Input):
     deadline:date
     line_items:list[Item]=Field(min_length=1,max_length=100)
 
+    @field_validator('deadline')
+    @classmethod
+    def deadline_not_past(cls,value):
+        # A new or edited addendum cannot promise delivery on a date that already passed (Lima calendar).
+        from datetime import datetime
+        from zoneinfo import ZoneInfo
+        if value<datetime.now(ZoneInfo('America/Lima')).date():raise ValueError('Deadline is in the past')
+        return value
+
 class Create(Input):
     request_document_id:UUID
     terms:Terms

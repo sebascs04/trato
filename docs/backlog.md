@@ -122,8 +122,8 @@ Este cierre corresponde al flujo de negocio de cambios y renegociaciones, sin IA
 ## Prioridades
 
 - **P0:** necesario para cerrar y demostrar el recorrido real.
-- **el equipo:** ampliación elegida del producto; tomar después de asegurar el recorrido P0.
-- **el equipo:** fuera del primer cierre, salvo nueva decisión explícita.
+- **P1:** ampliación elegida del producto; tomar después de asegurar el recorrido P0.
+- **P2:** fuera del primer cierre, salvo nueva decisión explícita.
 
 Todos los pendientes siguientes están **Por hacer** al publicar. Antes de empezar una tarea, anotar responsable y marcarla **En curso** en el tablero acordado.
 
@@ -141,7 +141,7 @@ Todos los pendientes siguientes están **Por hacer** al publicar. Antes de empez
 | TRATO-08 | Preparar alojamiento y configuración de la demo | Servicios definidos | URLs, orígenes OAuth/CORS y callbacks son accesibles al evaluador; el enlace de pago no depende de localhost. Se documentan secretos y procesos requeridos sin publicarlos ni contratar planes no autorizados. |
 | TRATO-09 | Preparar entrega de hackathon | TRATO-07 y 08 | README reproducible, descripción fiel, cuentas/instrucciones de evaluación y video que muestra el mismo comportamiento del código; revisar duración, idioma, elegibilidad y plazo contra bases vigentes. |
 
-## el equipo — recuperación, relaciones y devoluciones
+## P1 — recuperación, relaciones y devoluciones
 
 | ID | Tarea | Dependencia | Terminado cuando |
 | --- | --- | --- | --- |
@@ -154,7 +154,7 @@ Todos los pendientes siguientes están **Por hacer** al publicar. Antes de empez
 | TRATO-16 | Integrar UI de devolución y fuentes oficiales aplicables | TRATO-13 a 15 | Usa estados reales, documentos y condiciones verificadas por país/producto, con URL/fecha/ámbito de las fuentes. Separa comisión, neto y devolución; no garantiza saldo global, conversión ni fecha de abono. Sólo hitos confirmados van al historial único. |
 | TRATO-17 | Convertir Word a PDF antes de la ingesta | Conversor y alcance elegidos | Modal de consentimiento/previsualización, conversión explícita y PDF resultante relacionado con el original. Un fallo conserva el estado y no usa otro conversor automáticamente. Hoy DOCX devuelve PDF_CONVERSION_REQUIRED. |
 
-## el equipo — ideas posteriores
+## P2 — ideas posteriores
 
 - OCR para documentos escaneados, después de elegir motor y evaluar calidad/costo.
 - Asistente general y por cliente con fuentes y aislamiento de contexto.
@@ -233,3 +233,49 @@ Plan de trabajo, creación desde cero y proyecto en marcha siguen pendientes de 
 Mapa, ajuste visual adicional local: color diferenciado por solicitud, heredado por sus versiones/aceptación/pago; nombre breve del pedido en tarjetas y leyenda. Estados escritos y fuentes compartidas neutrales. Ver mapa-hitos-clave.md.
 
 Mapa, lectura de flechas: Proyecto → Tiene como acuerdo inicial → Acuerdo inicial; Pedido → Tiene como propuesta → Adenda. La doble relación al mismo pedido (respuesta + fuente) queda en una sola flecha con evidencia conservada en el detalle. Ayuda con ejemplos reales añadida; sin modificar Neo4j ni el flujo del responsable de cambios y devoluciones.
+
+## Pendiente: correo central aparece desconectado después de estar conectado
+
+Reportado por el responsable del proyecto el 5 de noviembre de 2026: el buzón de Trato se había conectado previamente, pero el responsable de cambios y devoluciones volvió a encontrarlo desconectado. Causa aún no confirmada. Investigar después de la revisión actual de creación y planificación; este registro no cambia ni reconecta el buzón.
+
+- [ ] Confirmar dónde ocurrió: local del responsable de cambios y devoluciones, local del responsable del proyecto o web cloud; cuenta de Trato utilizada, momento y mensaje exacto. Distinguir una instalación sin autorización de una conexión que realmente se perdió.
+- [ ] Revisar la renovación del access token, disponibilidad del refresh token y respuesta de Google. Comprobar revocación, vencimiento o errores de permisos sin asumir que alguno sea la causa.
+- [ ] Comprobar persistencia del almacén OAuth, identidad del administrador del buzón, configuración del correo central y conservación de la clave de cifrado tras reinicios o despliegues.
+- [ ] Contrastar el estado mostrado por la interfaz con el estado del backend y registrar el motivo concreto del fallo, sin guardar tokens en logs ni ocultar errores como una desconexión genérica.
+- [ ] Validar que envío y lectura se mantengan operativos después de renovar el token y reiniciar la instalación correspondiente.
+
+Referencia de contraste: durante el despliegue del webhook de devoluciones del 5 de noviembre, cloud devolvió correo central conectado. Esto no confirma el estado del local de otro integrante ni explica por sí solo el incidente reportado. Mantener independientes este pendiente y la verificación pública de OAuth de Google.
+
+### Plan inicial: revisión local del 5 de noviembre
+
+- Diseño local: plan guardado compacto con total, fecha y etapas; entregables, condiciones y criterio original de IA en modal. No se ha publicado este lote.
+- Pendiente siguiente: permitir al asistente consultar el plan confirmado en Supabase, con autorización por propietario y proyecto y distinguiendo propuesta de pagos verificados. La consulta de documentos por sí sola no incluye las tablas del plan.
+- Pendiente funcional: comparar la propuesta original con las etapas confirmadas cuando haya cambios sustanciales y actualizar su explicación. Hoy solo se validan campos, porcentajes y referencias; el criterio mostrado pertenece a la generación original. No presentar una explicación original como reevaluación de ajustes humanos ni inferir cambios semánticos por signos de puntuación.
+- Revisión manual pendiente: diseño del plan guardado, después conexión con TeTrato y al final creación de un proyecto ya en marcha.
+
+### Actualización del plan por entregables (5 de noviembre, posterior a la revisión local)
+
+Las entradas anteriores sobre conectar el plan a TeTrato y comparar etapas editadas quedan sustituidas por la implementación documentada en `docs/plan-entregables-cobros.md`: herramientas de consulta autorizada, revisión de etapas con JSON validado, cobros secuenciales tras respaldo de entrega, correo revisable y cierre independiente del plan inicial. La implementación y los contratos se verificaron; queda la prueba manual real de Gemini, ingesta y PayPal Sandbox por el responsable del proyecto. No hay publicación de código de este lote.
+
+Presentación pendiente: posicionar Trato también como gestión de proyectos para freelancers: acuerdos, entregables, cambios y cobros con IA y PayPal. Mantener el recorrido verificable como soporte del mensaje.
+
+
+### Corregido: ingesta local tomada por cloud (5 noviembre)
+
+El outbox compartido permitía que un publicador cloud antiguo procesara una subida local con un prompt anterior. Migración `20261106044003_isolate_ingestion_runtime.sql`: separación por `file_processing_options.runtime_scope` asignada por servidor, API y pump local con identidad privada persistente. Prueba SQL reversible confirma que relay legacy sin scope ignora documentos locales y el relay local reclama exclusivamente su ingesta. Siete pruebas del pump pasan. No se ha publicado ni desplegado este lote. Véase `docs/puertos-locales.md`.
+
+
+### Asistente: acuerdo procesado en otro entorno sin recibo local (6 noviembre 2026)
+
+Diagnóstico de Café Aurora: acuerdo inicial con extracción ready y artefactos de tratamiento, chunks, resumen y outcome presentes, pero sin recibo de índice en Redis local. Búsqueda fallaba con VECTOR_INDEX_INCOMPLETE antes de contestar. Recuperación explícita mediante enqueue_index del pipeline existente, sin repetir Gemini ni alterar originales; índice confirmado ready con 4 objetos incluido resumen. La separación runtime evita que cloud tome nuevas subidas locales, pero no distribuye recibos entre instalaciones. Pendiente arquitectónico: definir registro durable compartido de recibos o reconciliación explícita por entorno para documentos heredados y recuperación de Redis; no afirmar que la separación runtime resuelva por sí sola ese caso. No activar reintentos IA indefinidos ni inferir indexación por tener solo texto extraído.
+
+## Lote local: proyecto bajo demanda, mapa del plan y revisión de cambios (6 noviembre)
+
+- Entrega y pago consulta primero el checkout de la etapa; si ya existe, evita documentos e inventarios. Una etapa sin cobro consulta únicamente sus respaldos y estados, bajo propietario/proyecto/posición.
+- Progreso del plan bajo demanda, solicitudes simultáneas unificadas y lectura breve en memoria por ámbito; se invalida al cerrar Entrega y pago. Historial y mapa se actualizan al volver a abrirlos tras esa consulta, sin precargar ambos.
+- Creación de propuesta de cambio organizada en cuatro vistas con los mismos controles y validaciones: recomendación, alcance/condiciones, precio/fecha, revisión/envío. Tarifas y horas permanecen revisables; avanzar no guarda ni envía.
+- Snapshot y proyección del grafo incorporan plan, entregables, respaldo y pagos verificados. Ver `docs/grafo-plan-entregables.md` y migración `20261106171356_project_plan_graph_snapshot.sql`.
+- Icono de pestaña añadido; rutas SVG y favicon.ico responden en local.
+- Detectado y corregido un estado local de respuesta Gmail seleccionada que permanecía al cambiar de proyecto; la prueba existente también fallaba en main antes del lote.
+
+Código en lote local, sin push/PR/merge/deploy autorizado. La revisión visual y el recorrido de usuario con IA/PayPal siguen siendo comprobaciones separadas de las pruebas técnicas. Detalle: `docs/carga-bajo-demanda-proyecto.md`.

@@ -182,3 +182,14 @@ class VectorTests(unittest.TestCase):
         with patch.object(self.store, 'search', return_value=[{'id':'invalid','properties':{},'score':float('nan')}]):
             with self.assertRaisesRegex(ApiError, 'VECTOR_RESULT_INVALID'):
                 self.gateway.search(self.repo, OWNER, PROJECT, 'Texto')
+
+    def test_stage_inventory_filters_documents_before_reading_extractions(self):
+        from unittest.mock import Mock
+        repo=Mock();repo.project.return_value={'id':PROJECT,'owner_id':OWNER,'client_id':CLIENT};repo.rows.return_value=[self.repo.document]
+        repo.extraction.side_effect=self.repo.extraction
+        self.gateway.inventory(repo,OWNER,PROJECT,file_ids=[FILE])
+        self.assertEqual(repo.rows.call_args_list[0].args[1]['id'],'in.('+FILE+')')
+        repo.extraction.assert_called_once_with(FILE)
+        repo.reset_mock();repo.rows.return_value=[]
+        with self.assertRaisesRegex(ApiError,'DOCUMENT_NOT_FOUND'):self.gateway.inventory(repo,OWNER,PROJECT,file_ids=[FILE])
+        repo.extraction.assert_not_called()

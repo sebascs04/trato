@@ -43,6 +43,8 @@ for(const lang of ['es','en'])for(const mobile of [false,true])test(`one refund 
  await expect(history.locator('[data-activity-group-kind="change"]')).toHaveCount(1);
  await expect(history.locator('[data-activity-group-kind="refund"]')).toHaveCount(2);
  const group=history.locator('[data-activity-group-id="refund-settlement"]');
+ await expect(group.locator('.cloud-project-event')).toHaveCount(0);
+ await group.locator('summary').click();
  await expect(group.locator('.cloud-project-event')).toHaveCount(7);
  await expect(group.locator('[data-activity-kind="refund_completed"]')).toHaveCount(1);
  await expect(group.locator('[data-activity-kind="refund_completed"]')).toContainText(lang==='es'?'Reembolso confirmado':'Refund confirmed');
@@ -51,7 +53,7 @@ for(const lang of ['es','en'])for(const mobile of [false,true])test(`one refund 
  await expect(group.locator('[data-activity-kind="refund_closed"]')).not.toContainText(expected);
  await expect(group.locator('summary')).toContainText('Razón exacta del cliente <script>unsafe</script>');
  await expect(group.locator('script')).toHaveCount(0);
- await expect(history.locator('svg')).toHaveCount(12);
+ await expect(group.locator('.cloud-project-event-icon svg')).toHaveCount(7);
  const external=history.locator('[data-activity-group-id="payment-external"]');
  await expect(external.locator('summary')).toContainText(lang==='es'?'Reembolso externo del pago':'External payment refund');
  const overflow=await history.evaluate(el=>el.scrollWidth>el.clientWidth+1);expect(overflow).toBe(false);

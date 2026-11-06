@@ -2,3 +2,4 @@
 
 /* Shared mascot: task labels remain supplied by the actual job state. */
 .ai-activity-orbit{width:96px;height:96px}.ai-activity-mascot{width:88px;height:88px;object-fit:contain;position:relative;z-index:1;animation:ai-mascot-float 3s ease-in-out infinite}.ai-activity-orbit>span{opacity:.35}.ai-activity-compact .ai-activity-orbit{transform:none;width:56px;height:56px}.ai-activity-compact .ai-activity-mascot{width:56px;height:56px}.ai-activity-compact{grid-template-columns:56px 1fr}@keyframes ai-mascot-float{50%{transform:translateY(-5px)}}@media(prefers-reduced-motion:reduce){.ai-activity-mascot{animation:none}}
+.ai-activity-compact{align-items:center}.ai-activity-compact:not(:has(>p)) .ai-activity-orbit{grid-row:auto}

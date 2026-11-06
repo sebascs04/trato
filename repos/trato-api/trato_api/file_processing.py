@@ -2,6 +2,7 @@
 from copy import deepcopy
 from hashlib import sha256
 import json
+import logging
 import os
 import secrets
 from uuid import NAMESPACE_URL,uuid5
@@ -340,7 +341,13 @@ def build_file_processing_router(settings,require_user,repository_factory=None,s
             except (ValueError,TypeError):raise ApiError('INVALID_OUTPUT_LANGUAGE',422) from None
             if not isinstance(options,dict) or set(options)!={'output_language'} or options['output_language'] not in ('es','en'):raise ApiError('INVALID_OUTPUT_LANGUAGE',422)
             language=options['output_language']
-        result=await run_in_threadpool(enqueue_processing,repo,service.jobs,user,uuid(project_id),uuid(file_id),
-            ModelPreferences().configuration()[1],uuid(request.headers.get('idempotency-key','')),language)
+        log=logging.getLogger('trato.file_processing')
+        log.warning(json.dumps({'event':'process_requested','project_id':project_id,'file_id':file_id}))
+        try:
+            result=await run_in_threadpool(enqueue_processing,repo,service.jobs,user,uuid(project_id),uuid(file_id),
+                ModelPreferences().configuration()[1],uuid(request.headers.get('idempotency-key','')),language)
+        except ApiError as error:
+            log.warning(json.dumps({'event':'process_rejected','file_id':file_id,'error_code':error.code}));raise
+        log.warning(json.dumps({'event':'process_enqueued','file_id':file_id,'job_id':result.get('id'),'status':result.get('status')}))
         return JSONResponse({'data':result},status_code=202,headers={'Cache-Control':'no-store'})
     return router

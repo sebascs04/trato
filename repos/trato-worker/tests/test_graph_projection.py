@@ -7,12 +7,25 @@ from uuid import uuid4
 def fixture():
  owner,client,project,doc,extract=[str(uuid4()) for _ in range(5)]
  context={'owner_id':owner,'client_id':client,'project_id':project}
- snapshot={'owner_id':owner,'project_id':project,'project':{'id':project,'name':'Proyecto','status':'draft','client_id':client,'client_name':'Cliente'},
+ snapshot={'schema_version':1,'projection_version':2,'project_start_plans':[],'project_start_stages':[],'plan_stage_evidence':[],'plan_stage_payments':[],'owner_id':owner,'project_id':project,'project':{'id':project,'name':'Proyecto','status':'draft','client_id':client,'client_name':'Cliente'},
  'documents':[{'id':doc,'title':'Fuentes','kind':'initial_agreement'}],
  'document_extractions':[{'id':extract,'document_id':doc,'status':'ready'}]}
  for table in ('change_proposals','proposal_revisions','proposal_revision_sources','proposal_artifacts','proposal_reviews','proposal_acceptances','proposal_deliveries','proposal_payments','project_agreement_heads'):snapshot[table]=[]
  return context,snapshot
 class GraphProjectionTests(unittest.TestCase):
+ def test_projection_version_is_explicit_and_preserved_in_project_root(self):
+  context,snapshot=fixture();result=build_projection(snapshot,context)
+  self.assertEqual(next(n for n in result['nodes'] if n['kind']=='Project')['projection_version'],2)
+  for version in (None,1,3,True,'2'):
+   bad=dict(snapshot,projection_version=version)
+   if version is None:bad.pop('projection_version')
+   with self.assertRaises(JobError) as error:build_projection(bad,context)
+   self.assertEqual(error.exception.code,'GRAPH_PROJECTION_VERSION_UNSUPPORTED')
+ def test_new_projection_cannot_silently_skip_missing_plan_collections(self):
+  context,snapshot=fixture()
+  for field in ('project_start_plans','project_start_stages','plan_stage_evidence','plan_stage_payments'):
+   bad=dict(snapshot);bad.pop(field)
+   with self.assertRaises(JobError):build_projection(bad,context)
  def test_business_kind_does_not_replace_node_label(self):
   context,snapshot=fixture();result=build_projection(snapshot,context)
   document=next(n for n in result['nodes'] if n['kind']=='Document')

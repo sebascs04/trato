@@ -62,11 +62,11 @@ class InitialPaymentTest(unittest.TestCase):
         self.orders=[order('CREATED')];result=self.flow.checkout(TOKEN,capture=True)
         self.assertEqual(result['status'],'pending_approval');self.assertEqual(self.store.received,0)
         self.assertFalse(any(method=='POST' and path.endswith('/capture') for method,path,_,_ in self.calls))
-    def test_wrong_payer_cannot_be_captured(self):
-        self.orders=[order(payer='other@example.com')]
-        with self.assertRaises(ApiError) as error:self.flow.checkout(TOKEN,capture=True)
-        self.assertEqual(error.exception.code,'INITIAL_PAYER_MISMATCH');self.assertEqual(self.store.received,0)
-        self.assertFalse(any(path.endswith('/capture') for _,path,_,_ in self.calls))
+    def test_another_paypal_account_can_pay_while_order_checks_remain(self):
+        self.orders=[order(payer='accounts-payable@example.com'),order('COMPLETED',capture=True,payer='accounts-payable@example.com')]
+        result=self.flow.checkout(TOKEN,capture=True)
+        self.assertEqual(result['status'],'completed');self.assertEqual(self.store.received,1)
+        self.assertTrue(any(path.endswith('/capture') for _,path,_,_ in self.calls))
     def test_wrong_amount_reference_merchant_or_capture_rejected(self):
         for mutator in [lambda x:x['purchase_units'][0]['amount'].update(value='451.00'),lambda x:x['purchase_units'][0].update(custom_id='other'),lambda x:x['purchase_units'][0]['payee'].update(merchant_id='OTHER12345')]:
             value=order('COMPLETED',capture=True);mutator(value)

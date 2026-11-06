@@ -16,7 +16,7 @@ export function validateProjectAnswer(value,projectId){
  if(value.answer_basis!==undefined&&!['documents','conversation'].includes(value.answer_basis)||value.status==='answered'&&value.answer_basis!=='conversation'&&!value.citations.length)throw Error('AI_JOB_INVALID');
  for(const citation of value.citations){
   const source=value.sources.find(s=>s.source_id===citation.source_id);
-  if(!source||!['summary','original','plan'].includes(source.source_kind)||typeof source.file_id!=='string'||typeof citation.quote!=='string'||!citation.quote.trim())throw Error('AI_JOB_INVALID');
+  if(!source||!['summary','original','plan','status'].includes(source.source_kind)||typeof source.file_id!=='string'||typeof citation.quote!=='string'||!citation.quote.trim())throw Error('AI_JOB_INVALID');
  }
  return value;
 }
@@ -62,16 +62,48 @@ export function documentScopeMarkup(files,selected,action,disabled=false){
  return `<aside data-agent-document-choice><p>${text('scopeAvailable',{ready:ready.length,pending:excluded.length})}</p><details data-agent-source="document-scope-choice"><summary>${text('scopeReview')}</summary><strong>${text('scopeIncluded')}</strong><ul>${names(ready)}</ul><strong>${text('scopeExcluded')}</strong><ul>${names(excluded)}</ul></details>${ready.length>100?`<p role="status">${text('scopeTooMany')}</p>`:`<button type="button" class="button secondary" ${action}="use-ready" ${disabled||!ready.length?'disabled':''}>${text('scopeUse',{count:ready.length})}</button>`}</aside>`;
 }
 export function installProjectAssistant(cloud){
- let context=null,sourceTimer=null,documentsPanel=null,documentsClosed=null;
+ let context=null,sourceTimer=null,documentsPanel=null,documentsClosed=null,floatingPanel=null;
+ // One TeTrato per project: the floating drawer shows the same conversation as the Assistant tab.
+ const fab=cloud.document.createElement&&cloud.document.body?cloud.document.createElement('button'):null;
+ if(fab){fab.type='button';fab.className='tetrato-fab';fab.hidden=true;
+  fab.setAttribute('aria-haspopup','dialog');fab.setAttribute('aria-label',text('openFloating'));fab.title=text('openFloating');
+  fab.innerHTML='<img src="/assets/mascot/trato-guide.png" alt="" width="40" height="40"><span>TeTrato</span>';
+  cloud.document.body.append(fab);}
+ const floatingOpen=()=>!!floatingPanel?.element.open;
+ function updateFab(){
+  if(!fab)return;fab.hidden=!(cloud.active&&cloud.projectId&&!['asistente','devoluciones'].includes(cloud.tab)&&!floatingOpen());
+  // Same bottom line as the section guide launcher, placed to its left so neither covers the other.
+  const launcher=cloud.document.querySelector?.('.guide-launcher'),width=launcher&&!launcher.hidden?launcher.getBoundingClientRect?.().width:0;
+  fab.style.right=width?`${Math.round(28+width+12)}px`:'';
+ }
+ function focusTarget(){
+  // Where the user is looking: a change request detail. Verified again by the backend.
+  if(cloud.tab!=='solicitudes'||!cloud.requestId)return null;
+  const doc=cloud.documents?.find(item=>item.id===cloud.requestId);
+  return doc?{id:doc.id,title:doc.title}:null;
+ }
+ function renderFloating(state){
+  const body=cloud.document.createElement('div');cloud.renderProjectAssistant(body);
+  const focus=state.focus?`<p class="tetrato-focus">${icon('file-text')}<span>${text('focusLabel')} ${esc(state.focus.title)}</span></p>`:'';
+  floatingPanel.render(`<div class="case-agent-shell"><header class="case-agent-header"><div class="case-agent-heading"><img class="case-agent-mascot" src="/assets/mascot/trato-guide.png" alt="" width="44" height="44"><div><span>Trato</span><h2 id="tetrato-floating-title">TeTrato</h2></div></div><button type="button" class="case-agent-close" data-agent-close aria-label="${uiText('Cerrar')}" title="${uiText('Cerrar')}">${icon('x')}</button></header>${focus}<div class="case-agent-chat tetrato-floating-body" data-agent-chat>${body.innerHTML}</div></div>`);
+  restoreChatScroll(floatingPanel.element.querySelector('.project-assistant-log'),state.chatScroll);
+ }
+ fab?.addEventListener('click',()=>{
+  const state=stateForProject();state.focus=focusTarget();
+  if(!floatingPanel)floatingPanel=createAgentPanel({cloud,id:'tetrato-floating-title',className:'project-agent-drawer tetrato-floating',onClose(){if(context)context.focus=null;updateFab();}});
+  floatingPanel.open(fab);updateFab();renderFloating(state);
+  floatingPanel.element.querySelector('#project-assistant-question')?.focus();
+ });
 
  const current=state=>context===state&&cloud.active&&cloud.navigationOwner===state.owner&&cloud.projectId===state.project;
- const visible=state=>current(state)&&(cloud.tab==='asistente'||documentsPanel?.element.open);
+ const visible=state=>current(state)&&(cloud.tab==='asistente'||documentsPanel?.element.open||floatingOpen());
  function paint(state){
   if(!visible(state))return;
   if(documentsPanel?.element.open){
    documentsPanel.render(agentShell({id:'project-documents-title',title:text('projectDocuments'),
     label:text('projectDocuments'),closeLabel:text('closeDocuments'),content:sourcePanel(state),composer:''}));
-  }else cloud.notify();
+  }else if(floatingOpen())renderFloating(state);
+  else cloud.notify();
  }
  cloud.openProjectDocuments=function(button,onClose){
   const state=stateForProject();
@@ -218,7 +250,7 @@ export function installProjectAssistant(cloud){
  }
  function citations(value){return value.citations.map(citation=>{
   const source=value.sources.find(s=>s.source_id===citation.source_id);
-  return `<article class="project-assistant-source"><span>${text(source.source_kind==='plan'?'planLabel':source.source_kind==='summary'?'referenceLabel':'documentLabel')}</span><button type="button" data-assistant-action="${source.source_kind==='plan'?'plan':'source'}" data-document-id="${esc(source.file_id)}">${icon('file-text')}${esc(source.source_kind==='plan'?text('planLabel'):source.title||text('documentLabel'))}${icon('arrow-up-right')}</button><blockquote>${esc(citation.quote)}</blockquote>${source.locator?`<small>${text(source.locator.kind==='page'?'page':'sectionLabel')} ${esc(source.locator.page??source.locator.paragraph??source.locator.section??'')}</small>`:''}</article>`;
+  return `<article class="project-assistant-source"><span>${text(source.source_kind==='plan'?'planLabel':source.source_kind==='status'?'statusLabel':source.source_kind==='summary'?'referenceLabel':'documentLabel')}</span><button type="button" data-assistant-action="${source.source_kind==='plan'?'plan':source.source_kind==='status'?'status':'source'}" data-document-id="${esc(source.file_id)}">${icon('file-text')}${esc(source.source_kind==='plan'?text('planLabel'):source.source_kind==='status'?text('statusLabel'):source.title||text('documentLabel'))}${icon('arrow-up-right')}</button><blockquote>${esc(citation.quote)}</blockquote>${source.locator?`<small>${text(source.locator.kind==='page'?'page':'sectionLabel')} ${esc(source.locator.page??source.locator.paragraph??source.locator.section??'')}</small>`:''}</article>`;
  }).join('');}
  cloud.renderProjectAssistant=function(panel){
   let state;
@@ -227,7 +259,7 @@ export function installProjectAssistant(cloud){
   const job=state.job.state,pending=['queued','running'].includes(job.status),failed=['failed','unavailable'].includes(job.status);
   const citations=value=>value.citations.map(citation=>{
    const source=value.sources.find(s=>s.source_id===citation.source_id);
-   return `<article class="project-assistant-source"><span>${text(source.source_kind==='summary'?'summarySource':'originalSource')}</span><button type="button" data-assistant-action="${source.source_kind==='plan'?'plan':'source'}" data-document-id="${esc(source.file_id)}">${icon('file-text')}${esc(source.title)}${icon('arrow-up-right')}</button><blockquote>${esc(citation.quote)}</blockquote>${source.locator?`<small>${text(source.locator.kind==='page'?'page':'paragraph')} ${esc(source.locator[source.locator.kind])}</small>`:''}</article>`;
+   return `<article class="project-assistant-source"><span>${text(source.source_kind==='status'?'statusLabel':source.source_kind==='summary'?'summarySource':'originalSource')}</span><button type="button" data-assistant-action="${source.source_kind==='plan'?'plan':source.source_kind==='status'?'status':'source'}" data-document-id="${esc(source.file_id)}">${icon('file-text')}${esc(source.source_kind==='status'?text('statusLabel'):source.title)}${icon('arrow-up-right')}</button><blockquote>${esc(citation.quote)}</blockquote>${source.locator?`<small>${text(source.locator.kind==='page'?'page':'paragraph')} ${esc(source.locator[source.locator.kind])}</small>`:''}</article>`;
   }).join('');
   const submitted=typeof job.payload?.question==='string'&&!!job.payload.question.trim();
   const unanswered=submitted&&!state.entries.some(entry=>entry.id===job.id);
@@ -253,10 +285,10 @@ export function installProjectAssistant(cloud){
  };
  async function ask(state,question){
   state.chatScroll=null;state.draft='';state.followPage=true;state.revealPage=true;state.pageScroll=cloud.document.defaultView?.scrollY;
-  await state.job.start('/api/v1/ai/project-questions',{project_id:state.project,question,output_language:uiLanguage()});
+  await state.job.start('/api/v1/ai/project-questions',{project_id:state.project,question,output_language:uiLanguage(),...(floatingOpen()&&state.focus?{focus_request_id:state.focus.id}:{})});
  }
  const submit=event=>{
-  if(!event.target.matches('[data-project-question]')||!cloud.active||cloud.tab!=='asistente')return;
+  if(!event.target.matches('[data-project-question]')||!cloud.active||(cloud.tab!=='asistente'&&!floatingOpen()))return;
   event.preventDefault();const state=stateForProject();state.sourceOpen=false;
   const question=new FormData(event.target).get('question').trim();if(question)ask(state,question);
  };
@@ -276,6 +308,7 @@ export function installProjectAssistant(cloud){
   if(action==='reload-history')restore(state);
   if(action==='older')restore(state,state.nextBefore);
   if(action==='plan'){cloud.tab='plan';cloud.notify();}
+  if(action==='status'){cloud.tab='historial';cloud.notify();}
   if(action==='source'){state.followPage=false;state.revealPage=false;cloud.run(()=>cloud.previewDocument(button.dataset.documentId));}
   if(action==='use-ready'&&!state.sourceLoading&&!state.sourceError&&!state.job.state.uncertain&&!['queued','running'].includes(state.job.state.status)){
    const {ready}=documentSelection(state.sourceFiles);if(!ready.length||ready.length>100)return;
@@ -290,7 +323,7 @@ export function installProjectAssistant(cloud){
   }
  };
  const original=cloud.syncChrome.bind(cloud);
- cloud.syncChrome=function(){original();if(context&&(!cloud.active||cloud.navigationOwner!==context.owner||cloud.projectId!==context.project)){documentsPanel?.close();context.job.dispose();context.processingJob?.dispose();context=null;}};
+ cloud.syncChrome=function(){original();updateFab();if(context&&(!cloud.active||cloud.navigationOwner!==context.owner||cloud.projectId!==context.project)){floatingPanel?.close();documentsPanel?.close();context.job.dispose();context.processingJob?.dispose();context=null;}};
  const scroll=event=>{
   if(!context||!visible(context))return;
   if(event.target.matches?.('.project-assistant-log'))context.chatScroll=chatScrollPosition(event.target);
@@ -319,5 +352,5 @@ export function installProjectAssistant(cloud){
  const keydown=event=>{if(context&&visible(context))submitChatOnEnter(event,'#project-assistant-question');if(event.key==='Escape'&&context?.sourceOpen&&!documentsPanel?.element.open){context.sourceOpen=false;paint(context);cloud.document.querySelector('[data-assistant-action=open-sources]')?.focus();}};
  cloud.document.addEventListener('keydown',keydown);
  cloud.document.addEventListener('submit',submit);cloud.document.addEventListener('input',input);cloud.document.addEventListener('click',click);
- return ()=>{documentsPanel?.dispose();cloud.document.removeEventListener('toggle',toggle,true);cloud.document.removeEventListener('scroll',scroll,true);clearTimeout(sourceTimer);cloud.document.removeEventListener('keydown',keydown);context?.job.dispose();context?.processingJob?.dispose();cloud.document.removeEventListener('submit',submit);cloud.document.removeEventListener('input',input);cloud.document.removeEventListener('click',click);};
+ return ()=>{floatingPanel?.dispose();fab?.remove();documentsPanel?.dispose();cloud.document.removeEventListener('toggle',toggle,true);cloud.document.removeEventListener('scroll',scroll,true);clearTimeout(sourceTimer);cloud.document.removeEventListener('keydown',keydown);context?.job.dispose();context?.processingJob?.dispose();cloud.document.removeEventListener('submit',submit);cloud.document.removeEventListener('input',input);cloud.document.removeEventListener('click',click);};
 }

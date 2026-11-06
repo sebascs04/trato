@@ -21,19 +21,43 @@ export function stagePaymentStep(pay){
  if(['not_sent','failed'].includes(pay.mail_status))return 'send_email';
  throw Error('Invalid payment email status');
 }
+export async function loadStagePayment(request,project,position,isCurrent=()=>true){
+ const base=`/api/v1/projects/${project}/stages/${position}`;
+ const pay=await request(`${base}/checkout`);
+ return pay||!isCurrent()?{pay}:{pay,evidence:await request(`${base}/evidence`)};
+}
+export function mergeStageEvidence(existing,documents,position){
+ const previous=new Map(existing.map(d=>[d.id,d]));
+ return [...existing.filter(d=>d.upload_context?.stage_position!==position),...documents.map(d=>({...previous.get(d.id),...d}))]
+  .sort((a,b)=>String(b.created_at||'').localeCompare(String(a.created_at||'')));
+}
+export function createPlanProgressLoader(request,now=Date.now){
+ const entries=new Map();
+ return {
+  load(key,project){
+   const old=entries.get(key);if(old&&(old.pending||old.until>now()))return old.promise;
+   const entry={pending:true,until:0};entries.set(key,entry);
+   entry.promise=(async()=>request(`/api/v1/projects/${project}/plan-progress`))().then(value=>{
+    entry.pending=false;entry.until=now()+15000;return value;
+   },error=>{if(entries.get(key)===entry)entries.delete(key);throw error;});return entry.promise;
+  },
+  clear(key){if(key)entries.delete(key);else entries.clear();}
+ };
+}
 export function installPlanPayments(cloud){
  const doc=cloud.document;let modalState=null,timer=null,revision=0;
+ const progressLoader=createPlanProgressLoader(path=>cloud.request(path));
  const scope=()=>cloud.active?`${cloud.navigationOwner}:${cloud.projectId}`:null;
  const valid=state=>scope()===state.scope&&modalState===state&&cloud.modal.open&&cloud.modal.querySelector('[data-plan-payment-content]')?.dataset.planScope===state.scope;
  const endpoint=(project,position,tail='')=>`/api/v1/projects/${project}/stages/${position}/checkout${tail}`;
  const message=error=>t(({PLAN_PREVIOUS_STAGE_UNPAID:'previousUnpaid',PLAN_EVIDENCE_REQUIRED:'evidenceRequired',PLAN_EVIDENCE_NOT_READY:'evidencePending',PLAN_EVIDENCE_INVALID:'evidenceInvalid',PLAN_EVIDENCE_PROTECTED:'evidenceProtected',PLAN_STAGE_REQUIRED:'stageRequired',PLAN_LEGACY_PAYMENT_REQUIRES_REVIEW:'legacyReview',INITIAL_PAYER_MISMATCH:'payerMismatch'})[error.code]||'error');
- const originalReset=cloud.reset.bind(cloud);cloud.reset=function(){clearTimeout(timer);modalState=null;revision++;return originalReset();};
+ const originalReset=cloud.reset.bind(cloud);cloud.reset=function(){clearTimeout(timer);modalState=null;revision++;progressLoader.clear();return originalReset();};
  async function progress(host,plan,overview=false){
   const key=scope(),project=cloud.projectId;if(!key||!host?.isConnected)return;
   const generation=++revision;
   const region=doc.createElement('div');region.className='plan-payment-progress';region.setAttribute('role','status');region.textContent=t('loading');(overview?host.querySelector('.cloud-agreement')||host:host).append(region);
   try{
-   const value=await cloud.request(`/api/v1/projects/${project}/plan-progress`);
+   const value=await progressLoader.load(key,project);
    if(scope()!==key||!host.isConnected||generation!==revision)return;
    if(!value){region.remove();return;}
    const paid=value.stages.filter(s=>s.status==='completed').length;
@@ -52,31 +76,23 @@ export function installPlanPayments(cloud){
  const renderAgreement=cloud.renderAgreement.bind(cloud);cloud.renderAgreement=function(host){renderAgreement(host);void progress(host,null,true);};
  async function open(project,position,stage,progressValue){
   clearTimeout(timer);const state={scope:scope(),project,position,stage,progress:progressValue,view:'payment',busy:false,upload:null,pay:null,files:[],ready:[],withdrawals:[],readGeneration:0,error:'',uploadKeys:new Map()};modalState=state;
-  cloud.modal.addEventListener('close',()=>{if(!cloud.modal.open&&modalState===state){clearTimeout(timer);modalState=null;if(scope()===state.scope)cloud.notify();}},{once:true});
-  cloud.show(t('deliveryAndPayment'),`<div data-plan-payment-content data-plan-scope="${esc(state.scope)}"><p role="status">${t('loading')}</p></div>`);await load(state);
- }
- async function readInventory(state){
-  const files=[];let offset=0;
-  do{
-   const page=await cloud.request(`/api/v1/projects/${state.project}/sources?limit=100&offset=${offset}`);
-   if(!valid(state))return {files:[]};
-   if(!Array.isArray(page.files))throw Error('Invalid document inventory');
-   files.push(...page.files);const next=page.next_offset;
-   if(files.length>1000||next!==null&&(!Number.isInteger(next)||next<=offset))throw Error('Invalid document inventory');
-   offset=next;
-  }while(offset!==null);
-  return {files};
+  cloud.modal.addEventListener('close',()=>{if(!cloud.modal.open&&modalState===state){clearTimeout(timer);modalState=null;progressLoader.clear(state.scope);if(scope()===state.scope){cloud.historyLoaded=false;cloud.releaseProjectMap?.();cloud.notify();}}},{once:true});
+  cloud.show(t('deliveryAndPayment'),`<div data-plan-payment-content data-plan-scope="${esc(state.scope)}"><section class="plan-delivery-payment"><header><div><span class="eyebrow">${t('deliverable',{number:position})}</span><h3>${esc(stage.title)}</h3></div><strong>${money(stage.amount)}</strong></header><div class="plan-stage-loading" role="status" aria-busy="true"><p>${t('loading')}</p><span aria-hidden="true"></span><span aria-hidden="true"></span></div></section></div>`);await load(state);
  }
  async function load(state){
   const run=++state.readGeneration;
   try{
-   const [pay,documents,inventory,withdrawals]=await Promise.all([cloud.request(endpoint(state.project,state.position)),cloud.request(`/api/v1/projects/${state.project}/documents`),readInventory(state),cloud.request(`/api/v1/projects/${state.project}/stages/${state.position}/evidence-withdrawals`)]);
+   const {pay,evidence}=await loadStagePayment(path=>cloud.request(path),state.project,state.position,()=>valid(state)&&run===state.readGeneration);
    if(!valid(state)||run!==state.readGeneration)return;
-   state.withdrawals=withdrawals;
-   state.pay=pay;state.files=documents.filter(d=>d.upload_context?.stage_position===state.position).map(d=>({...d,vector_status:inventory.files.find(f=>f.id===d.id)?.status,vector_error:inventory.files.find(f=>f.id===d.id)?.error_code}));state.ready=state.files.filter(d=>inventory.files.some(f=>f.id===d.id&&f.status==='ready'&&f.summary_status==='ready'));state.error='';
+   state.pay=pay;state.error='';
+   if(pay){paint(state);scheduleStateRead(state);return;}
+   if(!Array.isArray(evidence.documents)||!Array.isArray(evidence.files)||!Array.isArray(evidence.withdrawals))throw Error('Invalid stage evidence');
+   state.withdrawals=evidence.withdrawals;
+   state.files=evidence.documents.map(d=>({...d,vector_status:evidence.files.find(f=>f.id===d.id)?.status,vector_error:evidence.files.find(f=>f.id===d.id)?.error_code}));
+   state.ready=state.files.filter(d=>evidence.files.some(f=>f.id===d.id&&f.status==='ready'&&f.summary_status==='ready'));
+   cloud.documents=mergeStageEvidence(cloud.documents||[],evidence.documents,state.position);
    if(state.upload?.id&&state.files.some(file=>file.id===state.upload.id))state.upload=null;
-   cloud.documents=documents;paint(state);
-   scheduleStateRead(state);
+   paint(state);scheduleStateRead(state);
   }catch(error){if(valid(state)&&run===state.readGeneration){state.error=message(error);paint(state);}}
  }
  function evidenceStatus(state,file){

@@ -5,6 +5,7 @@ never repairs an index implicitly, and never presents a partial index as complet
 """
 from hashlib import sha256
 import json
+from copy import deepcopy
 import math
 import os
 from uuid import UUID, NAMESPACE_URL, uuid5
@@ -33,8 +34,14 @@ class SearchInput(BaseModel):
     limit: int = Field(default=8, ge=1, le=20)
 
 
-def source(repo, owner, project, file_id):
-    value = repo.extraction(uuid(file_id))
+def source(repo, owner, project, file_id, prefetched=None):
+    # prefetched: {document_id: extraction value} from Repository.extractions(); the checks below are identical.
+    if prefetched is None:
+        value = repo.extraction(uuid(file_id))
+    else:
+        value = prefetched.get(uuid(file_id))
+        if value is None:
+            raise ApiError('DOCUMENT_NOT_FOUND', 404)
     doc, extraction, segments = value['document'], value['extraction'], value['segments']
     if (doc['project_id'] != project['id'] or doc['owner_id'] != owner or project['owner_id'] != owner):
         raise ApiError('DOCUMENT_NOT_FOUND', 404)
@@ -164,9 +171,9 @@ class VectorGateway:
     def receipt_key(self, owner, file_id):
         return PREFIX + owner + ':' + file_id
 
-    def receipt(self, owner, file_id):
+    def receipt(self, owner, file_id, prefetched=None):
         try:
-            receipt = self.registry.get(owner, file_id)
+            receipt = self.registry.get(owner, file_id) if prefetched is None else deepcopy(prefetched.get(file_id))
             if receipt is None:
                 return None
             if not isinstance(receipt, dict) or receipt.get('status') not in ('ready', 'indexing', 'failed'):
@@ -249,16 +256,20 @@ class VectorGateway:
         if wanted is not None and wanted != {d['id'] for d in documents}:
             raise ApiError('DOCUMENT_NOT_FOUND',404)
         files = []
+        # Grouped reads (a few queries for the whole page) when the repository offers them; same validations below.
+        ids = [doc['id'] for doc in documents]
+        batch = repo.extractions(ids) if ids and hasattr(repo, 'extractions') else None
+        receipts = self.registry.get_many(owner, ids) if ids and hasattr(self.registry, 'get_many') else None
         for doc in documents:
             try:
-                value = source(repo, owner, project, doc['id'])
+                value = source(repo, owner, project, doc['id'], prefetched=batch)
             except ApiError as error:
                 if error.code != 'VECTOR_SOURCE_NOT_READY':
                     raise
                 files.append({**doc, 'status': 'source_pending', 'generation': None,
                     **getattr(error, 'source_readiness', {})})
                 continue
-            receipt = self.receipt(owner, doc['id'])
+            receipt = self.receipt(owner, doc['id'], prefetched=receipts)
             ready = (receipt and receipt.get('status') == 'ready' and
                      receipt.get('generation') == value['generation'] and receipt.get('embedding_identity') == PROFILE_ID)
             current = receipt if receipt and receipt.get('generation') == value['generation'] else None
@@ -266,26 +277,40 @@ class VectorGateway:
                       else 'indexing' if current and current['status'] == 'indexing' else 'index_pending')
             files.append({**doc, 'status': status,
                           **({'error_code': current['error_code']} if status == 'index_error' else {}),
-                          'generation': value['generation'], '_source': value})
+                          'generation': value['generation'], '_source': value, '_receipt': receipt})
         return project, files
 
     def inventory(self, repo, owner, project_id, offset=0, limit=50, file_ids=None):
         _, files = self.snapshot(repo, owner, project_id, file_ids=file_ids)
         if os.getenv('TRATO_FILE_PROCESSING_ENABLED')=='true':
-            for file in files[offset:offset+limit]:
-                file['summary']=self.summary(repo,file)
-                receipt=self.receipt(owner,file['id'])
+            page=files[offset:offset+limit]
+            artifacts=repo.summary_artifacts([f['id'] for f in page if f.get('generation')],[f['generation'] for f in page if f.get('generation')]) if hasattr(repo,'summary_artifacts') else None
+            for file in page:
+                file['summary']=self.summary(repo,file,artifacts)
+                receipt=file['_receipt'] if '_receipt' in file else self.receipt(owner,file['id'])
                 file['summary_status']='ready' if file['summary'] is not None and file['status']=='ready' and receipt and receipt.get('summary_fingerprint')==file['summary']['summary_fingerprint'] else 'pending'
+            # Step of the run in progress for documents that are still being read; failures keep their real error.
+            if hasattr(repo,'summary_artifacts'):
+                from .document_progress import processing_progress
+                waiting=[f for f in page if not (f['status']=='ready' and f['summary_status']=='ready')
+                         and f['status'] not in ('index_error','source_error') and f.get('extraction_status')!='error']
+                if waiting:
+                    steps=processing_progress(repo,owner,project_id,[f['id'] for f in waiting])
+                    for file in waiting:file.update(steps.get(file['id'],{}))
         return {'files': [{k: v for k, v in f.items() if not k.startswith('_')} for f in files[offset:offset+limit]],
             'total': len(files), 'next_offset': offset+limit if offset+limit < len(files) else None,
             'complete': all(f['status'] == 'ready' for f in files), 'embedding_identity': PROFILE_ID}
 
-    def summary(self,repo,file):
+    def summary(self,repo,file,prefetched=None):
         if not file.get('generation'):return None
-        rows=repo.rows('file_processing_artifacts',{'select':'artifact','document_id':'eq.'+file['id'],
-            'source_generation':'eq.'+file['generation'],'stage':'eq.summary','order':'created_at.desc','limit':1})
-        if not rows:return None
-        value=rows[0]['artifact']
+        if prefetched is not None:
+            value=prefetched.get((file['id'],file['generation']))
+            if value is None:return None
+        else:
+            rows=repo.rows('file_processing_artifacts',{'select':'artifact','document_id':'eq.'+file['id'],
+                'source_generation':'eq.'+file['generation'],'stage':'eq.summary','order':'created_at.desc','limit':1})
+            if not rows:return None
+            value=rows[0]['artifact']
         if value.get('summary_fingerprint')!=digest({k:v for k,v in value.items() if k!='summary_fingerprint'}):
             raise ApiError('FILE_SUMMARY_INVALID',502)
         return {k:value[k] for k in ('summary','topics','citations','output_language','model_identity','source_fingerprint','summary_fingerprint')}
@@ -403,8 +428,15 @@ def build_vector_router(settings, require_user, repository_factory=None, gateway
         return JSONResponse({'data': value}, headers={'Cache-Control': 'no-store'})
     @router.get('/{project_id}/sources')
     def inventory(project_id: str, offset: int = Query(default=0, ge=0, le=1000),
-                  limit: int = Query(default=50, ge=1, le=100), user=Depends(require_user), repo=Depends(repository)):
-        return reply(gateway.inventory(repo, user, uuid(project_id), offset, limit))
+                  limit: int = Query(default=50, ge=1, le=100), file_ids: str | None = Query(default=None, max_length=3700),
+                  user=Depends(require_user), repo=Depends(repository)):
+        # Optional comma-separated subset, so a wait for one or two PDFs does not re-read the whole project.
+        # snapshot() validates every id and that it belongs to this owner and project.
+        ids = None
+        if file_ids is not None:
+            ids = [part.strip() for part in file_ids.split(',') if part.strip()]
+            if not ids or len(ids) > 100: raise ApiError('INVALID_REQUEST', 422)
+        return reply(gateway.inventory(repo, user, uuid(project_id), offset, limit, file_ids=ids))
     @router.post('/{project_id}/documents/{file_id}/index')
     def index(project_id: str, file_id: str, user=Depends(require_user), repo=Depends(repository)):
         return reply(gateway.index(repo, user, uuid(project_id), uuid(file_id)))

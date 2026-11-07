@@ -734,9 +734,58 @@ body.cloud-design{--bg:#faf9fc;--paper:#fff;--surface:#fff;--surface-soft:#f7f5f
 .proposal-compare-field h3{margin:0 0 10px;font-size:15px;color:var(--ink)}
 .proposal-compare-columns{display:grid;grid-template-columns:1fr 1fr;gap:16px}
 .proposal-compare-columns>div{padding:14px 16px;border:1px solid var(--line);border-radius:12px;background:var(--surface-soft,#f7f5fb)}
-.proposal-compare-columns>div:last-child{background:var(--surface,#fff);border-color:var(--purple-soft)}
+.proposal-compare-columns>div:last-child{background:var(--purple-soft);border-color:var(--purple)}
 .proposal-compare-columns small{display:none}
 .proposal-compare-columns p{margin:0;font-size:14px;line-height:1.6;color:var(--ink);white-space:pre-wrap}
 .proposal-compare-columns del{background:#fde8e8;color:#9b1c1c;text-decoration:line-through;border-radius:3px;padding:0 2px}
 .proposal-compare-columns ins{background:#e6f4ea;color:#1e6b35;text-decoration:none;border-radius:3px;padding:0 2px}
 @media(max-width:720px){.proposal-compare-head{display:none}.proposal-compare-columns{grid-template-columns:1fr}.proposal-compare-columns small{display:block;margin-bottom:6px;font-weight:700;color:var(--muted)}}
+/* Change request placement in the work plan, asked when registering the request. */
+.plan-placement-choice{display:grid;gap:8px;margin:4px 0 14px;padding:0;border:0}
+.plan-placement-choice legend{margin-bottom:8px;font-weight:700;color:var(--ink)}
+.plan-placement-option{display:flex;align-items:flex-start;gap:10px;min-height:44px;padding:10px 14px;border:1px solid var(--line);border-radius:12px;background:var(--surface);cursor:pointer;line-height:1.5}
+.plan-placement-option:has(input:checked){border-color:var(--purple);background:var(--purple-soft)}
+.plan-placement-option input{margin-top:4px;accent-color:var(--purple)}
+.plan-placement-option strong{color:var(--ink)}
+
+/* Register request: where it sits in the plan (reserved from the start, no layout jump) */
+[data-plan-placement]{display:grid;gap:6px}
+[data-plan-placement] .field{margin:0}
+[data-plan-placement] select{min-height:44px}
+[data-plan-placement] .plan-placement-help{margin:0;font-size:13px;line-height:1.6}
+
+/* Changes tab: closed or finalized requests live in their own dialog */
+.cloud-design .cloud-requests-archive-open{display:inline-flex;align-items:center;gap:6px;margin-top:16px;color:var(--muted)}
+.cloud-design .cloud-requests-archive-open .ui-icon{width:16px;height:16px}
+.cloud-requests-archive{display:grid;gap:10px;max-height:60vh;overflow:auto}
+.cloud-design .cloud-requests-empty{display:flex;align-items:center;gap:18px;margin-top:24px;padding:24px 26px;border:1px solid var(--line);border-radius:16px;background:linear-gradient(120deg,var(--purple-soft),var(--surface))}
+.cloud-design .cloud-requests-empty-icon{display:inline-grid;place-items:center;flex:none;width:48px;height:48px;border-radius:14px;background:var(--surface);color:var(--purple);border:1px solid var(--line)}
+.cloud-design .cloud-requests-empty-icon .ui-icon{width:22px;height:22px}
+.cloud-design .cloud-requests-empty strong{display:block;font-size:16px;font-weight:600;color:var(--ink)}
+.cloud-design .cloud-requests-empty p{margin:6px 0 0;max-width:560px;font-size:14px;line-height:1.6;color:var(--muted)}
+.cloud-design .cloud-requests-empty+.cloud-requests-archive-open{margin-top:14px}
+@media(max-width:600px){.cloud-design .cloud-requests-empty{flex-direction:column;align-items:flex-start}}
+/* Short help under a form field, e.g. what the additional fee covers. */
+.field .field-help{display:block;margin-top:6px;font-size:12.5px;font-weight:400;line-height:1.5;color:var(--muted)}
+/* Comparison titles carry their column's background: sent version neutral, this version purple. */
+.proposal-compare-head span{display:block;padding:6px 12px;border:1px solid var(--line);border-radius:8px;background:var(--surface-soft,#f7f5fb)}
+.proposal-compare-head span:last-child{background:var(--purple-soft);border-color:var(--purple)}
+.change-revision-comparison .proposal-compare-head{position:static;background:transparent;border-bottom:0;padding:0 0 4px}
+/* Decision actions right under the replies heading, separated from the messages below. */
+.cloud-design .cloud-reply-decision.is-top{justify-content:flex-start;margin:12px 0 16px;padding:0 0 16px;border-top:0;border-bottom:1px solid var(--line)}
+/* «Scope of the change» is itself the way into the full detail (replaces a separate «See detail» button). */
+.proposal-summary-open{display:block;width:100%;padding:16px 18px;border:1px solid var(--line);border-radius:12px;background:var(--surface);color:var(--ink);font:inherit;text-align:left;cursor:pointer}
+.proposal-summary-open:hover{border-color:var(--purple);background:var(--purple-soft)}
+.proposal-summary-open:focus-visible{outline:2px solid var(--purple);outline-offset:2px}
+.proposal-summary-open .proposal-summary-label{display:flex;align-items:center;justify-content:space-between;gap:12px}
+.proposal-summary-more{display:inline-flex;align-items:center;gap:4px;font-weight:600;color:var(--purple)}
+.proposal-summary-more .ui-icon{width:14px;height:14px}
+.proposal-summary-open .proposal-summary-clamp{margin:0;font-size:15px;line-height:1.7;white-space:pre-wrap;overflow-wrap:anywhere}
+/* Acceptance registered by hand, shown as the client's final answer to this version. */
+.client-accepted{display:grid;gap:12px;margin:0 0 12px;padding:16px 18px;border:1px solid var(--line);border-radius:12px;background:var(--surface)}
+.client-accepted header{display:flex;align-items:center;gap:12px}
+.client-accepted-icon{display:grid;place-items:center;flex:0 0 32px;width:32px;height:32px;border-radius:50%;background:#e6f4ea;color:#1e6b35}
+.client-accepted-icon .ui-icon{width:18px;height:18px}
+.client-accepted header strong{display:block;font-size:15px;color:var(--ink)}
+.client-accepted header time{display:block;margin-top:2px;font-size:12.5px;color:var(--muted)}
+.client-accepted blockquote{margin:0;padding-left:12px;border-left:2px solid var(--line);font-size:14px;line-height:1.6;color:var(--ink);white-space:pre-wrap;overflow-wrap:anywhere}

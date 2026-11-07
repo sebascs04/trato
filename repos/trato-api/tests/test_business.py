@@ -144,12 +144,14 @@ class RequestLifecycleTests(unittest.TestCase):
             result=client.get(f'/api/v1/projects/{PROJECT}/request-status',headers={'Authorization':'Bearer user-a'})
         self.assertEqual(repo.calls,[('status',PROJECT)])
         self.assertFalse(result.json()['data']['can_register'])
-    def test_closure_needs_explicit_reason_and_notes(self):
+    def test_closure_needs_explicit_reason_and_optional_notes(self):
         repo=Repo()
         with self.client(repo) as client:
-            for data in [{'reason':'paid','notes':'x'},{'reason':'rejected','notes':''},{'reason':'withdrawn','notes':'x','owner_id':'foreign'}]:
+            for data in [{'reason':'paid','notes':'x'},{'notes':'x'},{'reason':'withdrawn','notes':'x','owner_id':'foreign'},{'reason':'rejected','notes':'x'*4001}]:
                 self.assertEqual(client.post(f'/api/v1/requests/{DOCUMENT}/close',headers={'Authorization':'Bearer user-a'},json=data).status_code,422)
             self.assertEqual(repo.calls,[])
             result=client.post(f'/api/v1/requests/{DOCUMENT}/close',headers={'Authorization':'Bearer user-a'},json={'reason':'withdrawn','notes':'El cliente retiró el pedido'})
-        self.assertEqual(result.status_code,200)
-        self.assertEqual(repo.calls,[('close',DOCUMENT,'withdrawn','El cliente retiró el pedido')])
+            empty=client.post(f'/api/v1/requests/{DOCUMENT}/close',headers={'Authorization':'Bearer user-a'},json={'reason':'rejected','notes':'  '})
+            missing=client.post(f'/api/v1/requests/{DOCUMENT}/close',headers={'Authorization':'Bearer user-a'},json={'reason':'rejected'})
+        self.assertEqual((result.status_code,empty.status_code,missing.status_code),(200,200,200))
+        self.assertEqual(repo.calls,[('close',DOCUMENT,'withdrawn','El cliente retiró el pedido'),('close',DOCUMENT,'rejected',''),('close',DOCUMENT,'rejected','')])

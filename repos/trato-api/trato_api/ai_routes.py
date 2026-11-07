@@ -23,6 +23,12 @@ class ReputationInput(BaseModel):
     model_config=ConfigDict(extra='forbid')
     profile_id:UUID
     output_language:Literal['es','en']
+class PlanStageTextInput(BaseModel):
+    # Only the wording of a deliverable that has not started; amounts change through an addendum.
+    model_config=ConfigDict(extra='forbid')
+    title:str=Field(min_length=1,max_length=200)
+    deliverables:str=Field(min_length=1,max_length=2000)
+    payment_condition:str=Field(min_length=1,max_length=500)
 class PlanSourceInput(BaseModel):
     # Text extracted without persistence by /api/v1/documents/extract; the original is uploaded only on confirmation.
     model_config=ConfigDict(extra='forbid')
@@ -160,6 +166,14 @@ def build_ai_router(settings,require_user,repository_factory=None,jobs=None,pref
         if not rows:raise ApiError('AI_PLAN_NOT_FOUND',404)
         plan=rows[0];plan['stages'].sort(key=lambda stage:stage['position'])
         return JSONResponse({'data':plan},headers={'Cache-Control':'no-store'})
+    @router.patch('/projects/{project_id}/plan/stages/{position}')
+    async def edit_plan_stage(project_id:UUID,position:int,request:Request,owner=Depends(require_user)):
+        if not 1<=position<=8:raise ApiError('PLAN_STAGE_NOT_FOUND',404)
+        item=await parse(request,PlanStageTextInput,8000)
+        if not item.title.strip() or not item.deliverables.strip() or not item.payment_condition.strip():raise ApiError('PLAN_STAGE_INVALID',422)
+        data=await run_in_threadpool(repository(request).rpc,'edit_plan_stage',{'p_project':str(project_id),'p_position':position,
+            'p_title':item.title,'p_deliverables':item.deliverables,'p_payment_condition':item.payment_condition})
+        return JSONResponse({'data':data},headers={'Cache-Control':'no-store'})
     @router.get('/jobs/{job_id}')
     async def get(job_id:UUID,request:Request,owner=Depends(require_user)):
         result=await run_in_threadpool(jobs.get,owner,str(job_id))

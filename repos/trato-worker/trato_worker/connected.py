@@ -176,14 +176,19 @@ class ConnectedWorker:
 
     def sync_graph(self,message,claim):
         from .graph_projection import GraphWriter,build_projection
-        import json
+        import json,logging,time
         try:
+            started=time.monotonic()
             data=json.loads(self.client.request('GET',self.client.api_url+'/internal/threads/'+message['thread_id']+'/graph-input',
                 token=self.client.worker_token,maximum=2400000,params={'lease_id':claim['lease_id']}))['data']
             if data['generation']!=message['payload']['generation'] or data['content_hash']!=message['payload']['content_hash']:
                 raise JobError('GRAPH_CONTEXT_CONFLICT')
-            projection=build_projection(data['snapshot'],message['context'])
-            GraphWriter.from_env().sync(projection,message['context'],data['generation'],data['content_hash'])
+            fetched=time.monotonic();projection=build_projection(data['snapshot'],message['context'])
+            built=time.monotonic();GraphWriter.from_env().sync(projection,message['context'],data['generation'],data['content_hash'])
+            # Timing only: no business data, ids or document text.
+            logging.getLogger(__name__).warning(json.dumps({'event':'graph_sync_timing','input_ms':round(1000*(fetched-started)),
+                'build_ms':round(1000*(built-fetched)),'write_ms':round(1000*(time.monotonic()-built)),
+                'nodes':len(projection['nodes']),'edges':len(projection['edges'])}))
             return self.event(message,claim['lease_id'],'completed',{'generation':data['generation'],'content_hash':data['content_hash']})
         except JobError as exc:
             return self.event(message,claim['lease_id'],'failed',{'error_code':exc.code})

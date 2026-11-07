@@ -17,7 +17,7 @@ export function installProjectPlanning(cloud){
  const project=()=>wizard?.project||cloud.project();
  const setupKey=id=>`${cloud.session.key}:project-setup:${owner()}:${id}`;
  const key=()=>`${cloud.session.key}:project-plan-draft:${owner()}:${project().id}`;
- let currentKey='';let contextPanel=null,recommendationPanel=null;
+ let currentKey='';let contextPanel=null,recommendationPanel=null;let readingSources=false;
  function closeContext(){if(contextPanel?.element.open)contextPanel.close();if(recommendationPanel?.element.open)recommendationPanel.close();}
  const visible=()=>cloud.active&&((wizard&&cloud.modal.open&&root?.isConnected)||(!wizard&&cloud.tab==='plan'&&cloud.projectId&&cloud.location.hash==='#clientes'));
  function defaults(){return {version:1,project_id:project().id,client_id:project().client_id,step:1,brief:'',budget:'',date:'',stages:Array.from({length:3},()=>({title:'',body:'',percent:'',when:''}))};}
@@ -27,7 +27,7 @@ export function installProjectPlanning(cloud){
   try{const saved=JSON.parse(cloud.storage.getItem(id)||'null');if(saved?.version===1&&saved.project_id===value.project_id&&saved.client_id===value.client_id&&[1,2,3].includes(saved.step)&&Array.isArray(saved.stages)&&saved.stages.length>=1&&saved.stages.length<=8){
    for(const f of ['brief','budget','date'])if(typeof saved[f]==='string')value[f]=saved[f].slice(0,4000);
    value.planView=saved.planView==='edit'?'edit':'rationale';value.stageIndex=Number.isInteger(saved.stageIndex)?Math.max(0,Math.min(saved.stageIndex,saved.stages.length-1)):0;
-   value.plan_job_id=typeof saved.plan_job_id==='string'?saved.plan_job_id:null;value.analysis=saved.analysis;value.review_job_id=saved.review_job_id;value.reviewed=saved.reviewed;value.step=saved.step;value.stages=saved.stages.map(stage=>Object.fromEntries(['title','body','percent','when'].map(f=>[f,typeof stage[f]==='string'?stage[f].slice(0,2000):''])));
+   value.plan_job_id=typeof saved.plan_job_id==='string'?saved.plan_job_id:null;value.plan_sources=typeof saved.plan_sources==='string'?saved.plan_sources:null;value.analysis=saved.analysis;value.review_job_id=saved.review_job_id;value.reviewed=saved.reviewed;value.step=saved.step;value.stages=saved.stages.map(stage=>Object.fromEntries(['title','body','percent','when'].map(f=>[f,typeof stage[f]==='string'?stage[f].slice(0,2000):''])));
   }}catch{value.storageError=t('draftReadError');}
   drafts.set(id,value);return value;
  }
@@ -68,9 +68,20 @@ export function installProjectPlanning(cloud){
  function fields(d){return `<label class="field">${t('brief')}<textarea class="context-box" data-plan-field="brief" maxlength="4000" rows="4" required>${esc(d.brief)}</textarea></label><div class="plan-fields"><label class="field">${t('budget')}<input class="context-box" type="number" min="0.01" max="100000000" step="0.01" data-plan-field="budget" value="${esc(d.budget)}" required></label><label class="field">${t('target')}<input class="context-box" type="date" min="${projectToday()}" data-plan-field="date" value="${esc(d.date)}" required></label></div>`;}
  function stageAmounts(d){const cents=Math.round(Number(d.budget)*100);let used=0;return d.stages.map((stage,i)=>{const amount=i===d.stages.length-1?cents-used:Math.floor(cents*Number(stage.percent)/100);used+=amount;return amount/100;});}
  function stages(d,review=false,only=null){return d.stages.map((stage,i)=>only!==null&&i!==only?'':`<article class="plan-stage"><span class="plan-stage-number">${i+1}</span><div>${review?`<header><h4>${esc(stage.title)}</h4><strong>${currency(stageAmounts(d)[i])}</strong></header><p>${esc(stage.body)}</p><small>${esc(stage.when)} · ${new Intl.NumberFormat(uiLocale()).format(Number(stage.percent))} %</small>`:`<label class="field">${t('stageName')}<input class="context-box" data-plan-stage="${i}" data-plan-part="title" value="${esc(stage.title)}" maxlength="200" required></label><label class="field">${t('deliverables')}<textarea class="context-box" data-plan-stage="${i}" data-plan-part="body" maxlength="2000" rows="2" required>${esc(stage.body)}</textarea></label><div class="plan-fields"><label class="field">${t('percent')}<input class="context-box" type="number" min="1" max="100" step="1" data-plan-stage="${i}" data-plan-part="percent" value="${esc(stage.percent)}" required></label><div class="plan-payment-preview"><label for="plan-when-${i}">${t('paymentWhen')}</label><textarea id="plan-when-${i}" class="context-box" rows="2" maxlength="500" data-plan-stage="${i}" data-plan-part="when" required>${esc(stage.when)}</textarea></div></div>`}</div></article>`).join('');}
+ let resumedKey='';
+ function resumePlanJobs(){
+  if(resumedKey===currentKey)return;resumedKey=currentKey;
+  connectPlanAI();connectPlanReview();
+  for(const client of [planAI,planReview])if(['queued','running'].includes(client?.state.status))void client.check();
+  // Finished while the user was away: apply it once, only if this draft has not used that job yet.
+  const d=draft();
+  if(planAI?.state.status==='completed'&&planAI.state.id&&d.plan_job_id!==planAI.state.id)queueMicrotask(()=>planAI?.onChange(planAI.state));
+  if(planReview?.state.status==='completed'&&planReview.state.id&&d.plan_job_id&&d.review_job_id!==planReview.state.id&&planReview.state.payload?.plan_job_id===d.plan_job_id)queueMicrotask(()=>planReview?.onChange(planReview.state));
+ }
  function render(){
   if(!root||!visible())return;
   if(wizard?.route==='ongoing'){renderExistingSetup();return;}
+  resumePlanJobs();
   const d=draft(),rationale=d.step===2&&d.planView!=='edit';
   const progress=d.step===1?0:rationale?1:d.step===2?2:3;
   const title=d.step===1?'contextTitle':rationale?'rationaleTitle':d.step===2?'aiPlanTitle':'reviewTitle';
@@ -78,7 +89,8 @@ export function installProjectPlanning(cloud){
   root.innerHTML=`<section class="project-planning">${wizard||d.step>1?`<button type="button" class="text-button" data-plan-action="back">${icon('arrow-left')}${t(d.step===1?'backClient':'back')}</button>`:''}${wizard?`<header class="plan-setup-identity"><strong>${esc(wizard.project.name)}</strong><span>${esc(cloud.clients.find(c=>c.id===wizard.project.client_id)?.name)}</span></header>`:''}<ol class="plan-steps" aria-label="${t('progress')}">${['context','rationaleStep','plan','agreement'].map((name,i)=>`<li ${progress===i?'aria-current="step"':''}><span>${i+1}</span>${t(name)}</li>`).join('')}</ol>${d.step===1?background():''}<section class="workspace-panel plan-editor ${rationale?'plan-rationale-view':''}"><header class="plan-heading"><div><span class="eyebrow">${rationale?'TeTrato':t('draftLabel')}</span><h3 tabindex="-1" data-plan-heading>${t(title)}</h3><p>${t(intro)}</p></div></header><form data-plan-form>${d.step===1?fields(d):rationale?proposalReasoning(d):d.step===2?stageEditor(d):`<p class="plan-brief">${esc(d.brief)}</p>${stages(d,true)}<div class="plan-total"><span>${t('total')}</span><strong>${currency(Number(d.budget))}</strong></div>`}${d.step===1?sources():''}${planReview&&['queued','running'].includes(planReview.state.status)?renderAIActivity({label:t('reviewingEdits')}):''}${planAI&&['queued','running'].includes(planAI.state.status)?renderAIActivity({label:t('aiThinking'),hint:t('aiThinkingHint')}):''}<p class="cloud-error" role="alert" data-plan-error>${esc(d.storageError||d.error||'')}</p><footer class="plan-actions">${wizard?'':`<button type="button" class="text-button" data-plan-action="save">${icon('save')}${t('saveDraft')}</button><small>${t('sessionDraft')}</small>`}${d.step===2&&!rationale?`<button type="button" class="text-button" data-plan-action="show-rationale">${t('seeRationale')}</button>`:''}<button type="submit" class="button">${t(d.step===1?'generateAiPlan':rationale?'continueToPlan':d.step===2?'reviewPlan':wizard?(wizard.isNew?(wizard.created?'finishSaving':'createFinal'):'openPreparedProject'):'openInitialAgreement')}${icon('arrow-right')}</button></footer></form><p class="plan-notice" role="status" data-plan-notice></p></section></section>`;
   if(planReview&&['queued','running'].includes(planReview.state.status))root.querySelectorAll('input,textarea,button').forEach(el=>el.disabled=true);
   if(uploading)root.querySelectorAll('button').forEach(button=>button.disabled=true);
-  if(planAI&&['queued','running'].includes(planAI.state.status))root.querySelectorAll('[data-plan-field],button[type=submit]').forEach(el=>el.disabled=true);
+  // While the source PDFs are read or the plan is being organized, the request, amount, date and PDFs cannot change.
+  if(readingSources||planAI&&['queued','running'].includes(planAI.state.status))root.querySelectorAll('[data-plan-field],button[type=submit],.plan-sources button,.plan-sources input').forEach(el=>el.disabled=true);
  }
  function proposalReasoning(d){
   const a=d.analysis;
@@ -92,9 +104,11 @@ export function installProjectPlanning(cloud){
   recommendationPanel.element.querySelector('[data-agent-chat]').scrollTop=0;
   recommendationPanel.open(button);
  }
+ // The deliverable split must add up to 100 % before the plan can continue; show it while editing.
+ function percentTotal(d){const sum=d.stages.reduce((total,stage)=>total+(Number(stage.percent)||0),0);return `<p class="plan-percent-total ${sum===100?'is-complete':'is-pending'}" role="status">${uiText(sum===100?'planEdit.percentComplete':'planEdit.percentPending',{sum:new Intl.NumberFormat(uiLocale()).format(sum)})}</p>`;}
  function stageEditor(d){
   const index=Math.max(0,Math.min(d.stageIndex||0,d.stages.length-1));d.stageIndex=index;
-  return `<div class="plan-stage-switcher" role="group" aria-label="${t('chooseStage')}">${d.stages.map((stage,i)=>`<button type="button" data-plan-action="choose-stage" data-plan-stage-index="${i}" aria-pressed="${index===i}"><span aria-hidden="true"></span>${t('deliverableTab',{number:i+1})}</button>`).join('')}</div><div class="plan-stage-editor">${stages(d,false,index)}</div><div class="plan-total"><span>${t('total')}</span><strong>${currency(Number(d.budget))}</strong></div>`;
+  return `<div class="plan-stage-switcher" role="group" aria-label="${t('chooseStage')}">${d.stages.map((stage,i)=>`<button type="button" data-plan-action="choose-stage" data-plan-stage-index="${i}" aria-pressed="${index===i}"><span aria-hidden="true"></span>${t('deliverableTab',{number:i+1})}</button>`).join('')}${d.stages.length<8?`<button type="button" class="plan-stage-add" data-plan-action="add-stage">${icon('plus')}${uiText('planEdit.addStage')}</button>`:''}</div><div class="plan-stage-editor">${stages(d,false,index)}${d.stages.length>1?`<button type="button" class="text-button plan-stage-remove" data-plan-action="remove-stage" data-plan-stage-index="${index}">${icon('trash-2')}${uiText('planEdit.removeStage',{number:index+1})}</button>`:''}</div>${percentTotal(d)}<div class="plan-total"><span>${t('total')}</span><strong>${currency(Number(d.budget))}</strong></div>`;
  }
  function movePlanView(){if(recommendationPanel?.element.open)recommendationPanel.close();render();root?.querySelector('[data-plan-heading]')?.focus({preventScroll:true});if(wizard)cloud.modal.scrollTop=0;else root?.scrollIntoView?.({block:'start',behavior:'instant'});}
  function analysisMarkup(analysis){return `<section class="plan-ai-findings"><h4>${t('aiRationale')}</h4><p>${esc(analysis.summary)}</p>${analysis.observations.map(item=>`<article><strong>${esc(item.finding)}</strong><p>${esc(item.recommendation)}</p>${item.citations.map(c=>`<details><summary>${t('aiExperienceSource')}</summary><blockquote>${esc(c.quote)}</blockquote><small>${t('aiReviewVersion',{version:c.version})}</small></details>`).join('')}</article>`).join('')}<ul>${analysis.limitations.map(text=>`<li>${esc(text)}</li>`).join('')}</ul></section>`;}
@@ -106,7 +120,7 @@ export function installProjectPlanning(cloud){
    const d=draft();
    if(state.status==='completed'&&state.result?.kind==='project_plan'&&d.plan_job_id!==state.id){
     if(state.payload?.brief!==d.brief||Number(state.payload?.budget)!==Number(d.budget)||state.payload?.target_date!==d.date){d.error=t('aiInputsChanged');render();return;}
-    d.stages=state.result.stages.map(item=>({...item,percent:String(item.percent)}));d.analysis=state.result;d.plan_job_id=state.id;d.step=2;d.planView='rationale';d.stageIndex=0;d.review_job_id=null;d.reviewed=null;d.error='';save();movePlanView();return;
+    d.stages=state.result.stages.map(item=>({...item,percent:String(item.percent)}));d.analysis=state.result;d.plan_job_id=state.id;d.plan_sources=planSourcesKey();d.step=2;d.planView='rationale';d.stageIndex=0;d.review_job_id=null;d.reviewed=null;d.error='';save();movePlanView();return;
    }else if(state.error)d.error=t('aiFailure');
    render();
   }});
@@ -114,8 +128,8 @@ export function installProjectPlanning(cloud){
  const canonicalStages=stages=>(stages||[]).map(st=>({title:st.title,body:st.body,percent:Number(st.percent),when:st.when}));
  const confirmedStages=d=>canonicalStages(d.stages);
  const needsPlanReview=d=>JSON.stringify(confirmedStages(d))!==JSON.stringify(canonicalStages(d.analysis?.stages));
- async function reviewEdits(){
-  const d=draft(),contextId=currentKey;
+ function connectPlanReview(){
+  const contextId=currentKey;
   if(!planReview)planReview=new AIJobClient({cloud,scope:'project-plan-review:'+project().id,onChange:state=>{
    if(contextId!==currentKey||!visible())return;
    const current=draft();
@@ -126,9 +140,15 @@ export function installProjectPlanning(cloud){
    }
    if(state.error)current.error=t('aiFailure');render();
   }});
+ }
+ async function reviewEdits(){
+  const d=draft();connectPlanReview();
   await planReview.start('/api/v1/ai/project-plans/review',{plan_job_id:d.plan_job_id,stages:confirmedStages(d),output_language:uiLanguage()});
  }
  // Local PDFs are only read to extract text (the API does not persist them); originals upload when the project is confirmed.
+ // Going back to step 1 and forward again reuses the finished plan while its inputs and source PDFs are unchanged.
+ // Brief, budget and date edits already clear plan_job_id; this key covers the selected source files.
+ function planSourcesKey(){return (wizard?.files||[]).slice(0,5).map(item=>item.key).join('|');}
  async function planSources(){
   const pending=wizard;if(!pending?.files?.length)return [];
   pending.sourceText??=new Map();const sources=[];
@@ -145,8 +165,11 @@ export function installProjectPlanning(cloud){
  async function generatePlan(){
   const d=draft();connectPlanAI();d.error='';
   let sources;
+  // Reading the source PDFs happens before the AI job exists; the inputs stay locked during it too.
+  readingSources=true;render();
   try{sources=await planSources();}
-  catch(error){d.error=error?.message||t('aiFailure');render();return;}
+  catch(error){d.error=error?.message||t('aiFailure');return;}
+  finally{readingSources=false;render();}
   const payload={client_id:project().client_id,draft_id:project().id,brief:d.brief,budget:d.budget,target_date:d.date,sources,output_language:uiLanguage()};
   await planAI.start('/api/v1/ai/project-plans',payload);
  }
@@ -167,13 +190,67 @@ export function installProjectPlanning(cloud){
   if(initial)recommendationPanel.element.querySelector('.plan-sources').addEventListener('click',event=>{if(event.target.closest('[data-cloud-action]'))recommendationPanel.close();},true);
   recommendationPanel.open(button);
  }
+ // Saved plans: only the wording of a deliverable that has not started can be corrected; the backend enforces it.
+ cloud.openPlanStageEdit=function(position){
+  if(savedPlanStatus!=='ready'||!savedPlan)return;const stage=savedPlan.stages.find(item=>item.position===position);if(!stage)return;
+  cloud.show(uiText('planEdit.title',{number:position}),`<form data-plan-stage-edit class="plan-stage-edit"><p class="cloud-notice">${uiText('planEdit.help')}</p><label class="field">${t('stageName')}<input class="context-box" name="title" maxlength="200" required value="${esc(stage.title)}"></label><label class="field">${t('deliverables')}<textarea class="context-box" name="deliverables" maxlength="2000" rows="4" required>${esc(stage.deliverables)}</textarea></label><label class="field">${t('paymentWhen')}<input class="context-box" name="payment_condition" maxlength="500" required value="${esc(stage.payment_condition)}"></label><div class="dialog-actions"><button type="submit" class="button">${uiText('planEdit.save')}</button><button type="button" class="button secondary" data-cloud-close>${uiText('Cancelar')}</button></div></form>`);
+  const form=cloud.modal.querySelector('[data-plan-stage-edit]'),scope=currentKey,id=project().id;
+  form.addEventListener('submit',async event=>{
+   event.preventDefault();if(!form.reportValidity())return;const values=new FormData(form),buttons=[...form.querySelectorAll('button')];buttons.forEach(b=>b.disabled=true);
+   try{
+    const value=await cloud.request(`/api/v1/ai/projects/${encodeURIComponent(id)}/plan/stages/${position}`,{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({title:values.get('title'),deliverables:values.get('deliverables'),payment_condition:values.get('payment_condition')})});
+    if(scope!==currentKey||!savedPlan)return;Object.assign(stage,{title:value.title??stage.title,deliverables:value.deliverables??stage.deliverables,payment_condition:value.payment_condition??stage.payment_condition});
+    cloud.modal.close();if(visible())renderSaved();
+   }catch(error){const target=cloud.modal.querySelector('[data-cloud-error]');if(target)target.textContent=uiText(error.code==='PLAN_STAGE_STARTED'?'planEdit.started':'planEdit.error');}
+   finally{buttons.forEach(b=>b.disabled=false);}
+  });
+ };
+ // Change requests linked to the plan: sub-items under their deliverable (2.1, 2.2) or new work at the end.
+ // Numbering is derived here from the request date; nothing about it is stored.
+ let planChangesGeneration=0,planChangesCache=null;
+ // Re-renders of the plan repaint the last known changes at once; the refresh runs quietly and only
+ // the very first load of a project shows a loading line.
+ function paintPlanChanges(host,data){
+  host.querySelectorAll('.plan-stage-changes,[data-plan-new-work]').forEach(el=>el.remove());
+  host.parentElement?.querySelectorAll(':scope > [data-plan-new-work-section]').forEach(el=>el.remove());
+  const {proposals,requestStatus}=data;
+  // A registered request without a proposal yet still belongs in the plan.
+  const open=requestStatus?.open_request,requestDoc=id=>cloud.documents.find(d=>d.id===id);
+  const pending=open&&!proposals.some(p=>p.request_document_id===open.request_document_id)?[{...open,business_status:'history.request',created_at:requestDoc(open.request_document_id)?.created_at}]:[];
+  const linked=[...proposals,...pending].filter(p=>p.plan_placement==='stage'||p.plan_placement==='new').map(p=>({...p,title:requestDoc(p.request_document_id)?.title||uiText('Pedido del cliente'),date:Date.parse(p.created_at)||0})).sort((a,b)=>a.date-b.date);
+  // A change reads as a branch of its deliverable: what was asked, the additional on top and where it stands.
+  const done=status=>['Finalizado','Cerrado'].includes(status);
+  const row=change=>`<span class="plan-change-label">${esc(change.title)}</span>${Number.isSafeInteger(change.additional_minor)&&change.additional_minor>0?`<span class="plan-change-amount">+ ${currency(change.additional_minor/100)}</span>`:'<span class="plan-change-amount"></span>'}<span class="badge ${done(change.business_status)?'done':'review'} plan-change-status">${esc(uiText(change.business_status||'Pendiente'))}</span><button type="button" class="icon-button plan-change-open" data-cloud-action="${change.id?'manage-change':'review-change'}" data-cloud-id="${esc(change.request_document_id)}" aria-label="${uiText('planEdit.openChange')}: ${esc(change.title)}" title="${uiText('planEdit.openChange')}">${icon('arrow-up-right')}</button>`;
+  for(const stage of savedPlan.stages){
+   const items=linked.filter(c=>c.plan_placement==='stage'&&c.plan_stage_position===stage.position);if(!items.length)continue;
+   host.querySelector(`[data-plan-stage-row="${stage.position}"]`)?.insertAdjacentHTML('beforeend',`<ol class="plan-stage-changes">${items.map((c,k)=>`<li><span class="plan-change-number">${stage.position}.${k+1}</span>${row(c)}</li>`).join('')}</ol>`);
+  }
+  const extra=linked.filter(c=>c.plan_placement==='new');
+  // New work is not part of the original plan: it gets its own section below it, numbered after the last deliverable.
+  if(extra.length)host.insertAdjacentHTML('afterend',`<section class="plan-new-work-section" data-plan-new-work-section aria-label="${uiText('planEdit.newWorkTitle')}"><header><span class="eyebrow">${uiText('planEdit.newWorkTitle')}</span><small>${uiText('planEdit.newWorkHint')}</small></header><ol class="plan-stage-changes plan-new-work-list">${extra.map((c,k)=>`<li><span class="plan-change-number">${savedPlan.stages.length+k+1}</span>${row(c)}</li>`).join('')}</ol></section>`);
+ }
+ function fetchPlanChanges(id){return Promise.all([cloud.request(`/api/v1/projects/${encodeURIComponent(id)}/proposals`),cloud.request(`/api/v1/projects/${encodeURIComponent(id)}/request-status`)]);}
+ async function loadPlanChanges(){
+  const host=typeof root?.querySelector==='function'?root.querySelector('.plan-saved-stages'):null;if(!host||!savedPlan)return;
+  const generation=++planChangesGeneration,scope=currentKey,id=project().id,cached=planChangesCache?.key===scope?planChangesCache:null;
+  let status=null;
+  if(cached)paintPlanChanges(host,cached);
+  else{status=cloud.document.createElement('p');status.className='plan-changes-status';status.setAttribute('role','status');status.textContent=uiText('planEdit.changesLoading');host.after(status);}
+  try{
+   const [proposals,requestStatus]=await fetchPlanChanges(id);
+   if(scope!==currentKey||generation!==planChangesGeneration||!host.isConnected)return;status?.remove();
+   const data={key:scope,proposals,requestStatus},same=cached&&JSON.stringify([cached.proposals,cached.requestStatus])===JSON.stringify([proposals,requestStatus]);
+   planChangesCache=data;if(!same)paintPlanChanges(host,data);
+  }catch{if(scope===currentKey&&generation===planChangesGeneration&&status?.isConnected)status.textContent=uiText('planEdit.changesError');}
+ }
  function renderSaved(){
   root.innerHTML=`<section class="project-planning"><section class="workspace-panel plan-editor">${savedPlanStatus==='loading'?renderAIActivity({label:t('loadingPlan'),compact:true}):savedPlanStatus==='failed'?`<p class="cloud-error" role="alert">${t('loadPlanFailed')}</p><button type="button" class="button secondary" data-plan-action="retry-plan">${t('retryBackground')}</button>`:savedPlanStatus==='none'?`<h3>${t('noSavedPlan')}</h3><button type="button" class="text-button" data-plan-action="saved-sources" aria-haspopup="dialog">${icon('file-text')}${uiText('Acuerdo inicial')}</button>`:`${savedPlanOverview()}`}</section></section>`;
   cloud.renderPlanPayments?.(root,savedPlan);
+  if(savedPlanStatus==='ready')void loadPlanChanges();
  }
  async function loadSavedPlan(){
   const generation=++savedPlanGeneration,id=project().id,scope=currentKey;savedPlanStatus='loading';renderSaved();
-  try{const value=await cloud.request(`/api/v1/ai/projects/${encodeURIComponent(id)}/plan`);if(scope!==currentKey||generation!==savedPlanGeneration)return;savedPlan=value;savedPlanStatus='ready';}
+  try{const changes=fetchPlanChanges(id).catch(()=>null);const value=await cloud.request(`/api/v1/ai/projects/${encodeURIComponent(id)}/plan`);const loaded=await changes;if(scope!==currentKey||generation!==savedPlanGeneration)return;if(loaded)planChangesCache={key:scope,proposals:loaded[0],requestStatus:loaded[1]};savedPlan=value;savedPlanStatus='ready';}
   catch(error){if(scope!==currentKey||generation!==savedPlanGeneration)return;savedPlanStatus=error.code==='AI_PLAN_NOT_FOUND'?'none':'failed';}
   if(visible())renderSaved();
  }
@@ -265,8 +342,23 @@ export function installProjectPlanning(cloud){
    if(current()){render();syncSetupActions();}
   }
  }
+ // Closing a new project's draft discards it by design; ask first when there is something to lose.
+ function setupHasWork(){
+  if(!wizard?.isNew||wizard.created)return false;const d=draft();
+  return !!(String(d.brief||'').trim()||String(d.budget||'').trim()||d.date||wizard.files?.length||d.step>1||readingSources||['queued','running'].includes(planAI?.state.status));
+ }
+ function askDiscard(){
+  if(cloud.modal.querySelector('[data-plan-discard]'))return;
+  const working=readingSources||['queued','running'].includes(planAI?.state.status);
+  cloud.modal.insertAdjacentHTML('beforeend',`<div class="plan-discard-backdrop" data-plan-discard><section class="plan-discard-confirm" role="alertdialog" aria-modal="true" aria-labelledby="plan-discard-title" aria-describedby="plan-discard-text"><h3 id="plan-discard-title">${uiText('planDiscard.title')}</h3><p id="plan-discard-text">${uiText(working?'planDiscard.textWorking':'planDiscard.text')}</p><div class="dialog-actions"><button type="button" class="button secondary" data-plan-discard-keep>${uiText('planDiscard.keep')}</button><button type="button" class="button plan-discard-yes" data-plan-discard-yes>${uiText('planDiscard.discard')}</button></div></section></div>`);
+  const box=cloud.modal.querySelector('[data-plan-discard]');box.querySelector('[data-plan-discard-keep]').focus();
+  box.addEventListener('click',event=>{if(event.target.closest('[data-plan-discard-keep]'))box.remove();else if(event.target.closest('[data-plan-discard-yes]')){box.remove();cloud.modal.close();}});
+ }
  function watchSetupModal(){if(boundModal===cloud.modal)return;boundModal=cloud.modal;
-  cloud.modal.addEventListener('cancel',event=>{if(wizard?.committing)event.preventDefault();});
+  cloud.modal.addEventListener('click',event=>{if(event.target.closest('[data-cloud-close]')&&!event.target.closest('[data-plan-discard]')&&setupHasWork()){event.preventDefault();event.stopImmediatePropagation();askDiscard();}},true);
+  cloud.modal.addEventListener('cancel',event=>{if(wizard?.committing){event.preventDefault();return;}
+   if(cloud.modal.querySelector('[data-plan-discard]')){event.preventDefault();cloud.modal.querySelector('[data-plan-discard]').remove();return;}
+   if(setupHasWork()){event.preventDefault();askDiscard();}});
   cloud.modal.addEventListener('close',()=>{if(!cloud.modal.open&&wizard){
    closeContext();
    if(wizard.isNew&&!wizard.created){const id=key();drafts.delete(id);try{cloud.storage.removeItem(id);}catch{}}
@@ -298,11 +390,11 @@ export function installProjectPlanning(cloud){
   finally{if(wizard===pending){uploading=false;render();if(pending.uploadError){root.querySelector('[data-plan-error]').textContent=pending.uploadError;pending.uploadError='';}}}
  });
  function validStages(d){return d.stages.every(stage=>stage.title.trim()&&stage.body.trim()&&stage.when.trim()&&Number.isInteger(Number(stage.percent))&&Number(stage.percent)>0&&Number(stage.percent)<=100)&&d.stages.reduce((sum,stage)=>sum+Number(stage.percent),0)===100;}
- cloud.document.addEventListener('input',event=>{if(!visible()||!root?.contains(event.target))return;const el=event.target,d=draft();if(el.dataset.planField){d[el.dataset.planField]=el.value;d.plan_job_id=null;d.analysis=null;}if(el.dataset.planStage!==undefined){d.stages[Number(el.dataset.planStage)][el.dataset.planPart]=el.value;d.review_job_id=null;d.reviewed=null;}});
+ cloud.document.addEventListener('input',event=>{if(!visible()||!root?.contains(event.target))return;const el=event.target,d=draft();if(el.dataset.planField){d[el.dataset.planField]=el.value;d.plan_job_id=null;d.analysis=null;}if(el.dataset.planStage!==undefined){d.stages[Number(el.dataset.planStage)][el.dataset.planPart]=el.value;d.review_job_id=null;d.reviewed=null;if(el.dataset.planPart==='percent'){const total=root.querySelector('.plan-percent-total');if(total)total.outerHTML=percentTotal(d);}}});
  cloud.document.addEventListener('submit',async event=>{
   if(!visible()||!root?.contains(event.target))return;
   if(!event.target.matches('[data-plan-form]'))return;event.preventDefault();if(wizard?.route==='ongoing'){if(wizard.documents.some(doc=>doc.kind==='initial_agreement')&&!uploading)cloud.run(finishSetup);return;}const d=draft();d.error='';if(d.step===2&&d.planView==='edit'&&!validStages(d)){d.error=t('percentError');const invalid=d.stages.findIndex(stage=>!stage.title.trim()||!stage.body.trim()||!stage.when.trim()||!(Number.isInteger(Number(stage.percent))&&Number(stage.percent)>0&&Number(stage.percent)<=100));if(invalid>=0)d.stageIndex=invalid;movePlanView();return;}
-  if(d.step===1){const dateInput=root.querySelector('[data-plan-field="date"]');if(dateInput)dateInput.min=projectToday();if(!d.date||d.date<projectToday()){d.error=t('pastDate');render();root.querySelector('[data-plan-field="date"]')?.focus();return;}try{await generatePlan();}catch{d.error=t('aiFailure');render();}return;}
+  if(d.step===1){const dateInput=root.querySelector('[data-plan-field="date"]');if(dateInput)dateInput.min=projectToday();if(!d.date||d.date<projectToday()){d.error=t('pastDate');render();root.querySelector('[data-plan-field="date"]')?.focus();return;}if(d.plan_job_id&&d.analysis&&d.stages?.length&&d.plan_sources===planSourcesKey()){d.error='';d.step=2;d.planView='rationale';save();movePlanView();return;}try{await generatePlan();}catch{d.error=t('aiFailure');render();}return;}
   if(d.step===2&&d.planView!=='edit'){d.planView='edit';save();movePlanView();return;}
   if(d.step===2&&d.planView==='edit'&&needsPlanReview(d)&&!d.review_job_id){try{await reviewEdits();}catch{d.error=t('aiFailure');render();}return;}
   if(d.step<3){d.step++;save();movePlanView();}else{save();if(wizard)cloud.run(finishSetup);else{cloud.tab='acuerdo';cloud.notify();}}
@@ -314,10 +406,12 @@ export function installProjectPlanning(cloud){
    case 'open-context':openContext(target);break;
    case 'open-recommendation':openRecommendation(target);break;
    case 'show-rationale':d.planView='rationale';save();movePlanView();break;
+   case 'add-stage':{if(d.stages.length>=8)break;d.stages.push({title:'',body:'',when:'',percent:''});d.stageIndex=d.stages.length-1;d.review_job_id=null;d.reviewed=null;save();render();root.querySelector(`[data-plan-stage-index="${d.stageIndex}"]`)?.focus({preventScroll:true});break;}
+   case 'remove-stage':{const index=Number(target.dataset.planStageIndex);if(d.stages.length<=1||!Number.isInteger(index)||index<0||index>=d.stages.length)break;d.stages.splice(index,1);d.stageIndex=Math.max(0,index-1);d.review_job_id=null;d.reviewed=null;save();render();root.querySelector(`[data-plan-stage-index="${d.stageIndex}"]`)?.focus({preventScroll:true});break;}
    case 'choose-stage':{const index=Number(target.dataset.planStageIndex);if(Number.isInteger(index)&&index>=0&&index<d.stages.length){d.stageIndex=index;save();render();root.querySelector(`[data-plan-stage-index="${index}"]`)?.focus({preventScroll:true});}break;}
    case 'back':if(d.step===2&&d.planView==='edit'){d.planView='rationale';save();movePlanView();break;}if(d.step===3){d.step=2;d.planView='edit';save();movePlanView();break;}if(!wizard){cloud.tab='acuerdo';cloud.notify();break;}if(d.step>1){d.step--;save();movePlanView();}else if(wizard)cloud.modal.close();else{cloud.tab='acuerdo';cloud.notify();}break;
    case 'save':if(save()){const status=root.querySelector('[data-plan-notice]');status.textContent=t('draftSaved');}else render();break;
-   case 'upload':if(recommendationPanel?.element.open)recommendationPanel.close();if(wizard)root.querySelector('[data-plan-setup-file]').click();else{cloud.planUploadProject=cloud.projectId;cloud.openSource('initial');}break;
+   case 'upload':if(readingSources||planAI&&['queued','running'].includes(planAI.state.status))break;if(recommendationPanel?.element.open)recommendationPanel.close();if(wizard)root.querySelector('[data-plan-setup-file]').click();else{cloud.planUploadProject=cloud.projectId;cloud.openSource('initial');}break;
    case 'retry-plan':loadSavedPlan();break;
    case 'retry-background':lookup();break;
    case 'more-reviews':loadReviews(nextOffset);break;

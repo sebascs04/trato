@@ -183,9 +183,20 @@ class VectorTests(unittest.TestCase):
             with self.assertRaisesRegex(ApiError, 'VECTOR_RESULT_INVALID'):
                 self.gateway.search(self.repo, OWNER, PROJECT, 'Texto')
 
+    def test_inventory_route_accepts_only_a_bounded_list_of_project_documents(self):
+        app = FastAPI(); app.include_router(build_vector_router(None, lambda: OWNER, lambda *a:self.repo, self.gateway))
+        @app.exception_handler(ApiError)
+        async def handle(_, e): return JSONResponse({'error': {'code': e.code}}, status_code=e.status)
+        client = TestClient(app); path = '/api/v1/projects/' + PROJECT + '/sources'
+        response = client.get(path, params={'file_ids': FILE})
+        self.assertEqual(response.status_code, 200); self.assertEqual([f['id'] for f in response.json()['data']['files']], [FILE])
+        for value in [',', ','.join([FILE]*101)]:
+            self.assertEqual(client.get(path, params={'file_ids': value}).status_code, 422)
+        self.assertIn(client.get(path, params={'file_ids': 'not-a-uuid'}).status_code, (400, 422))
+        self.assertEqual(client.get(path, params={'file_ids': str(uuid4())}).status_code, 404)
     def test_stage_inventory_filters_documents_before_reading_extractions(self):
         from unittest.mock import Mock
-        repo=Mock();repo.project.return_value={'id':PROJECT,'owner_id':OWNER,'client_id':CLIENT};repo.rows.return_value=[self.repo.document]
+        repo=Mock(spec=['project','rows','extraction']);repo.project.return_value={'id':PROJECT,'owner_id':OWNER,'client_id':CLIENT};repo.rows.return_value=[self.repo.document]
         repo.extraction.side_effect=self.repo.extraction
         self.gateway.inventory(repo,OWNER,PROJECT,file_ids=[FILE])
         self.assertEqual(repo.rows.call_args_list[0].args[1]['id'],'in.('+FILE+')')

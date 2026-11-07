@@ -115,7 +115,60 @@
 @media(max-width:600px){.plan-mail-recipient,.plan-mail-subject{grid-template-columns:1fr;gap:4px;padding:14px 18px}.plan-mail-form .plan-mail-preview{padding:20px}.plan-mail-heading h3{font-size:19px}}
 .sandbox-checkout{display:grid;grid-template-columns:auto 1fr auto;align-items:center;gap:12px 14px;margin-top:14px;padding:14px 16px;border:1px dashed var(--purple);border-radius:12px;background:var(--purple-soft)}.sandbox-checkout>svg{color:var(--purple);width:20px;height:20px}.sandbox-checkout strong{display:block;font-size:14px;color:var(--ink)}.sandbox-checkout p{margin:4px 0 0;font-size:13px;line-height:1.55;color:var(--muted)}.sandbox-checkout .button{display:inline-flex;align-items:center;gap:8px;min-height:36px;white-space:nowrap}@media (max-width:560px){.sandbox-checkout{grid-template-columns:auto 1fr}.sandbox-checkout .button{grid-column:1/-1;justify-content:center}}
 .plan-stage-loading{display:grid;gap:14px;padding:6px 0 18px}.plan-stage-loading p{margin:0;color:var(--muted)}.plan-stage-loading>span{height:18px;max-width:85%;border-radius:6px;background:var(--purple-soft);animation:plan-stage-pulse 1.5s ease-in-out infinite}.plan-stage-loading>span:last-child{max-width:60%}@keyframes plan-stage-pulse{50%{opacity:.4}}@media(prefers-reduced-motion:reduce){.plan-stage-loading>span{animation:none}}
-.change-step-panel[hidden]{display:none!important}.change-step-form{display:grid;gap:22px}.change-review-steps{margin:0;display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:14px}.change-review-steps li{align-items:flex-start;min-width:0}.change-review-steps li>span{flex:0 0 27px}.change-review-steps li>em{font-style:normal;padding-top:5px;line-height:1.4;min-width:0;overflow-wrap:anywhere}@media (max-width:560px){.change-review-steps{grid-template-columns:repeat(2,minmax(0,1fr));row-gap:12px}}.change-step-heading{font-size:21px;line-height:1.4;margin:0;outline-offset:6px}.change-step-panel{display:grid;gap:18px;min-width:0}.change-step-panel .change-auto{margin:0;padding:0;border:0;background:none}.change-step-panel textarea.context-box{min-height:130px;max-height:220px;resize:vertical}.change-step-controls{margin:0;padding-top:16px;border-top:1px solid var(--line);display:flex;justify-content:space-between}.change-step-controls [hidden]{display:none!important}.change-step-controls [data-change-step=next]{margin-left:auto}.change-step-narrator{display:flex;align-items:flex-start;gap:16px;padding:18px;border:1px solid var(--line);border-radius:16px;background:var(--purple-soft)}.change-step-narrator img{flex-shrink:0;object-fit:contain}.change-step-narrator strong{color:var(--purple)}.change-step-narrator p{line-height:1.8;margin:7px 0 0;overflow-wrap:anywhere}.change-step-review{display:grid;gap:18px;margin:0}.change-step-review>div{padding-bottom:16px;border-bottom:1px solid var(--line)}.change-step-review dt{font-size:13px;color:var(--muted);margin-bottom:6px}.change-step-review dd{margin:0;font-size:15px;line-height:1.75;white-space:pre-wrap;overflow-wrap:anywhere}
+.change-step-panel[hidden]{display:none!important}.change-step-form{display:grid;gap:22px}.change-review-steps{margin:0;display:grid;grid-template-columns:repeat(var(--change-step-count,4),minmax(0,1fr));gap:14px}.change-review-steps li{align-items:flex-start;min-width:0}.change-review-steps li>span{flex:0 0 27px}.change-review-steps li>em{font-style:normal;padding-top:5px;line-height:1.4;min-width:0;overflow-wrap:anywhere}@media (max-width:560px){.change-review-steps{grid-template-columns:repeat(2,minmax(0,1fr));row-gap:12px}}.change-step-heading{font-size:21px;line-height:1.4;margin:0;outline-offset:6px}.change-step-panel{display:grid;gap:18px;min-width:0}.change-step-panel .change-auto{margin:0;padding:0;border:0;background:none}.change-step-panel textarea.context-box{min-height:130px;max-height:220px;resize:vertical}.change-step-controls{margin:0;padding-top:16px;border-top:1px solid var(--line);display:flex;justify-content:space-between}.change-step-controls [hidden]{display:none!important}.change-step-controls [data-change-step=next]{margin-left:auto}.change-step-narrator{display:flex;align-items:flex-start;gap:16px;padding:18px;border:1px solid var(--line);border-radius:16px;background:var(--purple-soft)}.change-step-narrator img{flex-shrink:0;object-fit:contain}.change-step-narrator strong{color:var(--purple)}.change-step-narrator p{line-height:1.8;margin:7px 0 0;overflow-wrap:anywhere}.change-step-review{display:grid;gap:18px;margin:0}.change-step-review>div{padding-bottom:16px;border-bottom:1px solid var(--line)}.change-step-review dt{font-size:13px;color:var(--muted);margin-bottom:6px}.change-step-review dd{margin:0;font-size:15px;line-height:1.75;white-space:pre-wrap;overflow-wrap:anywhere}
 .cloud-dialog.cloud-change-steps-dialog{width:min(1040px,calc(100vw - 40px));max-height:90vh}.change-reasoning{gap:20px}
 .cloud-dialog form.change-step-form{margin-top:24px}
 .change-cited-sources{list-style:none;padding:0;margin:12px 0 0;display:grid;gap:10px}.plan-recommended-stages .change-cited-sources>li{display:block;padding:0;border:0;border-radius:0}.change-cited-source{display:flex;align-items:center;gap:12px;width:100%;min-height:44px;padding:12px 14px;border:1px solid var(--line);border-radius:12px;background:var(--surface);color:var(--ink);font:inherit;text-align:left;cursor:pointer}.change-cited-source:hover{border-color:var(--purple);background:var(--purple-soft)}.change-cited-source:focus-visible{outline:2px solid var(--purple);outline-offset:2px}.change-cited-source>span{flex:1;min-width:0;font-size:14px;overflow-wrap:anywhere}.change-cited-source>.ui-icon{flex:0 0 18px;color:var(--purple)}.change-cited-sources blockquote{margin:10px 0 0;padding-left:12px;border-left:2px solid var(--line);font-size:13px;line-height:1.7;color:var(--muted);white-space:pre-wrap;overflow-wrap:anywhere}
+
+/* Plan editing: add/remove deliverables while creating, edit wording of unstarted ones, and changes linked to the plan */
+.plan-stage-switcher .plan-stage-add{display:inline-flex;align-items:center;gap:6px;border-style:dashed;color:var(--purple)}
+.plan-stage-switcher .plan-stage-add .ui-icon,.plan-stage-remove .ui-icon,.plan-stage-edit-open .ui-icon{width:16px;height:16px}
+.plan-stage-remove{display:inline-flex;align-items:center;gap:6px;margin-top:8px;color:var(--muted)}
+.plan-percent-total{margin:12px 0 0;font-size:13px}
+.plan-percent-total.is-complete{color:var(--muted)}
+.plan-percent-total.is-pending{color:#96392f;font-weight:500}
+.plan-stage-edit{display:grid;gap:14px}
+.plan-stage-edit .field{margin:0}
+.plan-saved-stages .plan-stage-edit-open{color:var(--muted)}
+.plan-stage-changes{grid-column:1/-1;order:99;list-style:none;margin:4px 0 0 43px;padding:0;display:grid;gap:8px}
+.plan-stage-changes>li,.plan-saved-stages>li.plan-new-work{display:grid;grid-template-columns:auto minmax(0,1fr) auto auto auto;align-items:center;gap:12px}
+.plan-stage-changes>li{padding:10px 14px;border:1px solid var(--line);border-radius:12px;background:var(--surface-soft)}
+.plan-change-number{font-size:13px;font-weight:600;color:var(--purple)}
+.plan-change-label{font-size:14px;line-height:1.5;overflow-wrap:anywhere}
+.plan-change-status{font-size:12px;color:var(--muted);white-space:nowrap}
+.plan-saved-stages>li.plan-new-work{grid-template-columns:27px auto minmax(0,1fr) auto auto auto}
+.plan-new-badge{display:inline-block;padding:2px 8px;border-radius:999px;background:var(--purple-soft);color:var(--purple);font-size:11px;font-weight:700}
+.plan-changes-status{margin:8px 0 0;font-size:13px;color:var(--muted)}
+@media(max-width:600px){.plan-stage-changes{margin-left:0}.plan-stage-changes>li,.plan-saved-stages>li.plan-new-work{grid-template-columns:minmax(0,1fr) auto}.plan-change-number,.plan-reasoning-number,.plan-new-badge{grid-column:1/-1}}
+.plan-stage-title-cell{display:flex;align-items:center;gap:6px;min-width:0}.plan-stage-title-cell strong{min-width:0;overflow-wrap:anywhere}.plan-stage-title-cell .plan-stage-edit-open{flex:0 0 36px}
+
+/* Changes as branches of their deliverable (2.1, 2.2) and new work at the end */
+.plan-stage-changes{grid-column:1/-1;order:99;list-style:none;margin:6px 0 0 13px;padding:0 0 0 22px;border-left:2px solid var(--purple-soft);display:grid;gap:2px}
+.plan-stage-changes>li,.plan-saved-stages>li.plan-new-work{display:grid;grid-template-columns:auto minmax(0,1fr) auto auto auto;align-items:center;gap:14px}
+.plan-stage-changes>li{position:relative;padding:8px 10px;border:0;border-radius:10px;background:transparent}
+.plan-stage-changes>li::before{content:"";position:absolute;left:-24px;top:50%;width:16px;border-top:2px solid var(--purple-soft)}
+.plan-stage-changes>li:hover{background:var(--surface-soft)}
+.plan-change-number{min-width:28px;font-size:12px;font-weight:600;color:var(--purple)}
+.plan-change-label{font-size:14px;line-height:1.5;color:var(--ink);overflow-wrap:anywhere}
+.plan-change-amount{font-size:14px;font-weight:600;color:var(--ink);white-space:nowrap}
+.plan-change-status.badge{margin:0;font-size:11px;padding:3px 9px;white-space:nowrap}
+.plan-change-open{min-width:36px;min-height:36px;color:var(--purple)}
+.plan-change-open .ui-icon{width:16px;height:16px}
+.plan-saved-stages>li.plan-new-work{grid-template-columns:27px auto minmax(0,1fr) auto auto auto}
+@media(max-width:600px){.plan-stage-changes{margin-left:4px;padding-left:14px}.plan-stage-changes>li::before{left:-16px;width:10px}.plan-stage-changes>li,.plan-saved-stages>li.plan-new-work{grid-template-columns:auto minmax(0,1fr) auto}.plan-change-amount,.plan-change-status.badge{grid-column:2}}
+.plan-change-open .ui-icon{width:14px;height:14px}
+.plan-change-open,.plan-change-open:hover{background:transparent;border:0;box-shadow:none}
+
+/* New work: its own section below the original plan, same branch style as the 2.1 rows */
+.plan-new-work-section{margin-top:20px;padding-top:16px;border-top:1px dashed var(--line)}
+.plan-new-work-section>header{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap;margin-bottom:6px}
+.plan-new-work-section>header small{font-size:12px;color:var(--muted)}
+.plan-new-work-section .plan-new-work-list{margin:0 0 0 13px}
+
+/* Confirm before discarding a new project's draft */
+.plan-discard-backdrop{position:fixed;inset:0;z-index:20;display:grid;place-items:center;padding:16px;background:color-mix(in srgb,var(--ink) 28%,transparent)}
+.plan-discard-confirm{width:min(420px,100%);padding:22px 24px;border-radius:16px;background:var(--surface);box-shadow:0 18px 50px #2522361f}
+.plan-discard-confirm h3{margin:0 0 8px;font-size:18px}
+.plan-discard-confirm p{margin:0 0 18px;line-height:1.6;color:var(--muted)}
+.plan-discard-confirm .dialog-actions{justify-content:flex-end;gap:10px}
+.plan-discard-yes{background:#96392f;border-color:#96392f}

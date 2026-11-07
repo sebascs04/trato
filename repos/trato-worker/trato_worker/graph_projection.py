@@ -11,7 +11,8 @@ GRAPH_PROJECTION_VERSION=2
 KINDS={'Project','Document','Extraction','Proposal','Revision','Review','Acceptance','Delivery','Payment','Plan','PlanStage'}
 RELATIONS={'HAS_DOCUMENT','HAS_EXTRACTION','HAS_PROPOSAL','RESPONDS_TO','HAS_REVISION','CURRENT_REVISION',
  'SUPPORTED_BY','HAS_PDF','HAS_REVIEW','REVIEWED_PDF','ACCEPTS_REVISION','EVIDENCED_BY','FOR_REVISION',
- 'FOLLOWS_ACCEPTANCE','REPLACES_DRAFT','REQUESTED_CHANGES_FROM','BASED_ON_ACCEPTANCE','CURRENT_ACCEPTANCE','HAS_PLAN','HAS_STAGE','DELIVERY_EVIDENCE','STAGE_PAYMENT','PAYMENT_EVIDENCE'}
+ 'FOLLOWS_ACCEPTANCE','REPLACES_DRAFT','REQUESTED_CHANGES_FROM','BASED_ON_ACCEPTANCE','CURRENT_ACCEPTANCE','HAS_PLAN','HAS_STAGE','DELIVERY_EVIDENCE','STAGE_PAYMENT','PAYMENT_EVIDENCE',
+ 'HAS_CHANGE_REQUEST','HAS_NEW_WORK'}
 
 
 def build_projection(snapshot,context):
@@ -104,11 +105,26 @@ def build_projection(snapshot,context):
             edge(stage_keys[position],'STAGE_PAYMENT',payment)
             edge(payment,'PAYMENT_EVIDENCE',key('documents',row['evidence_document_id']))
         if plan.get('completed_at') and set(stage_keys)!=paid_positions:raise JobError('GRAPH_SOURCE_MISSING')
+    # Change requests placed in the plan: under a stage, or as new work after it. Optional key, so snapshots
+    # from before the placements migration still project; when present it must be exact.
+    placements=snapshot.get('change_request_plan_placements',[])
+    if not isinstance(placements,list):raise JobError('INVALID_GRAPH_SOURCE')
+    if placements and not plans:raise JobError('GRAPH_SOURCE_MISSING')
+    seen=set()
+    for row in placements:
+        request=key('documents',row['request_document_id'])
+        if request in seen or nodes.get(request,{}).get('business_kind')!='email_request':raise JobError('GRAPH_SOURCE_MISSING')
+        seen.add(request)
+        if row['placement']=='stage' and row.get('stage_position') in stage_keys:edge(stage_keys[row['stage_position']],'HAS_CHANGE_REQUEST',request)
+        elif row['placement']=='new' and row.get('stage_position') is None:edge(pl,'HAS_NEW_WORK',request)
+        else:raise JobError('INVALID_GRAPH_SOURCE')
     return {'nodes':list(nodes.values()),'edges':edges}
 
 
+_DRIVERS={}
+
 class GraphWriter:
-    def __init__(self,driver,database):self.driver,self.database=driver,database
+    def __init__(self,driver,database,*,shared_key=None):self.driver,self.database,self.shared_key=driver,database,shared_key
 
     @classmethod
     def from_env(cls):
@@ -116,15 +132,31 @@ class GraphWriter:
         if u.scheme!='neo4j+s' or not u.hostname or not u.hostname.endswith('.databases.neo4j.io') or u.username or u.password:
             raise JobError('GRAPH_NOT_CONFIGURED')
         if not os.environ.get('NEO4J_PASSWORD'):raise JobError('GRAPH_NOT_CONFIGURED')
-        return cls(GraphDatabase.driver(uri,auth=(os.environ.get('NEO4J_USERNAME','neo4j'),os.environ['NEO4J_PASSWORD']),
-              connection_timeout=10,connection_acquisition_timeout=20,max_transaction_retry_time=0),os.environ.get('NEO4J_DATABASE','neo4j'))
+        # One driver per worker process: opening a new connection to Aura costs ~2 s per sync.
+        user,database=os.environ.get('NEO4J_USERNAME','neo4j'),os.environ.get('NEO4J_DATABASE','neo4j')
+        shared=(uri,user,database)
+        if shared not in _DRIVERS:
+            _DRIVERS[shared]={'driver':GraphDatabase.driver(uri,auth=(user,os.environ['NEO4J_PASSWORD']),
+                connection_timeout=10,connection_acquisition_timeout=20,max_transaction_retry_time=0),'constraint':False}
+        return cls(_DRIVERS[shared]['driver'],database,shared_key=shared)
+
+    def _forget(self):
+        entry=_DRIVERS.pop(self.shared_key,None) if self.shared_key else None
+        try:(entry['driver'] if entry else self.driver).close()
+        except Exception:pass
 
     def sync(self,projection,context,generation,content_hash):
         owner,project=context['owner_id'],context['project_id']
+        # Labels and relationship types are applied dynamically below, so they must come from the fixed sets.
+        if any(n['kind'] not in KINDS for n in projection['nodes']) or any(e['kind'] not in RELATIONS for e in projection['edges']):
+            raise JobError('INVALID_GRAPH_SOURCE')
+        entry=_DRIVERS.get(self.shared_key) if self.shared_key else None
         try:
             with self.driver.session(database=self.database) as session:
-                # Constraint is idempotent and applies only to Trato-owned entities.
-                session.run('CREATE CONSTRAINT trato_entity_key IF NOT EXISTS FOR (n:TratoEntity) REQUIRE n.entity_key IS UNIQUE').consume()
+                # Constraint is idempotent and applies only to Trato-owned entities; checked once per driver.
+                if not entry or not entry['constraint']:
+                    session.run('CREATE CONSTRAINT trato_entity_key IF NOT EXISTS FOR (n:TratoEntity) REQUIRE n.entity_key IS UNIQUE').consume()
+                    if entry:entry['constraint']=True
                 with session.begin_transaction(timeout=45) as tx:
                     root=tx.run('MERGE (p:TratoEntity:Project {entity_key:$key}) ON CREATE SET p.owner_id=$owner,p.project_id=$project '
                                 'SET p._graph_lock=coalesce(p._graph_lock,0)+1 RETURN p.generation AS generation,p.owner_id AS owner,p.project_id AS project',
@@ -133,18 +165,21 @@ class GraphWriter:
                     if root['generation'] is not None and root['generation']>generation:raise JobError('STALE_GRAPH_GENERATION')
                     # Bounded project replacement is atomic, including removal of obsolete edges/nodes.
                     tx.run('MATCH (n:TratoEntity {owner_id:$owner,project_id:$project})-[r]->(m:TratoEntity {owner_id:$owner,project_id:$project}) DELETE r',owner=owner,project=project).consume()
-                    for kind in sorted(KINDS):
-                        rows=[n for n in projection['nodes'] if n['kind']==kind]
-                        if rows:tx.run('UNWIND $rows AS row MERGE (n:TratoEntity:'+kind+' {entity_key:row.entity_key}) SET n=row,n.generation=$generation',rows=rows,generation=generation).consume()
-                    for kind in sorted(RELATIONS):
-                        rows=[e for e in projection['edges'] if e['kind']==kind]
-                        if rows:tx.run('UNWIND $rows AS row MATCH (a:TratoEntity {entity_key:row.source,owner_id:$owner,project_id:$project}),'
-                                      '(b:TratoEntity {entity_key:row.target,owner_id:$owner,project_id:$project}) '
-                                      'MERGE (a)-[r:'+kind+' {edge_key:row.edge_key}]->(b) SET r=row,r.owner_id=$owner,r.project_id=$project',
-                                      rows=rows,owner=owner,project=project).consume()
+                    # All nodes in one statement and all edges in another (validated kinds), instead of one per kind.
+                    if projection['nodes']:
+                        tx.run('UNWIND $rows AS row CALL apoc.merge.node(["TratoEntity",row.kind],{entity_key:row.entity_key},{},{}) YIELD node '
+                               'SET node=row,node.generation=$generation',rows=projection['nodes'],generation=generation).consume()
+                    if projection['edges']:
+                        tx.run('UNWIND $rows AS row MATCH (a:TratoEntity {entity_key:row.source,owner_id:$owner,project_id:$project}),'
+                               '(b:TratoEntity {entity_key:row.target,owner_id:$owner,project_id:$project}) '
+                               'CALL apoc.merge.relationship(a,row.kind,{edge_key:row.edge_key},{},b,{}) YIELD rel '
+                               'SET rel=row,rel.owner_id=$owner,rel.project_id=$project',rows=projection['edges'],owner=owner,project=project).consume()
                     tx.run('MATCH (n:TratoEntity {owner_id:$owner,project_id:$project}) WHERE n.generation<>$generation DETACH DELETE n',owner=owner,project=project,generation=generation).consume()
                     tx.run('MATCH (p:TratoEntity {entity_key:$key,owner_id:$owner,project_id:$project}) SET p.content_hash=$hash,p.synced_at=datetime()',
                            key='projects:'+project,owner=owner,project=project,hash=content_hash).consume()
                     tx.commit()
-        except (Neo4jError,DriverError):raise JobError('GRAPH_UNAVAILABLE') from None
-        finally:self.driver.close()
+        except (Neo4jError,DriverError):
+            # A broken connection is not reused by the next job.
+            self._forget();raise JobError('GRAPH_UNAVAILABLE') from None
+        finally:
+            if not self.shared_key:self.driver.close()

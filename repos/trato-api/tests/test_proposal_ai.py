@@ -43,3 +43,23 @@ class ProposalAITests(unittest.TestCase):
         class Repo:
             def rows(self,table,params):return []
         with self.assertRaisesRegex(ApiError,'PROPOSAL_NOT_FOUND'):revision_scope(Repo(),'owner',PROPOSAL['id'],PROPOSAL['id'])
+
+class RevisionAnalysisBindingTests(unittest.TestCase):
+    def test_revision_analysis_requires_same_feedback_previous_version_and_context_notes(self):
+        from copy import deepcopy
+        data=deepcopy(DATA);data['change_proposal_context'].update(proposal_id=PROPOSAL['id'],revision_id=REQUEST,feedback_document_id=PROJECT,feedback_notes='Mentioned in person')
+        class Repo:
+            number=2
+            feedback=PROJECT
+            notes='Mentioned in person'
+            def rows(self,table,params):
+                if params['id']=='eq.'+REQUEST:return [{'revision_no':1}]
+                return [{'revision_no':self.number,'feedback_document_id':self.feedback,'feedback_notes':self.notes}]
+        repo=Repo();revision={'id':'new'}
+        self.assertEqual(analysis_record(Service(data=data),repo,'owner','job',PROPOSAL,revision)['scope_summary'],'Tienda de 10 productos')
+        for field,value in [('number',3),('feedback','other'),('notes','Different context')]:
+            repo=Repo();setattr(repo,field,value)
+            with self.assertRaisesRegex(ApiError,'AI_CONTEXT_INVALID'):analysis_record(Service(data=data),repo,'owner','job',PROPOSAL,revision)
+        data['change_proposal_context']['feedback_notes']=''
+        repo=Repo();repo.notes='La tienda no estaba en el acuerdo.'
+        self.assertIsNotNone(analysis_record(Service(data=data),repo,'owner','job',PROPOSAL,revision))

@@ -27,6 +27,7 @@ const assets = new Map([
   ['/practice-comparison.mjs',['practice-comparison.mjs','text/javascript; charset=utf-8']],
   ['/case-assistant.mjs',['case-assistant.mjs','text/javascript; charset=utf-8']],
   ['/change-reply-assistant.mjs',['change-reply-assistant.mjs','text/javascript; charset=utf-8']],
+  ['/document-progress.mjs',['document-progress.mjs','text/javascript; charset=utf-8']],
   ['/change-proposal-assistant.mjs',['change-proposal-assistant.mjs','text/javascript; charset=utf-8']],
   ['/agent-panel.mjs',['agent-panel.mjs','text/javascript; charset=utf-8']],
   ['/project-assistant.mjs',['project-assistant.mjs','text/javascript; charset=utf-8']],

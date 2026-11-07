@@ -39,12 +39,13 @@ def status_source(repo,owner,project):
     plans=repo.rows('project_start_plans',{'select':'currency',**common})
     if plans:
         titles={s['position']:s for s in repo.rows('project_start_stages',{'select':'position,title,amount',**common,'order':'position.asc'})}
-        progress=repo.rpc('project_plan_progress',{'p_project':project['id']}) or {}
-        for row in progress.get('stages') or []:
-            stage=titles.get(row.get('position'))
-            if not stage:continue
+        # Read with the server repository (tool execution and citation checks alike), always scoped to owner and project.
+        # project_plan_progress needs a signed-in user, so it cannot be used here.
+        checkouts={c['stage_position']:c for c in repo.rows('project_initial_checkouts',{'select':'stage_position,status,paid_at',**common})}
+        for position in sorted(titles):
+            stage,row=titles[position],checkouts.get(position) or {}
             paid=row.get('status')=='completed' and row.get('paid_at')
-            stages.append({'deliverable':row['position'],'title':stage['title'],'amount':money(round(float(stage['amount'])*100),plans[0]['currency']),
+            stages.append({'deliverable':position,'title':stage['title'],'amount':money(round(float(stage['amount'])*100),plans[0]['currency']),
                 'payment':'verified' if paid else 'not_paid','paid_at':row['paid_at'] if paid else None})
     value={'change_requests':changes,'initial_plan_deliverable_payments':stages}
     record={'file_id':project['id'],'title':'Project status','source_kind':'status','generation':digest(value),'text':json.dumps(value,ensure_ascii=False,sort_keys=True,separators=(',',':'))}

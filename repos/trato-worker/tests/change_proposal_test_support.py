@@ -5,10 +5,10 @@ import json
 from trato_api.errors import ApiError
 from trato_api.vector_routes import source
 
-OWNER,OTHER,CLIENT,PROJECT,AGREEMENT,REQUEST,PROPOSAL,REVISION=[str(uuid4()) for _ in range(8)]
+OWNER,OTHER,CLIENT,PROJECT,AGREEMENT,REQUEST,PROPOSAL,REVISION,FEEDBACK=[str(uuid4()) for _ in range(9)]
 class Repo:
  def __init__(self):
-  self.owner=OWNER;self.proposal=None;self.deliveries=[];self.mutations=[]
+  self.owner=OWNER;self.proposal=None;self.deliveries=[];self.mutations=[];self.contexts=[];self.acceptances=[]
   self.documents={AGREEMENT:{'id':AGREEMENT,'owner_id':OWNER,'project_id':PROJECT,'kind':'initial_agreement','title':'Original agreement','original_filename':'agreement.pdf','sha256':'a'*64},
     REQUEST:{'id':REQUEST,'owner_id':OWNER,'project_id':PROJECT,'kind':'email_request','title':'Additional request','original_filename':'request.pdf','sha256':'b'*64}}
   self.text={AGREEMENT:'The original agreement includes five pages.',REQUEST:'The client requests an additional payment module.'}
@@ -30,6 +30,8 @@ class Repo:
   elif table=='change_proposals':rows=[self.proposal] if self.proposal else []
   elif table=='proposal_revisions':rows=[{'id':REVISION,'proposal_id':PROPOSAL,'owner_id':OWNER,'project_id':PROJECT,'scope_summary':'Payment module','conditions':'Review','additional_minor':10000,'deadline':'2026-12-01','revision_no':1}] if self.proposal else []
   elif table=='proposal_deliveries':rows=self.deliveries
+  elif table=='document_upload_contexts':rows=self.contexts
+  elif table=='proposal_acceptances':rows=self.acceptances
   else:rows=[]
   for key,value in params.items():
    if key in ('select','order','limit','offset'):continue
@@ -40,6 +42,14 @@ class Repo:
  def rpc(self,*args,**kwargs):self.mutations.append(args);raise AssertionError('Agent must not mutate business records')
  def call(self,*args,**kwargs):self.mutations.append(args);raise AssertionError('Agent must not write records')
  def draft(self):self.proposal={'id':PROPOSAL,'owner_id':OWNER,'project_id':PROJECT,'request_document_id':REQUEST,'current_revision_id':REVISION,'status':'draft','locked_at':None}
+
+ def revise(self):
+  self.draft();self.proposal['status']='ready_for_review'
+  self.deliveries=[{'id':str(uuid4()),'owner_id':OWNER,'project_id':PROJECT,'revision_id':REVISION,'kind':'adenda','status':'accepted_by_gmail'}]
+  self.documents[FEEDBACK]={'id':FEEDBACK,'owner_id':OWNER,'project_id':PROJECT,'kind':'reference','title':'Client adjustments','original_filename':'adjustments.pdf','sha256':'c'*64}
+  self.text[FEEDBACK]='Please keep the payment module but remove inventory management.'
+  self.extracts[FEEDBACK]=str(uuid4());self.segments[FEEDBACK]=str(uuid4())
+  self.contexts=[{'document_id':FEEDBACK,'owner_id':OWNER,'project_id':PROJECT,'purpose':'addendum_adjustments','revision_id':REVISION}]
 
 class Jobs:
  def __init__(self):self.records={};self.last_id=None

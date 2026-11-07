@@ -85,7 +85,11 @@ export async function apiRequest(session, base, path, options = {}, asBlob = fal
       NO_EXTRACTABLE_TEXT:uiText("No se encontró texto. La lectura de imágenes todavía no está disponible."),
       UNSUPPORTED_FORMAT:uiText("Selecciona un PDF o DOCX compatible."), REQUEST_TOO_LARGE:uiText("El archivo supera 10 MB."),
       ORIGINAL_HASH_MISMATCH:uiText("El original guardado no coincide con el documento registrado."),
-      FILE_PROCESSOR_UNAVAILABLE:uiText("El archivo está registrado, pero el procesador no está disponible. Puedes reintentar desde Documentos.")};
+      FILE_PROCESSOR_UNAVAILABLE:uiText("El archivo está registrado, pero el procesador no está disponible. Puedes reintentar desde Documentos."),
+      GRAPH_STALE:uiText('apiError.graphStale'), GRAPH_UNAVAILABLE:uiText('apiError.graphUnavailable'), GRAPH_NOT_CONFIGURED:uiText('apiError.graphNotConfigured'),
+      INVALID_GRAPH_SCOPE:uiText('apiError.graphScope'), PLAN_STAGE_CLOSED:uiText('apiError.planStageClosed'), PLAN_PLACEMENT_FIXED:uiText('apiError.planPlacementFixed'),
+      PLAN_NOT_FOUND:uiText('apiError.planNotFound'), PLAN_STAGE_NOT_FOUND:uiText('apiError.planStageNotFound'),
+      INVALID_REQUEST:uiText('apiError.invalidRequest'), INVALID_REQUEST_CLOSURE:uiText('apiError.invalidClosure'), REQUEST_DOCUMENT_NOT_FOUND:uiText('apiError.requestNotFound')};
     const error=new Error(messages[payload.error?.code] || uiText("No se pudo completar la operación. Actualiza la lista antes de reintentar."));
     error.code=payload.error?.code;
     error.status=response.status;

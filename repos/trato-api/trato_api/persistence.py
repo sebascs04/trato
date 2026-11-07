@@ -232,6 +232,54 @@ class Repository:
         public_doc = {key: value for key, value in doc.items() if key not in ('ingestion_key', 'command_hash', 'storage_path')}
         return {'document': public_doc, 'extraction': extraction, 'segments': segments}
 
+    def extractions(self, document_ids):
+        """Same shape as extraction() for many documents, read with a few grouped queries instead of 4+ per document.
+
+        Returns {document_id: value}; a document that is missing or deleted is simply absent, so callers keep
+        raising DOCUMENT_NOT_FOUND exactly as with extraction().
+        """
+        ids = sorted({uuid(i) for i in document_ids})
+        result = {}
+        for start in range(0, len(ids), 50):
+            batch = ids[start:start+50]; wanted = 'in.(' + ','.join(batch) + ')'
+            docs = {d['id']: d for d in self.rows('documents', {'select': '*', 'id': wanted, 'deleted_at': 'is.null'})}
+            projects = {pid: self.project(pid) for pid in {d['project_id'] for d in docs.values()}}
+            extractions = {}
+            for row in self.rows('document_extractions', {'select': 'id,document_id,status,parser,parser_version,warnings,error_code,completed_at,worker_thread_id', 'document_id': wanted}):
+                extractions.setdefault(row.pop('document_id'), []).append(row)
+            segments = {}
+            for offset in range(0, 4096 * len(batch), 1000):
+                page = self.rows('document_segments', {'select': 'id,document_id,ordinal,locator_kind,locator_number,text',
+                    'document_id': wanted, 'order': 'document_id.asc,ordinal.asc,id.asc', 'limit': 1000, 'offset': offset})
+                for row in page:
+                    segments.setdefault(row.pop('document_id'), []).append(row)
+                if len(page) < 1000:
+                    break
+            for doc_id, doc in docs.items():
+                project = projects[doc['project_id']]
+                extraction = (extractions.get(doc_id) or [None])[0]
+                parts = segments.get(doc_id, [])[:4096]
+                for segment in parts:
+                    segment['source_context'] = {'owner_id': doc['owner_id'], 'client_id': project['client_id'],
+                        'project_id': project['id'], 'document_id': doc['id'], 'extraction_id': extraction['id'] if extraction else None,
+                        'segment_id': segment['id'], 'document_revision': doc['sha256'], 'origin_status': 'unverified'}
+                public_doc = {key: value for key, value in doc.items() if key not in ('ingestion_key', 'command_hash', 'storage_path')}
+                result[doc_id] = {'document': public_doc, 'extraction': extraction, 'segments': parts}
+        return result
+
+    def summary_artifacts(self, document_ids, generations):
+        """Latest summary artifact per (document, generation), in one query for the whole inventory page."""
+        ids, gens = sorted(set(document_ids)), sorted(set(generations))
+        if not ids or not gens:
+            return {}
+        rows = self.rows('file_processing_artifacts', {'select': 'artifact,document_id,source_generation,created_at',
+            'document_id': 'in.(' + ','.join(ids) + ')', 'source_generation': 'in.(' + ','.join(gens) + ')',
+            'stage': 'eq.summary', 'order': 'created_at.desc'})
+        latest = {}
+        for row in rows:
+            latest.setdefault((row['document_id'], row['source_generation']), row['artifact'])
+        return latest
+
     def activity(self,project_id,*,group_kind=None,group_id=None):
         from concurrent.futures import ThreadPoolExecutor
         from datetime import datetime
@@ -321,8 +369,55 @@ class Repository:
         return events
 
     def request_status(self,project_id):
-        self.project(project_id)
-        return self.rpc('project_request_status',{'p_project_id':uuid(project_id)})
+        project=self.project(project_id)
+        status=self.rpc('project_request_status',{'p_project_id':uuid(project_id)})
+        # The open change request and its place in the work plan, so the plan can show it before a proposal exists.
+        active=status.get('active_request') if isinstance(status,dict) else None
+        if isinstance(status,dict):
+            status['open_request']=None
+            if isinstance(active,dict) and active.get('kind')!='refund' and active.get('id'):
+                rows=self.rows('change_request_plan_placements',{'select':'placement,stage_position',
+                    'request_document_id':'eq.'+uuid(active['id']),'project_id':'eq.'+project['id']})
+                status['open_request']={'request_document_id':active['id'],'plan_placement':rows[0]['placement'] if rows else None,
+                    'plan_stage_position':rows[0]['stage_position'] if rows else None}
+        return status
+
+    def with_plan_placements(self,project_id,groups):
+        """History change groups carry where their request sits in the plan (stage position/title or new work)."""
+        if not isinstance(groups,list) or not any(isinstance(g,dict) and g.get('group_kind')=='change' for g in groups):return groups
+        placed={p['request_document_id']:p for p in self.rows('change_request_plan_placements',{'select':'request_document_id,placement,stage_position','project_id':'eq.'+uuid(project_id)})}
+        titles={s['position']:s['title'] for s in self.rows('project_start_stages',{'select':'position,title','project_id':'eq.'+uuid(project_id)})} if placed else {}
+        for group in groups:
+            if not isinstance(group,dict) or group.get('group_kind')!='change':continue
+            where=placed.get(group.get('group_id'))
+            group['plan_placement']=where['placement'] if where else None
+            group['plan_stage_position']=where['stage_position'] if where else None
+            group['plan_stage_title']=titles.get(where['stage_position']) if where and where['stage_position'] else None
+        return groups
+
+    def set_plan_placement(self,request_id,placement,stage_position):
+        """Record once where a change request sits in the plan: under a stage or as new work. Never edited."""
+        doc=self.document(request_id)
+        if doc.get('kind')!='email_request':raise ApiError('REQUEST_NOT_FOUND',404)
+        project=self.project(doc['project_id'])
+        if (placement=='stage')!=(stage_position is not None):raise ApiError('INVALID_REQUEST',422)
+        if not self.rows('project_start_plans',{'select':'project_id','project_id':'eq.'+project['id']}):raise ApiError('PLAN_NOT_FOUND',409)
+        if placement=='stage' and not self.rows('project_start_stages',{'select':'position','project_id':'eq.'+project['id'],'position':'eq.'+str(stage_position)}):
+            raise ApiError('PLAN_STAGE_NOT_FOUND',404)
+        # A paid stage is closed: later work on it is a new request, never part of what was already paid.
+        # project_initial_checkouts is service-role only; the owner reads payment state through project_plan_progress.
+        if placement=='stage':
+            progress=self.rpc('project_plan_progress',{'p_project':project['id']}) or {}
+            if any(s.get('position')==stage_position and s.get('status')=='completed' for s in progress.get('stages') or []):
+                raise ApiError('PLAN_STAGE_CLOSED',409)
+        current=self.rows('change_request_plan_placements',{'select':'placement,stage_position','request_document_id':'eq.'+doc['id']})
+        value={'request_document_id':doc['id'],'plan_placement':placement,'plan_stage_position':stage_position}
+        if current:
+            if (current[0]['placement'],current[0]['stage_position'])!=(placement,stage_position):raise ApiError('PLAN_PLACEMENT_FIXED',409)
+            return value
+        self.call('POST','/rest/v1/change_request_plan_placements',json={'request_document_id':doc['id'],'project_id':project['id'],
+            'owner_id':doc['owner_id'],'placement':placement,'stage_position':stage_position})
+        return value
 
     def close_request(self,request_id,reason,notes):
         return self.rpc('close_change_request',{'p_request_id':uuid(request_id),'p_reason':reason,'p_notes':notes})

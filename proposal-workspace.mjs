@@ -1,5 +1,5 @@
 import {installChangeProposalAssistant} from './change-proposal-assistant.mjs';
-import {installChangeReplyAssistant,renderRevisionComparison} from './change-reply-assistant.mjs';
+import {installChangeReplyAssistant,renderRevisionComparison,wordDiff} from './change-reply-assistant.mjs';
 import {installCaseAssistant} from './case-assistant.mjs';
 import {uiText,uiLocale} from './i18n.mjs';
 import {icon as uiIcon} from './icons.mjs';
@@ -80,10 +80,12 @@ export function installProposalWorkspace(cloud){
   return null;
  }
  let detailGeneration=0;
- async function refresh(id=cloud.requestId,revision,{reloadList=true,reloadStatus=false}={}){
+ // quiet: update the open request in the background, keeping what is on screen until the new data arrives.
+ async function refresh(id=cloud.requestId,revision,{reloadList=true,reloadStatus=false,quiet=false}={}){
   const project=cloud.projectId,epoch=cloud.epoch,generation=++detailGeneration;
   const current=()=>project===cloud.projectId&&epoch===cloud.epoch&&generation===detailGeneration&&cloud.requestId===id&&cloud.tab==='gestion';
-  cloud.requestId=id;cloud.proposalRetryRevision=revision||summary(id)?.current_revision_id||null;cloud.tab='gestion';cloud.proposalLoading=true;cloud.proposalError='';cloud.gmailReplies=[];cloud.gmailReplyError='';cloud.message='';cloud.notify();
+  cloud.requestId=id;cloud.proposalRetryRevision=revision||summary(id)?.current_revision_id||null;cloud.tab='gestion';
+  if(!quiet){cloud.proposalLoading=true;cloud.proposalError='';cloud.gmailReplies=[];cloud.gmailReplyError='';cloud.message='';cloud.notify();}
   try{
    if(reloadList){
     const [proposals,status]=await Promise.all([cloud.request(`/api/v1/projects/${project}/proposals`),reloadStatus?cloud.request(`/api/v1/projects/${project}/request-status`):Promise.resolve(null)]);if(!current())return;
@@ -134,13 +136,23 @@ export function installProposalWorkspace(cloud){
   const sent=data.deliveries.some(d=>d.kind==='adenda'&&d.status==='accepted_by_gmail');
   const replies=this.gmailReplies.filter(message=>message.revision_id===r.id);
   // A closed or previous version only shows replies that already exist; there is nothing left to look for.
-  const replyPanel=sent&&(current&&!paid||replies.length)?`<section class="workspace-panel cloud-gmail-replies">
+  // Every answer the client gave to this version, whether found in Gmail or registered by hand (e.g. a returned PDF).
+  const accepted=data.acceptances[0]||null,acceptedDoc=accepted?.returned_document_id?this.documents.find(d=>d.id===accepted.returned_document_id):null;
+  const recorded=accepted?`<article class="client-accepted">
+    <header><span class="client-accepted-icon" aria-hidden="true">${uiIcon('check')}</span>
+     <div><strong>${uiText('clientReply.accepted',{version:r.revision_no})}</strong><time datetime="${esc(accepted.created_at)}">${uiText('clientReply.recordedAt',{date:when(accepted.created_at)})}</time></div>
+    </header>
+    ${accepted.review_notes?.trim()?`<blockquote>${esc(accepted.review_notes)}</blockquote>`:''}
+    ${accepted.returned_document_id?`<button type="button" class="change-cited-source" data-proposal-action="view-reply-doc" data-document-id="${esc(accepted.returned_document_id)}">${uiIcon('file-text')}<span>${esc(acceptedDoc?.title||uiText('clientReply.returnedDocument'))}</span>${uiIcon('arrow-up-right')}</button>`:''}
+   </article>`:'';
+  const replyPanel=sent&&(current&&!paid||replies.length||accepted)?`<section class="workspace-panel cloud-gmail-replies">
    <header class="cloud-replies-heading">
     <h3>${uiIcon('mail')}${uiText("Respuestas de Gmail")}</h3>
     <div class="cloud-reply-actions">
-     ${current&&!paid?`<button class="button secondary" data-proposal-action="gmail-sync">${uiIcon('refresh-cw')}${uiText("Buscar respuestas en Gmail")}</button>`:`<button class="text-button" data-proposal-action="refresh">${uiIcon('refresh-cw')}${uiText("Actualizar respuestas")}</button>`}
+     ${accepted?'':current&&!paid?`<button class="button secondary" data-proposal-action="gmail-sync">${uiIcon('refresh-cw')}${uiText("Buscar respuestas en Gmail")}</button>`:`<button class="text-button" data-proposal-action="refresh">${uiIcon('refresh-cw')}${uiText("Actualizar respuestas")}</button>`}
     </div>
    </header>
+   ${recorded}
    ${this.gmailReplyError?`<p class="cloud-error" role="alert">${esc(this.gmailReplyError)}</p>`:''}
    ${replies.length?replies.map(message=>{
     const messageId=esc(message.id);
@@ -170,7 +182,7 @@ export function installProposalWorkspace(cloud){
       <button class="text-button" data-proposal-action="use-gmail-reply" data-message-id="${messageId}" ${message.used_at||pendingImported?'disabled':''}>${uiText(message.used_at?"Respuesta ya utilizada":"Registrar ajustes manualmente")}</button>
      </div>`:''}
     </article>`;
-   }).join(''):this.gmailReplyError?'':`<p class="cloud-notice">${uiText("No se encontraron respuestas vinculadas a esta versión.")}</p>`}
+   }).join(''):this.gmailReplyError||accepted?'':`<p class="cloud-notice">${uiText("No se encontraron respuestas vinculadas a esta versión.")}</p>`}
   </section>`:'';
 
   const controls=[];
@@ -194,20 +206,23 @@ export function installProposalWorkspace(cloud){
    if(!payment&&!data.acceptances.length)closeControl=`<button type="button" class="text-button cloud-review-close" data-proposal-action="close-request">${uiIcon('trash-2')}${uiText("Cerrar pedido")}</button>`;
    if(!payment&&!data.acceptances.length&&sent)replyDecision.unshift(("<button class=\"button secondary\" data-proposal-action=\"revise\">"+uiText("Registrar ajustes del cliente")+"</button>"));
   }
-  panel.innerHTML=`<div class="cloud-tracking"><div class="cloud-review-top"><button class="text-button" data-cloud-action="tab" data-cloud-tab="solicitudes">${uiText("← Volver a los pedidos")}</button>${closeControl}</div><header class="cloud-view-heading"><span class="eyebrow">${uiText("DETALLES DEL PEDIDO")}</span><h3>${esc(this.documents.find(d=>d.id===this.requestId)?.title)}</h3></header><section class="workspace-panel"><div class="cloud-panel-heading"><div class="proposal-heading-title"><h3>${esc(uiText(p.business_status))}</h3><span class="badge review">${uiText("Adenda v")}${r.revision_no}${current?'':' · '+uiText('anterior')}</span></div><div class="proposal-heading-actions"><button type="button" class="text-button" data-proposal-action="analysis" aria-haspopup="dialog">${uiIcon('sparkles')}${uiText('proposalCard.analysis')}</button><button type="button" class="text-button" data-proposal-action="details" aria-haspopup="dialog">${uiIcon('file-text')}${uiText('proposalCard.seeDetail')}${uiIcon('arrow-up-right')}</button>${editControl}</div></div><div class="proposal-summary"><section><span class="proposal-summary-label">${uiText("Alcance del cambio")}</span><p class="proposal-summary-clamp">${esc(r.scope_summary)}</p></section><dl class="proposal-summary-terms"><div><dt>${uiText('changeReply.amount')}</dt><dd>${esc(amount(r.additional_minor))}</dd></div><div><dt>${uiText("Fecha de entrega")}</dt><dd>${esc(deadlineLabel(r.deadline))}</dd></div></dl></div>${renderRevisionComparison(data.previous_sent,r)}<div class="cloud-tools cloud-flow-actions tracking-actions"><div class="tracking-secondary">${secondary.join('')}</div>${controls.length?`<div class="tracking-primary">${controls.join('')}</div>`:''}</div>${sandboxCheckout}${paid?("<p>"+uiText("Este cambio está finalizado y se conserva para consulta.")+"</p>"):''}</section>${p.revision_no>1?("<section class=\"workspace-panel\"><h3>"+uiText("Versiones de la adenda")+"</h3><div data-proposal-versions><button class=\"text-button\" data-proposal-action=\"versions\">"+uiText("Ver versiones anteriores")+"</button></div></section>"):''}</div>`;
+  panel.innerHTML=`<div class="cloud-tracking"><div class="cloud-review-top"><button class="text-button" data-cloud-action="tab" data-cloud-tab="solicitudes">${uiText("← Volver a los pedidos")}</button>${closeControl}</div><header class="cloud-view-heading"><span class="eyebrow">${uiText("DETALLES DEL PEDIDO")}</span><h3>${esc(this.documents.find(d=>d.id===this.requestId)?.title)}</h3></header><section class="workspace-panel"><div class="cloud-panel-heading"><div class="proposal-heading-title"><h3>${esc(uiText(p.business_status))}</h3><span class="badge review">${uiText("Adenda v")}${r.revision_no}${current?'':' · '+uiText('anterior')}</span></div><div class="proposal-heading-actions"><button type="button" class="text-button" data-proposal-action="analysis" aria-haspopup="dialog">${uiIcon('sparkles')}${uiText('proposalCard.analysis')}</button>${p.revision_no>1?`<button type="button" class="text-button" data-proposal-action="versions" aria-haspopup="dialog">${uiIcon('history')}${uiText('proposalCard.versions',{count:p.revision_no})}</button>`:''}${editControl}</div></div><div class="proposal-summary"><button type="button" class="proposal-summary-open" data-proposal-action="details" aria-haspopup="dialog" title="${uiText('proposalCard.seeDetail')}"><span class="proposal-summary-label">${uiText("Alcance del cambio")}<span class="proposal-summary-more">${uiText('proposalCard.seeDetail')}${uiIcon('arrow-up-right')}</span></span><span class="proposal-summary-clamp">${esc(r.scope_summary)}</span></button><dl class="proposal-summary-terms"><div><dt>${uiText('changeReply.amount')}</dt><dd>${esc(amount(r.additional_minor))}</dd></div><div><dt>${uiText("Fecha de entrega")}</dt><dd>${esc(deadlineLabel(r.deadline))}</dd></div></dl></div>${renderRevisionComparison(data.previous_sent,r)}<div class="cloud-tools cloud-flow-actions tracking-actions"><div class="tracking-secondary">${secondary.join('')}</div>${controls.length?`<div class="tracking-primary">${controls.join('')}</div>`:''}</div>${sandboxCheckout}${paid?("<p>"+uiText("Este cambio está finalizado y se conserva para consulta.")+"</p>"):''}</section></div>`;
   if(replyPanel)panel.querySelector('.cloud-tracking')?.insertAdjacentHTML('beforeend',replyPanel);
   // What the client answered decides the next step, so those actions live with the replies.
-  if(replyDecision.length)panel.querySelector('.cloud-gmail-replies')?.insertAdjacentHTML('beforeend',`<div class="cloud-reply-decision">${replyDecision.join('')}</div>`);
+  // Shown first, right under the heading: what to do next is the main question once the client has answered.
+  if(replyDecision.length)panel.querySelector('.cloud-gmail-replies .cloud-replies-heading')?.insertAdjacentHTML('afterend',`<div class="cloud-reply-decision is-top">${replyDecision.join('')}</div>`);
  };
  function prepare(mode='create',emailReply=null,analysis=null){
   const old=mode!=='create'?cloud.proposalDetails:null,r=old?.revision,item=old?.line_items?.[0];
   const recipient=cloud.clients.find(client=>client.id===cloud.project()?.client_id)?.contact_email || '';
   cloud.proposalForm={old,mode,key:crypto.randomUUID(),saved:null,recipient,emailFeedbackId:emailReply?.id||null};
-  cloud.show(mode==='edit'?uiText("Editar borrador"):mode==='revise'?uiText("Ajustes solicitados por el cliente"):uiText("Preparar propuesta"),`<p>${uiText("Define el cambio, su adicional y la fecha de entrega. Se guardará con sus fuentes del proyecto.")}</p><form data-cloud-form="proposal-terms">${mode==='create'?`<section class="change-auto"><div data-change-auto aria-live="polite"></div></section>`:''}${mode==='revise'?`<section class="change-feedback-box"><label class="field">${uiText('PDF con los ajustes del cliente')}<input class="context-box" type="file" name="feedbackFile" accept=".pdf" required></label><label class="field">${uiText("¿Qué pidió ajustar el cliente?")}<textarea class="context-box" name="feedbackNotes" required maxlength="4000"></textarea></label></section>`:''}<label class="field">${uiText("Alcance del cambio")}<textarea class="context-box" name="scope" required maxlength="12000">${esc(r?.scope_summary)}</textarea></label><label class="field">${uiText("Condiciones")}<textarea class="context-box" name="conditions" maxlength="12000">${esc(r?.conditions)}</textarea></label><label class="field">${uiText("Detalle del adicional")}<input class="context-box" name="description" required maxlength="1000" value="${esc(item?.description)}"></label><label class="field">${uiText("Adicional total en USD")}<input class="context-box" name="amount" inputmode="decimal" required pattern="[0-9]+([.,][0-9]{1,2})?" value="${r?(r.additional_minor/100).toFixed(2):''}" placeholder="0.10"></label><label class="field">${uiText("Fecha de entrega")}<input class="context-box" name="deadline" type="date" required min="${new Intl.DateTimeFormat('en-CA',{timeZone:'America/Lima'}).format(new Date())}" value="${esc(r?.deadline)}"></label><section class="cloud-proposal-send-context"><strong>${recipient?'Enviar a '+esc(recipient):uiText("El cliente no tiene un correo registrado")}</strong><p>${recipient?uiText("Guardar y enviar conserva esta versión, genera su PDF y envía la adenda a este destinatario. Revisa el alcance, el importe y la fecha antes de continuar."):uiText("Puedes guardar el borrador. Registra el correo del cliente antes de enviarlo.")}</p></section><div class="dialog-actions"><button class="button" type="submit" name="intent" value="send" ${recipient?'':'disabled'}>${uiText("Guardar y revisar envío →")}</button><button class="button secondary" type="submit" name="intent" value="draft">${mode==='edit'?uiText("Guardar cambios del borrador →"):uiText("Guardar borrador")}</button></div></form>`);
+  // A v2 prepared by TeTrato recalculates its additional from the user's rate; it never inherits v1's amount or a past date.
+  const aiRevision=mode==='revise'&&!emailReply,today=new Intl.DateTimeFormat('en-CA',{timeZone:'America/Lima'}).format(new Date());
+  cloud.show(mode==='edit'?uiText("Editar borrador"):mode==='revise'?uiText("Ajustes solicitados por el cliente"):uiText("Preparar propuesta"),`<p>${mode==='revise'?uiText("changeSteps.revisionIntro"):uiText("Define el cambio, su adicional y la fecha de entrega. Se guardará con sus fuentes del proyecto.")}</p><form data-cloud-form="proposal-terms">${mode==='create'||mode==='revise'&&!emailReply?`<section class="change-auto"><div data-change-auto aria-live="polite"></div></section>`:''}${mode==='revise'?`<section class="change-feedback-box"><label class="field">${uiText('PDF con los ajustes del cliente')}<input class="context-box" type="file" name="feedbackFile" accept=".pdf" required></label><label class="field">${uiText("changeSteps.extraContext")}<textarea class="context-box" name="feedbackNotes" maxlength="4000" placeholder="${uiText('changeSteps.extraContextExample')}"></textarea></label></section>`:''}<label class="field">${uiText("Alcance del cambio")}<textarea class="context-box" name="scope" required maxlength="12000">${esc(r?.scope_summary)}</textarea></label><label class="field">${uiText("Condiciones")}<textarea class="context-box" name="conditions" maxlength="12000">${esc(r?.conditions)}</textarea></label><label class="field">${uiText("Detalle del adicional")}<input class="context-box" name="description" required maxlength="1000" value="${esc(item?.description)}"><small class="field-help">${uiText('proposalCard.descriptionHelp')}</small></label><label class="field">${uiText("Adicional total en USD")}<input class="context-box" name="amount" inputmode="decimal" required pattern="[0-9]+([.,][0-9]{1,2})?" value="${r&&!aiRevision?(r.additional_minor/100).toFixed(2):''}" placeholder="0.10"></label><label class="field">${uiText("Fecha de entrega")}<input class="context-box" name="deadline" type="date" required min="${today}" value="${esc(r?.deadline&&r.deadline>=today?r.deadline:'')}"></label><section class="cloud-proposal-send-context"><strong>${recipient?'Enviar a '+esc(recipient):uiText("El cliente no tiene un correo registrado")}</strong><p>${recipient?uiText("Guardar y enviar conserva esta versión, genera su PDF y envía la adenda a este destinatario. Revisa el alcance, el importe y la fecha antes de continuar."):uiText("Puedes guardar el borrador. Registra el correo del cliente antes de enviarlo.")}</p></section><div class="dialog-actions"><button class="button" type="submit" name="intent" value="send" ${recipient?'':'disabled'}>${uiText("Guardar y revisar envío →")}</button><button class="button secondary" type="submit" name="intent" value="draft">${mode==='edit'?uiText("Guardar cambios del borrador →"):uiText("Guardar borrador")}</button></div></form>`);
   if(emailReply){
    const form=cloud.modal.querySelector('[data-cloud-form="proposal-terms"]'),file=form?.querySelector('[name="feedbackFile"]'),notes=form?.querySelector('[name="feedbackNotes"]'),body=emailReply.reply_text||'';
    file?.closest('.field')?.remove();
-   if(notes){notes.value=analysis?.summary??(body.length<=4000?body:'');notes.parentElement.insertAdjacentHTML('beforebegin',`<section class="cloud-client-feedback"><strong>${uiText("Respuesta recibida desde Gmail")} · ${esc(emailReply.from_email)}</strong><p class="cloud-email-reply-body">${esc(body)}</p></section>`);if(body.length>4000)notes.parentElement.insertAdjacentHTML('afterend',`<p class="cloud-notice">${uiText("El correo original se conserva íntegro como evidencia. Resume aquí los cambios en un máximo de 4.000 caracteres.")}</p>`);}
+   if(notes){notes.required=true;notes.parentElement.firstChild.textContent=uiText('¿Qué pidió ajustar el cliente?');notes.value=analysis?.summary??(body.length<=4000?body:'');notes.parentElement.insertAdjacentHTML('beforebegin',`<section class="cloud-client-feedback"><strong>${uiText("Respuesta recibida desde Gmail")} · ${esc(emailReply.from_email)}</strong><p class="cloud-email-reply-body">${esc(body)}</p></section>`);if(body.length>4000)notes.parentElement.insertAdjacentHTML('afterend',`<p class="cloud-notice">${uiText("El correo original se conserva íntegro como evidencia. Resume aquí los cambios en un máximo de 4.000 caracteres.")}</p>`);}
   }
   const form=cloud.modal.querySelector('[data-cloud-form="proposal-terms"]');
   if(analysis?.draft){
@@ -218,36 +233,40 @@ export function installProposalWorkspace(cloud){
    form.elements.deadline.value=analysis.reviewed_deadline;
    form.insertAdjacentHTML('afterbegin',`<p class="cloud-notice">${uiText('changeReply.draftHelp')}</p>`);
   }
-  const previous=mode==='revise'?r:old?.previous_sent;
+  const previous=mode==='revise'?r:old?.previous_sent,previousItem=mode==='revise'?item:null;
   if(previous){
-   const comparison=cloud.document.createElement('div');
+   const comparison=cloud.document.createElement('div');comparison.dataset.revisionComparison='';
    form.querySelector('.cloud-proposal-send-context').before(comparison);
    const update=()=>{
     const raw=form.elements.amount.value.trim().replace(',','.');
     const minor=/^\d+(\.\d{1,2})?$/.test(raw)?Math.round(Number(raw)*100):null;
-    comparison.innerHTML=renderRevisionComparison(previous,{scope_summary:form.elements.scope.value,
-     additional_minor:minor,deadline:form.elements.deadline.value},{scopeOpen:!!comparison.querySelector('details[open]')});
+    comparison.innerHTML=renderRevisionComparison({...previous,description:previousItem?.description},{scope_summary:form.elements.scope.value,
+     conditions:form.elements.conditions.value,description:form.elements.description.value,additional_minor:minor,deadline:form.elements.deadline.value});
    };
    form.addEventListener('input',update);update();
+  }
+  if(mode==='revise'&&!emailReply){
+   const state=cloud.proposalForm;
+   cloud.installRevisionProposalSteps(form,async()=>{
+    const file=form.elements.feedbackFile.files[0];
+    if(!file?.size||file.size>10485760)throw Error(uiText('Adjunta el PDF con los ajustes del cliente, de hasta 10 MB.'));
+    const sha=Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',await file.arrayBuffer())),byte=>byte.toString(16).padStart(2,'0')).join('');
+    const notes=form.elements.feedbackNotes.value.trim(),fingerprint=sha+'|'+notes;
+    if(state.feedbackFingerprint===fingerprint)return false;
+    // Same PDF and file name for the same sent version → same document, also after reopening the form,
+    // so TeTrato's earlier analysis of it can be reused instead of reading a duplicate.
+    const hex=bytes=>Array.from(new Uint8Array(bytes),byte=>byte.toString(16).padStart(2,'0')).join('');
+    const uploadKey=hex(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(sha+'|'+file.name)));
+    const upload=await cloud.request(`/api/v1/projects/${cloud.projectId}/documents?${new URLSearchParams({filename:file.name,title:`${uiText('Ajustes del cliente a la adenda v')}${state.old.revision.revision_no}`,kind:'reference',purpose:'addendum_adjustments',revision_id:state.old.revision.id})}`,{method:'POST',body:file,headers:{'Content-Type':'application/pdf','Idempotency-Key':'feedback-'+state.old.revision.id+'-'+uploadKey}});
+    if(cloud.proposalForm!==state)throw Error(uiText('changeSteps.prepareFailed'));
+    state.feedbackId=upload.document.id;state.feedbackSha=sha;state.feedbackFingerprint=fingerprint;
+    return true;
+   });
   }
   if(mode==='create')cloud.autoDraftChangeProposal?.();
  }
  // Like the saved initial plan: the card stays compact and the full addendum opens in the right-side drawer.
  let revisionPanel=null,lastAnalysis=null,compareFields=[],lastReview=null,floating=null;
- // Word-level comparison: removed words are marked on TeTrato's side, added words on the saved side.
- function wordDiff(before,after){
-  const a=before.split(/\s+/).filter(Boolean),b=after.split(/\s+/).filter(Boolean);
-  if(a.length*b.length>250000)return {left:esc(before),right:esc(after)};
-  const dp=Array.from({length:a.length+1},()=>new Uint16Array(b.length+1));
-  for(let i=a.length-1;i>=0;i--)for(let j=b.length-1;j>=0;j--)dp[i][j]=a[i]===b[j]?dp[i+1][j+1]+1:Math.max(dp[i+1][j],dp[i][j+1]);
-  const left=[],right=[];let i=0,j=0;
-  while(i<a.length||j<b.length){
-   if(i<a.length&&j<b.length&&a[i]===b[j]){left.push(esc(a[i]));right.push(esc(b[j]));i++;j++;}
-   else if(j<b.length&&(i===a.length||dp[i][j+1]>=dp[i+1][j])){right.push(`<ins>${esc(b[j])}</ins>`);j++;}
-   else{left.push(`<del>${esc(a[i])}</del>`);i++;}
-  }
-  return {left:left.join(' ').replace(/<\/del> <del>/g,' '),right:right.join(' ').replace(/<\/ins> <ins>/g,' ')};
- }
  // Floating dialog over the analysis drawer, for the side-by-side comparison and TeTrato's full review.
  function showFloating(kind,eyebrow,title,body){
   if(!floating){
@@ -269,6 +288,19 @@ export function installProposalWorkspace(cloud){
   const c=key=>uiText(`proposalCard.${key}`),{review,eyebrow}=lastReview;
   const labels={scope:uiText("Alcance del cambio"),conditions:uiText("Condiciones"),description:c('description'),amount:uiText('changeReply.amount'),deadline:uiText("Fecha de entrega")};
   showFloating('review',eyebrow,`${uiIcon(review.material_change?'flag':'check')}${c(review.material_change?'material':'notMaterial')}`,`<div class="proposal-ai-verdict ${review.material_change?'is-material':''}"><p>${esc(review.summary)}</p>${review.changes.map(change=>`<p><b>${esc(labels[change.field]||change.field)}:</b> ${esc(change.assessment)}</p>`).join('')}</div>`);
+ }
+ // Every version of the addendum in the same right-side drawer as «See detail», newest first.
+ async function openVersions(button,data){
+  const title=uiText("Versiones de la adenda");
+  revisionPanel??=createAgentPanel({cloud,id:'proposal-detail-title',className:'plan-recommendation-drawer proposal-detail-drawer'});
+  const shell=body=>`<div class="case-agent-shell"><header class="case-agent-header"><div class="case-agent-heading"><div><span>${uiText("DETALLES DEL PEDIDO")}</span><h2 id="proposal-detail-title">${esc(title)}</h2></div></div><button type="button" class="case-agent-close" data-agent-close aria-label="${uiText('Cerrar')}" title="${uiText('Cerrar')}">${uiIcon('x')}</button></header><div class="case-agent-chat" data-agent-chat role="region" aria-label="${esc(title)}">${body}</div></div>`;
+  revisionPanel.render(shell(`<p class="cloud-notice" role="status">${uiText('proposalCard.loading')}</p>`));revisionPanel.open(button);
+  try{
+   const result=await cloud.request(`/api/v1/proposals/${data.proposal.id}?summary=true`);
+   if(!revisionPanel.element.open||cloud.proposalDetails?.proposal?.id!==data.proposal.id)return;
+   const shown=data.revision.id;
+   revisionPanel.render(shell(`<section class="plan-recommended-stages"><ol>${result.revisions.sort((a,b)=>b.revision_no-a.revision_no).map(v=>`<li><span class="plan-reasoning-number">${v.revision_no}</span><div><header><strong>${uiText("Adenda v")}${v.revision_no}</strong></header><p>${esc(amount(v.additional_minor))} · ${esc(deadlineLabel(v.deadline))}</p>${v.id===shown?`<span class="proposal-ai-tag">${uiText('proposalCard.versionShown')}</span>`:`<button type="button" class="text-button" data-proposal-action="version" data-revision="${esc(v.id)}">${uiText("Consultar →")}</button>`}</div></li>`).join('')}</ol></section>`));
+  }catch(error){if(revisionPanel.element.open)revisionPanel.render(shell(`<p class="cloud-error" role="alert">${esc(error.message)}</p>`));}
  }
  function openRevisionDetails(button){
   const data=cloud.proposalDetails;if(!data?.revision)return;
@@ -332,7 +364,14 @@ export function installProposalWorkspace(cloud){
   }catch(error){fail(error);}
  }
  async function preview(kind){
-  const data=cloud.proposalDetails,value=await cloud.request(base(data)+`/email-preview?kind=${kind}`);
+  const data=cloud.proposalDetails,project=cloud.projectId;
+  cloud.show(kind==='adenda'?uiText('Enviar adenda al cliente'):uiText('Enviar solicitud de pago'),`<div data-mail-preview-loading aria-busy="true">${renderAIActivity({label:uiText('proposalCard.preparingEmail'),compact:true})}</div>`);
+  const loading=cloud.modal.querySelector('[data-mail-preview-loading]');
+  const current=()=>cloud.modal.open&&cloud.modal.querySelector('[data-mail-preview-loading]')===loading&&cloud.projectId===project&&cloud.proposalDetails?.revision.id===data.revision.id;
+  let value;
+  try{value=await cloud.request(base(data)+`/email-preview?kind=${kind}`);}
+  catch(error){if(!current())error.uiHandled=true;throw error;}
+  if(!current())return;
   if(!value.body_html)throw Error(uiText("No pudimos mostrar la vista previa del correo."));
   cloud.proposalPreview={kind,value,data};
   const mailBody=`<iframe class="cloud-mail-frame" sandbox="allow-same-origin" title="${esc(uiText("Vista previa del correo"))}"></iframe>`;
@@ -400,7 +439,7 @@ export function installProposalWorkspace(cloud){
   }
   if(action==='close-request'){
    this.closingRequestId=this.requestId;
-   this.show(uiText("Cerrar pedido"),`<p>${uiText("Registra por qué no continuará este pedido. Sus documentos y versiones quedarán disponibles para consulta.")}</p><form data-cloud-form="proposal-close-request"><fieldset class="close-reason-choices"><legend class="field">${uiText("Motivo")}</legend>${[['rejected','x',"El cliente rechazó la propuesta"],['withdrawn','undo-2',"El cliente retiró el pedido"]].map(([value,glyph,label])=>`<label class="close-reason-choice"><input type="radio" name="reason" value="${value}" required><span class="close-reason-icon" aria-hidden="true">${uiIcon(glyph)}</span><span class="close-reason-label">${uiText(label)}</span></label>`).join('')}</fieldset><label class="field">${uiText("Detalle")}<textarea class="context-box" name="notes" required maxlength="4000"></textarea></label><div class="dialog-actions"><button class="button" type="submit">${uiText("Cerrar pedido")}</button><button class="button secondary" type="button" data-cloud-close>${uiText("Volver")}</button></div></form>`);
+   this.show(uiText("Cerrar pedido"),`<p>${uiText("Registra por qué no continuará este pedido. Sus documentos y versiones quedarán disponibles para consulta.")}</p><form data-cloud-form="proposal-close-request"><fieldset class="close-reason-choices"><legend class="field">${uiText("Motivo")}</legend>${[['rejected','x',"El cliente rechazó la propuesta"],['withdrawn','undo-2',"El cliente retiró el pedido"]].map(([value,glyph,label])=>`<label class="close-reason-choice"><input type="radio" name="reason" value="${value}" required><span class="close-reason-icon" aria-hidden="true">${uiIcon(glyph)}</span><span class="close-reason-label">${uiText(label)}</span></label>`).join('')}</fieldset><label class="field">${uiText("Detalle (opcional)")}<textarea class="context-box" name="notes" maxlength="4000"></textarea></label><div class="dialog-actions"><button class="button" type="submit">${uiText("Cerrar pedido")}</button><button class="button secondary" type="button" data-cloud-close>${uiText("Volver")}</button></div></form>`);
    return;
   }
   this.run(async()=>{
@@ -472,13 +511,19 @@ export function installProposalWorkspace(cloud){
     const frame=form.querySelector('[data-acceptance-pdf]');
     frame.src=this.previewUrl+'#view=FitH';frame.hidden=false;
    }
-   if(action==='payment'){await this.request(base(data)+'/payment',{method:'POST'});await refresh(this.requestId,undefined,{reloadStatus:true});await preview('payment');}
-   if(action==='reconcile'){await this.request(base(data)+'/reconcile',{method:'POST'});this.historyGeneration++;this.historyLoaded=false;this.historyPending=null;this.projectActivity=[];await refresh(this.requestId,undefined,{reloadStatus:true});}
-   if(action==='versions'){
-    const result=await this.request(`/api/v1/proposals/${data.proposal.id}?summary=true`);
-    this.document.querySelector('[data-proposal-versions]').innerHTML=result.revisions.sort((a,b)=>b.revision_no-a.revision_no).map(r=>`<article class="cloud-client-row"><div><strong>${uiText("Adenda v")}${r.revision_no}</strong><p>${esc(amount(r.additional_minor))} · ${esc(r.deadline)}</p></div><button class="text-button" data-proposal-action="version" data-revision="${esc(r.id)}">${uiText("Consultar →")}</button></article>`).join('');
+   if(action==='payment'){
+    // Open the payment request at once; the charge is created and the card updated quietly behind it.
+    this.show(uiText("Enviar solicitud de pago"),renderAIActivity({label:uiText('proposalCard.preparingPayment'),compact:true}));this.modal.classList.add('cloud-mail-dialog');
+    try{await this.request(base(data)+'/payment',{method:'POST'});await refresh(this.requestId,undefined,{reloadStatus:true,quiet:true});await preview('payment');}
+    catch(error){if(this.modal.open)this.show(uiText("Enviar solicitud de pago"),`<p class="cloud-error" role="alert">${esc(error.message)}</p>`);error.uiHandled=true;await refresh(this.requestId,undefined,{quiet:true}).catch(()=>{});}
    }
-   if(action==='version'){await refresh(this.requestId,button.dataset.revision,{reloadList:false});}
+   if(action==='reconcile'){await this.request(base(data)+'/reconcile',{method:'POST'});this.historyGeneration++;this.historyLoaded=false;this.historyPending=null;this.projectActivity=[];await refresh(this.requestId,undefined,{reloadStatus:true});}
+   if(action==='versions'){await openVersions(button,data);return;}
+   if(action==='view-reply-doc'){
+    const doc=this.documents.find(d=>d.id===button.dataset.documentId);
+    await this.previewDocument(button.dataset.documentId,{title:doc?.title||uiText('clientReply.returnedDocument'),original_filename:doc?.original_filename||'respuesta.pdf',mime_type:doc?.mime_type||'application/pdf'});return;
+   }
+   if(action==='version'){revisionPanel?.element.open&&revisionPanel.element.close();await refresh(this.requestId,button.dataset.revision,{reloadList:false});}
   });
  };
  cloud.submit=async function(event){
@@ -503,6 +548,11 @@ export function installProposalWorkspace(cloud){
    }
    if(kind==='proposal-terms'){
     const state=this.proposalForm;
+    if(state.mode==='revise'&&!state.emailFeedbackId){
+     const file=values.get('feedbackFile');
+     const sha=file?.size?Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',await file.arrayBuffer())),byte=>byte.toString(16).padStart(2,'0')).join(''):null;
+     if(sha!==state.feedbackSha||cloud.revisionDraftNotes?.()==null)throw Error(uiText('changeSteps.feedbackChanged'));
+    }
     if(sendWithSave&&!state.recipient)throw Error(uiText("El cliente necesita un correo registrado antes de enviar."));
     const fingerprint=JSON.stringify([...values.entries()].map(([name,value])=>[name,typeof value==='string'?value:{name:value.name,size:value.size,lastModified:value.lastModified}]));
     if(state.saved&&state.savedFingerprint!==fingerprint)throw Error(uiText("Esta adenda ya se guardó. Cierra esta ventana y consulta la adenda guardada antes de cambiarla."));
@@ -527,7 +577,7 @@ export function installProposalWorkspace(cloud){
      if(state.mode==='revise'){
       if(state.emailFeedbackId){body.feedback_email_id=state.emailFeedbackId;const reply=this.gmailReplies.find(message=>message.id===state.emailFeedbackId),importedId=(reply?.attachment_metadata||[]).map((attachment,index)=>gmailImportedDocumentId(reply,index,attachment)).find(id=>id&&sources.includes(id));if(importedId)body.feedback_document_id=importedId;}
       else body.feedback_document_id=state.feedbackId;
-      body.feedback_notes=values.get('feedbackNotes');
+      body.feedback_notes=state.emailFeedbackId?values.get('feedbackNotes'):cloud.revisionDraftNotes();
      }
      const url=state.old?`/api/v1/proposals/${state.old.proposal.id}/${state.mode==='edit'?'draft':'revisions'}`:`/api/v1/projects/${this.projectId}/proposals`;
      state.saved=await this.request(url,{...this.json(body),headers:{'Content-Type':'application/json','Idempotency-Key':state.key}});
@@ -535,7 +585,7 @@ export function installProposalWorkspace(cloud){
     }
     const savedBase=`/api/v1/proposals/${state.saved.proposal_id}/revisions/${state.saved.revision_id}`;
     // Keep TeTrato's original proposal with this version, so later edits can be compared with it. Retried on resubmit.
-    if(!state.old&&!state.analysisSaved){const draftJob=this.changeDraftAnalysisJob?.();if(draftJob)await this.request(savedBase+'/ai-analysis',this.json({change_proposal_job_id:draftJob}));state.analysisSaved=true;}
+    if((!state.old||state.mode==='revise'&&!state.emailFeedbackId)&&!state.analysisSaved){const draftJob=this.changeDraftAnalysisJob?.();if(draftJob)await this.request(savedBase+'/ai-analysis',this.json({change_proposal_job_id:draftJob}));state.analysisSaved=true;}
     const artifact=await this.request(savedBase+'/pdf',{method:'POST'});
     if(sendWithSave){
      const value=await this.request(savedBase+'/email-preview?kind=adenda');

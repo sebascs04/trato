@@ -206,7 +206,8 @@ class ProjectAssistant:
    file_id=record['file_id']
    if record['source_kind']=='status':
     # Business records can change between the tool call and the answer; cite only the current state.
-    current=status_source(repo,owner,project)
+    # Same server repository as the tool that produced the record, so both read identical business state.
+    current=status_source(self.server if self.server is not None else ThreadStore(self.settings).repo,owner,project)
     if data.get('source_document_ids') or data.get('case_context') or current['source_id']!=record['source_id']:raise ApiError('AI_CONTEXT_INVALID',409)
     canonical.append({k:record[k] for k in ('source_id','file_id','title','source_kind','generation')});continue
    if record['source_kind']=='plan':
@@ -302,7 +303,7 @@ def build_project_assistant_router(settings,require_user,repository_factory=None
    if set(params)!={'result','summary','summarized_through'} or not isinstance(params['summary'],str) or len(params['summary'].encode())>60000 or type(params['summarized_through']) is not int:raise ApiError('AI_MEMORY_INVALID',422)
    try:outcome=MemoryAnswer.model_validate(params['result']).model_dump(mode='json')
    except ValidationError:raise ApiError('AI_INVALID_RESPONSE',502) from None
-   if outcome['project_id']!=project['id'] or outcome['output_language']!=data['output_language'] or not outcome['answer'].strip() or any(not item.strip() or len(item)>500 for item in outcome['missing_information']) or any(tool not in {t['name'] for t in TOOLS+[MEMORY_TOOL]} for tool in outcome['tools_used']):raise ApiError('AI_INVALID_RESPONSE',502)
+   if outcome['project_id']!=project['id'] or outcome['output_language']!=data['output_language'] or not outcome['answer'].strip() or any(not item.strip() or len(item)>500 for item in outcome['missing_information']) or any(tool not in {t['name'] for t in TOOLS+[MEMORY_TOOL,PLAN_TOOL,STATUS_TOOL]} for tool in outcome['tools_used']):raise ApiError('AI_INVALID_RESPONSE',502)
    result=await run_in_threadpool(service.validate_result,repo,row['owner'],str(job_id),outcome)
    params={'question':data['question'],'answer':result,'revision':data['memory']['revision'],'summary':params['summary'],'summarized_through':params['summarized_through']}
   elif set(params)-{'checkpoint_id','payload','writes'}:raise ApiError('AI_MEMORY_INVALID',422)

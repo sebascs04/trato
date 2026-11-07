@@ -10,8 +10,9 @@ from test_vector_routes import Repo, Store, Processor, MemoryRedis, OWNER, PROJE
 class SharedRepo:
     def __init__(self): self.data = {}
     def rows(self, table, params):
-        row = self.data.get(params['document_id'][3:])
-        return [deepcopy(row)] if row and row['owner_id']==params['owner_id'][3:] else []
+        value = params['document_id']
+        ids = value[4:-1].split(',') if value.startswith('in.(') else [value[3:]]
+        return [deepcopy(self.data[i]) for i in ids if i in self.data and self.data[i]['owner_id']==params['owner_id'][3:]]
     def call(self, method, path, *, json=None, params=None, headers=None):
         if method=='POST': self.data[json['document_id']] = deepcopy(json)
         elif method=='DELETE':
@@ -29,6 +30,13 @@ class ReceiptTests(TestCase):
         self.assertEqual(second.search(repo,OWNER,PROJECT,'payment')['matches'][0]['text'],repo.text)
         repo.text+=' changed'
         with self.assertRaisesRegex(ApiError,'VECTOR_INDEX_INCOMPLETE'): second.search(repo,OWNER,PROJECT,'payment')
+
+    def test_grouped_receipts_keep_the_owner_filter(self):
+        from uuid import uuid4
+        registry=VectorReceipts(None,repo=SharedRepo());other=str(uuid4())
+        registry.put(OWNER,FILE,{'project_id':PROJECT,'status':'ready'})
+        self.assertEqual(registry.get_many(OWNER,[FILE,other]),{FILE:{'project_id':PROJECT,'status':'ready'}})
+        self.assertEqual(registry.get_many(str(uuid4()),[FILE]),{})
 
     def test_receipt_does_not_cross_owner_and_can_be_removed(self):
         from uuid import uuid4

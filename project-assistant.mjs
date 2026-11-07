@@ -1,8 +1,9 @@
 import {createAgentPanel,agentShell} from './agent-panel.mjs';
 import {AIJobClient} from './ai-jobs.mjs';
 import {renderAIActivity,submitChatOnEnter,chatScrollPosition,restoreChatScroll} from './ai-activity.mjs';
-import {uiText,uiLanguage} from './i18n.mjs';
+import {uiText,uiLanguage,uiLocale} from './i18n.mjs';
 import {icon} from './icons.mjs';
+import {documentProgressLabel} from './document-progress.mjs';
 const text=(key,values)=>uiText(['projectAssistant',key].join('.'),values);
 const esc=value=>String(value??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 export function projectDocumentError(code){
@@ -26,6 +27,32 @@ export function documentFailurePresentation(inventoryCode,processing){
  const shared=!!inventoryCode&&failed&&inventoryCode===processing.error&&sharedCodes.includes(inventoryCode);
  const keys={FILE_PROCESSING_NOT_CONFIGURED:'prepareNotConfigured',FILE_MODEL_NOT_CONFIGURED:'prepareNotConfigured',FILE_PURPOSE_NOT_ENABLED:'prepareNotConfigured',FILE_SOURCE_CHANGED:'prepareSourceChanged',FILE_SCOPE_CHANGED:'prepareSourceChanged',FILE_THREAD_CONTEXT_CONFLICT:'prepareSourceChanged',FILE_EXTRACTION_INVALID:'prepareUnreadable',VECTOR_QUOTA_EXCEEDED:'prepareCapacity',VECTOR_CAPACITY_LIMIT:'prepareCapacity',VECTOR_DOCUMENT_LIMIT:'prepareCapacity',FILE_INDEX_INCOMPLETE:'prepareIndexFailed'};
  return {inventory:inventoryCode?(shared?'documentsSharedFailure':'documentsInventoryFailure'):null,preparation:failed&&!shared?(processing.status==='unavailable'?'prepareUnconfirmed':keys[processing.error]||'prepareFailed'):null};
+}
+// Readable facts from a literal fragment of the project status JSON (the verified citation), e.g. "proposal_status":"accepted".
+// Only what answers «what happened with this change», in the order things happen; internal flags and long texts stay out.
+const STATUS_FIELDS=['request','deliverable','title','addendum_version','additional_amount','deadline','sent_to_client_at','accepted_by_client_recorded_at','amount','paid_at','payment','closure'];
+export function statusFacts(quote){
+ const facts=[],pattern=/"([a-z_]+)":(null|true|false|-?\d+(?:\.\d+)?|"(?:[^"\\]|\\.)*")/g;
+ const when=v=>new Intl.DateTimeFormat(uiLocale(),{dateStyle:'medium',timeStyle:'short',timeZone:'America/Lima'}).format(new Date(v));
+ for(const [,key,raw] of String(quote??'').matchAll(pattern)){
+  if(!STATUS_FIELDS.includes(key))continue;
+  let value;try{value=JSON.parse(raw);}catch{continue;}
+  let shown;
+  if(value===null)continue;
+  if(key==='closure')continue;
+  else if(typeof value==='boolean')shown=uiText(value?'statusFact.yes':'statusFact.no');
+  else if(/_at$/.test(key)&&Number.isFinite(Date.parse(value)))shown=when(value);
+  else if(key==='addendum_version')shown='v'+value;
+  else if(key==='proposal_status'||key==='payment')shown=uiText(`statusFact.value.${value}`);
+  else shown=String(value);
+  // In plan deliverables "amount" is the stage's price, not a verified payment.
+  const label=key==='amount'&&/"deliverable":/.test(quote)?uiText('statusFact.stageAmount'):uiText(`statusFact.${key}`);
+  if(shown)facts.push([label,shown,key]);
+ }
+ // A closed request: its reason is the fact that matters ("closure":{"reason":"rejected",...}).
+ const closed=String(quote??'').match(/"closure":\{[^}]*"reason":"(rejected|withdrawn)"/);
+ if(closed)facts.push([uiText('statusFact.closure'),uiText(`statusFact.value.${closed[1]}`),'closure']);
+ return facts.sort((a,b)=>STATUS_FIELDS.indexOf(a[2])-STATUS_FIELDS.indexOf(b[2])).map(([label,shown])=>[label,shown]);
 }
 export function documentReviewPresentation(processing){
  if(processing?.status!=='completed'||!['needs_clarification','rejected'].includes(processing.result?.status))return null;
@@ -78,20 +105,25 @@ export function installProjectAssistant(cloud){
  }
  function focusTarget(){
   // Where the user is looking: a change request detail. Verified again by the backend.
-  if(cloud.tab!=='solicitudes'||!cloud.requestId)return null;
+  // The request detail and its tracking are where one request is on screen; the list itself has no single focus.
+  if(!['gestion','seguimiento'].includes(cloud.tab)||!cloud.requestId)return null;
   const doc=cloud.documents?.find(item=>item.id===cloud.requestId);
   return doc?{id:doc.id,title:doc.title}:null;
  }
  function renderFloating(state){
   const body=cloud.document.createElement('div');cloud.renderProjectAssistant(body);
-  const focus=state.focus?`<p class="tetrato-focus">${icon('file-text')}<span>${text('focusLabel')} ${esc(state.focus.title)}</span></p>`:'';
-  floatingPanel.render(`<div class="case-agent-shell"><header class="case-agent-header"><div class="case-agent-heading"><img class="case-agent-mascot" src="/assets/mascot/trato-guide.png" alt="" width="44" height="44"><div><span>Trato</span><h2 id="tetrato-floating-title">TeTrato</h2></div></div><button type="button" class="case-agent-close" data-agent-close aria-label="${uiText('Cerrar')}" title="${uiText('Cerrar')}">${icon('x')}</button></header>${focus}<div class="case-agent-chat tetrato-floating-body" data-agent-chat>${body.innerHTML}</div></div>`);
+  // Until the project's sources have loaded, show only the wait: focus card, conversation and composer appear together.
+  const ready=state.sourcesLoaded;
+  const focus=ready&&state.focus?`<div class="tetrato-focus" role="note"><span class="tetrato-focus-icon" aria-hidden="true">${icon('git-compare-arrows')}</span><div><small>${text('focusLabel')}</small><strong title="${esc(state.focus.title)}">${esc(state.focus.title)}</strong></div></div>`:'';
+  floatingPanel.render(`<div class="case-agent-shell"><header class="case-agent-header"><div class="case-agent-heading"><img class="case-agent-mascot" src="/assets/mascot/trato-guide.png" alt="" width="44" height="44"><div><span>Trato</span><h2 id="tetrato-floating-title">TeTrato</h2></div></div><button type="button" class="case-agent-close" data-agent-close aria-label="${uiText('Cerrar')}" title="${uiText('Cerrar')}">${icon('x')}</button></header><div class="case-agent-chat tetrato-floating-body" data-agent-chat>${focus}${ready?body.innerHTML:renderAIActivity({label:text('loadingHistory'),compact:true})}</div></div>`);
   restoreChatScroll(floatingPanel.element.querySelector('.project-assistant-log'),state.chatScroll);
  }
  fab?.addEventListener('click',()=>{
   const state=stateForProject();state.focus=focusTarget();
   if(!floatingPanel)floatingPanel=createAgentPanel({cloud,id:'tetrato-floating-title',className:'project-agent-drawer tetrato-floating',onClose(){if(context)context.focus=null;updateFab();}});
   floatingPanel.open(fab);updateFab();renderFloating(state);
+  // The panel waits for the project's sources; load them here too (the documents drawer is not the only entry point).
+  if(!state.sourcesLoaded)void loadSources(state);
   floatingPanel.element.querySelector('#project-assistant-question')?.focus();
  });
 
@@ -133,20 +165,20 @@ export function installProjectAssistant(cloud){
     files.push(...value.files);offset=value.next_offset;
     if(files.length>1000||offset!==null&&(!Number.isInteger(offset)||offset<files.length))throw Error('AI_JOB_INVALID');
    }while(offset!==null);
-   state.sourceFiles=files;state.sourceError='';
+   state.sourceFiles=files;state.sourceError='';state.sourcesLoaded=true;
    for(const file of files)if(file.status==='source_pending'&&file.extraction_job_id&&['queued','processing'].includes(file.extraction_status)&&!state.readings.has(file.id))state.readings.set(file.id,{status:'requested',jobId:file.extraction_job_id,jobStatus:file.extraction_status});
    for(const [id,reading] of state.readings){const file=files.find(f=>f.id===id);if(!file||file.summary_status==='ready'||file.status==='index_error'||file.extraction_status==='error')state.readings.delete(id);}
    persist(state);
    for(const [id,snapshot] of state.processingSnapshots){const file=files.find(f=>f.id===id);if(!file||!currentDocumentJob(file,snapshot))state.processingSnapshots.delete(id);}
-  }catch(error){if(current(state))state.sourceError=error.code||'AI_REQUEST_FAILED';}
+  }catch(error){if(current(state)){state.sourceError=error.code||'AI_REQUEST_FAILED';state.sourcesLoaded=true;}}
   finally{if(current(state)){state.sourceLoading=false;state.sourceLoadingInFlight=false;paint(state);clearTimeout(sourceTimer);if(visible(state)&&!state.sourceError&&state.sourceFiles.some(f=>f.summary_status!=='ready'))sourceTimer=setTimeout(()=>{if(visible(state))loadSources(state);},state.readings.size?2000:8000);}}
  }
  function documentJobNotice(state,file){
   const recovery=state.readings.get(file.id);
-  if(file.status!=='source_pending'&&recovery?.status==='requested')return `<div class="project-document-progress" data-document-recovery-progress>${file.status==='indexing'?renderAIActivity({label:text('preparing'),compact:true}):`<p role="status">${text('readingAvailabilityPending')}</p>`}</div>`;
+  if(file.status!=='source_pending'&&recovery?.status==='requested')return `<div class="project-document-progress" data-document-recovery-progress>${file.status==='indexing'?renderAIActivity({label:text('preparing'),hint:documentProgressLabel(file)||undefined,compact:true}):`<p role="status">${documentProgressLabel(file)||text('readingAvailabilityPending')}</p>`}</div>`;
   const job=currentDocumentJob(file,state.processingSnapshots.get(file.id));if(!job)return '';
   if(file.summary_status==='ready')return `<p role="status" data-document-prepared>${text('prepared')}</p>`;
-  if(['queued','running'].includes(job.status))return `<div class="project-document-progress" data-document-progress>${renderAIActivity({label:text(job.status==='queued'?'prepareQueued':'preparing'),compact:true})}</div>`;
+  if(['queued','running'].includes(job.status))return `<div class="project-document-progress" data-document-progress>${renderAIActivity({label:text(job.status==='queued'?'prepareQueued':'preparing'),hint:documentProgressLabel(file)||undefined,compact:true})}</div>`;
   const errors=documentFailurePresentation(state.sourceError,job);
   if(errors.preparation)return `<p class="cloud-error" role="alert" data-document-error="preparation">${text(errors.preparation)}</p>`;
   const review=documentReviewPresentation(job);
@@ -256,11 +288,24 @@ export function installProjectAssistant(cloud){
   let state;
   try{state=stateForProject();}
   catch{panel.innerHTML=`<section class="workspace-panel project-assistant"><h3>${text('title')}</h3><p class="cloud-error" role="alert">${text('historyUnavailable')}</p></section>`;return;}
+  if(state.loading){
+   panel.innerHTML=`<section class="workspace-panel project-assistant" aria-label="${text('title')}" aria-busy="true"><div class="project-assistant-loading">${renderAIActivity({label:text('loadingHistory'),compact:true})}</div></section>`;
+   return;
+  }
+  if(state.historyError){
+   panel.innerHTML=`<section class="workspace-panel project-assistant" aria-label="${text('title')}"><p class="cloud-error" role="alert">${messageError(state.historyError)}</p><button type="button" class="text-button" data-assistant-action="reload-history">${text('retry')}</button></section>`;
+   return;
+  }
   const job=state.job.state,pending=['queued','running'].includes(job.status),failed=['failed','unavailable'].includes(job.status);
-  const citations=value=>value.citations.map(citation=>{
+  const citations=value=>{
+   // Status quotes are literal fragments of the project's JSON state (that is what is verified); show them as readable facts.
+   const status=value.citations.filter(c=>value.sources.find(s=>s.source_id===c.source_id)?.source_kind==='status');
+   const facts=[];for(const c of status)for(const fact of statusFacts(c.quote))if(!facts.some(f=>f[0]===fact[0]&&f[1]===fact[1]))facts.push(fact);
+   const statusBlock=status.length?`<article class="project-assistant-source"><span>${text('statusLabel')}</span><button type="button" data-assistant-action="status" data-document-id="${esc(value.sources.find(s=>s.source_kind==='status').file_id)}">${icon('history')}${text('statusOpen')}${icon('arrow-up-right')}</button>${facts.length?`<dl class="assistant-status-facts">${facts.map(([label,shown])=>`<div><dt>${esc(label)}</dt><dd>${esc(shown)}</dd></div>`).join('')}</dl>`:status.map(c=>`<blockquote>${esc(c.quote)}</blockquote>`).join('')}</article>`:'';
+   return statusBlock+value.citations.filter(c=>!status.includes(c)).map(citation=>{
    const source=value.sources.find(s=>s.source_id===citation.source_id);
    return `<article class="project-assistant-source"><span>${text(source.source_kind==='status'?'statusLabel':source.source_kind==='summary'?'summarySource':'originalSource')}</span><button type="button" data-assistant-action="${source.source_kind==='plan'?'plan':source.source_kind==='status'?'status':'source'}" data-document-id="${esc(source.file_id)}">${icon('file-text')}${esc(source.source_kind==='status'?text('statusLabel'):source.title)}${icon('arrow-up-right')}</button><blockquote>${esc(citation.quote)}</blockquote>${source.locator?`<small>${text(source.locator.kind==='page'?'page':'paragraph')} ${esc(source.locator[source.locator.kind])}</small>`:''}</article>`;
-  }).join('');
+  }).join('');};
   const submitted=typeof job.payload?.question==='string'&&!!job.payload.question.trim();
   const unanswered=submitted&&!state.entries.some(entry=>entry.id===job.id);
   const questionMarkup=question=>`<div class="project-assistant-user-message"><span class="project-assistant-user-avatar" aria-hidden="true">${esc(cloud.profile?.textContent?.trim()||'')||icon('user-round')}</span><p class="project-assistant-question"><strong>${text('you')}</strong>${esc(question)}</p></div>`;

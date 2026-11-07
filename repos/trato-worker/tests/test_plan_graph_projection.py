@@ -57,11 +57,31 @@ class PlanGraphTests(TestCase):
   tx.run.return_value.single.return_value={'owner':context['owner_id'],'project':context['project_id'],'generation':None}
   GraphWriter(driver,'neo4j').sync(graph,context,5,'a'*64)
   writes=[(call.args[0],call.kwargs) for call in tx.run.call_args_list]
-  self.assertTrue(any(':Plan ' in query for query,params in writes))
-  self.assertTrue(any(':PlanStage ' in query for query,params in writes))
-  self.assertTrue(any('[r:STAGE_PAYMENT ' in query for query,params in writes))
-  self.assertTrue(any('[r:PAYMENT_EVIDENCE ' in query for query,params in writes))
-  for query,params in writes:
-   if 'MERGE (a)-[r:' in query:
-    self.assertEqual(params['owner'],context['owner_id']);self.assertEqual(params['project'],context['project_id'])
+  # Grouped writes: one statement for all nodes and one for all edges, kinds carried in the validated rows.
+  nodes=next(params['rows'] for query,params in writes if 'apoc.merge.node' in query)
+  edges=next((query,params) for query,params in writes if 'apoc.merge.relationship' in query)
+  self.assertTrue({'Plan','PlanStage'} <= {row['kind'] for row in nodes})
+  self.assertTrue({'STAGE_PAYMENT','PAYMENT_EVIDENCE'} <= {row['kind'] for row in edges[1]['rows']})
+  self.assertEqual((edges[1]['owner'],edges[1]['project']),(context['owner_id'],context['project_id']))
+  self.assertIn('owner_id:$owner,project_id:$project',edges[0])
+  self.assertEqual(len(writes),6)
   tx.commit.assert_called_once();driver.close.assert_called_once()
+  # A shared (per-process) driver stays open for the next job; an unknown kind never reaches Neo4j.
+  shared=MagicMock()
+  shared.session.return_value.__enter__.return_value.begin_transaction.return_value.__enter__.return_value.run.return_value.single.return_value={'owner':context['owner_id'],'project':context['project_id'],'generation':None}
+  GraphWriter(shared,'neo4j',shared_key=('u','n','db')).sync({'nodes':[],'edges':[]},context,5,'a'*64);shared.close.assert_not_called()
+  bad=MagicMock()
+  with self.assertRaises(JobError):GraphWriter(bad,'neo4j').sync({'nodes':[{'kind':'Evil','entity_key':'x'}],'edges':[]},context,5,'a'*64)
+  bad.session.assert_not_called()
+ def test_change_requests_hang_from_their_stage_or_from_the_plan_as_new_work(self):
+  context,snapshot,_=self.plan();under,new=str(uuid4()),str(uuid4())
+  snapshot['documents']+=[{'id':under,'kind':'email_request','title':'Ajuste a la entrega'},{'id':new,'kind':'email_request','title':'Tienda'}]
+  snapshot['change_request_plan_placements']=[{'request_document_id':under,'placement':'stage','stage_position':1},{'request_document_id':new,'placement':'new','stage_position':None}]
+  graph=build_projection(snapshot,context);edges={(e['source'],e['kind'],e['target']) for e in graph['edges']}
+  stage=next(n for n in graph['nodes'] if n['kind']=='PlanStage')['entity_key'];plan=next(n for n in graph['nodes'] if n['kind']=='Plan')['entity_key']
+  self.assertIn((stage,'HAS_CHANGE_REQUEST','documents:'+under),edges);self.assertIn((plan,'HAS_NEW_WORK','documents:'+new),edges)
+  # Older snapshots without the key still project; an unknown stage, a non-request document or a duplicate never do.
+  del snapshot['change_request_plan_placements'];build_projection(snapshot,context)
+  for bad in ([{'request_document_id':under,'placement':'stage','stage_position':5}],[{'request_document_id':under,'placement':'new','stage_position':1}],
+              [{'request_document_id':snapshot['documents'][-3]['id'],'placement':'new','stage_position':None}],[{'request_document_id':new,'placement':'new','stage_position':None}]*2):
+   with self.assertRaises(JobError):build_projection(dict(snapshot,change_request_plan_placements=bad),context)

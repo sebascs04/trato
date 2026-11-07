@@ -6,22 +6,40 @@ import {uiLanguage, uiLocale, uiText} from './i18n.mjs';
 const t=(key,params)=>uiText(`changeReply.${key}`,params);
 const esc=value=>String(value??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 
-export function renderRevisionComparison(previous, next, {scopeOpen=false}={}){
+// Word-level comparison: removed words are marked on the earlier side, added words on the new side.
+export function wordDiff(before,after){
+ const a=String(before??'').split(/\s+/).filter(Boolean),b=String(after??'').split(/\s+/).filter(Boolean);
+ if(a.length*b.length>250000)return {left:esc(before),right:esc(after)};
+ const dp=Array.from({length:a.length+1},()=>new Uint16Array(b.length+1));
+ for(let i=a.length-1;i>=0;i--)for(let j=b.length-1;j>=0;j--)dp[i][j]=a[i]===b[j]?dp[i+1][j+1]+1:Math.max(dp[i+1][j],dp[i][j+1]);
+ const left=[],right=[];let i=0,j=0;
+ while(i<a.length||j<b.length){
+  if(i<a.length&&j<b.length&&a[i]===b[j]){left.push(esc(a[i]));right.push(esc(b[j]));i++;j++;}
+  else if(j<b.length&&(i===a.length||dp[i][j+1]>=dp[i+1][j])){right.push(`<ins>${esc(b[j])}</ins>`);j++;}
+  else{left.push(`<del>${esc(a[i])}</del>`);i++;}
+ }
+ return {left:left.join(' ').replace(/<\/del> <del>/g,' '),right:right.join(' ').replace(/<\/ins> <ins>/g,' ')};
+}
+
+// Sent version on the left, this version on the right; only the fields that changed are listed.
+export function renderRevisionComparison(previous, next){
  if(!previous)return '';
  const currency=new Intl.NumberFormat(uiLocale(),{style:'currency',currency:'USD'});
  const date=new Intl.DateTimeFormat(uiLocale(),{dateStyle:'medium',timeZone:'UTC'});
  const price=value=>Number.isSafeInteger(value)?currency.format(value/100):t('pending');
  const deadline=value=>value&&Number.isFinite(Date.parse(value))?date.format(new Date(value)):t('pending');
- const item=(label,before,after,same)=>`<div><dt>${label}</dt><dd>${same?t('unchanged')+' · '+esc(after):`${esc(before)} <span aria-hidden="true">→</span> <strong>${esc(after)}</strong>`}</dd></div>`;
- const scopeChanged=previous.scope_summary!==next.scope_summary;
+ const norm=value=>String(value??'').replace(/\s+/g,' ').trim();
+ const rows=[];
+ for(const [key,label] of [['scope_summary',uiText("Alcance del cambio")],['conditions',uiText("Condiciones")],['description',uiText("Detalle del adicional")]]){
+  if(next[key]===undefined||previous[key]===undefined||norm(previous[key])===norm(next[key]))continue;
+  const d=wordDiff(norm(previous[key]),norm(next[key]));rows.push([label,d.left||'—',d.right||esc(t('pending'))]);
+ }
+ if(previous.additional_minor!==next.additional_minor)rows.push([t('amount'),esc(price(previous.additional_minor)),`<ins>${esc(price(next.additional_minor))}</ins>`]);
+ if(previous.deadline!==next.deadline)rows.push([t('deadline'),esc(deadline(previous.deadline)),`<ins>${esc(deadline(next.deadline))}</ins>`]);
+ const sent=t('sentVersion',{version:previous.revision_no}),current=t('thisVersion');
  return `<section class="change-revision-comparison">
   <h4>${t('compare',{version:previous.revision_no})}</h4>
-  <dl>${item(t('amount'),price(previous.additional_minor),price(next.additional_minor),previous.additional_minor===next.additional_minor)}
-  ${item(t('deadline'),deadline(previous.deadline),deadline(next.deadline),previous.deadline===next.deadline)}</dl>
-  <details data-change-comparison-scope ${scopeOpen?'open':''}><summary>${t(scopeChanged?'scopeChanged':'scopeUnchanged')}</summary>
-   <div class="change-revision-scopes"><div><strong>${t('previous')}</strong><p>${esc(previous.scope_summary)}</p></div>
-   ${scopeChanged?`<div><strong>${t('revised')}</strong><p>${esc(next.scope_summary||t('pending'))}</p></div>`:''}</div>
-  </details>
+  ${rows.length?`<div class="proposal-compare-head" aria-hidden="true"><span>${sent}</span><span>${current}</span></div>${rows.map(([label,left,right])=>`<section class="proposal-compare-field"><h3>${label}</h3><div class="proposal-compare-columns"><div><small>${sent}</small><p>${left}</p></div><div><small>${current}</small><p>${right}</p></div></div></section>`).join('')}`:`<p class="cloud-notice">${t('noChanges',{version:previous.revision_no})}</p>`}
  </section>`;
 }
 

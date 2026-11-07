@@ -282,3 +282,5 @@
 /* Pausing the walkthrough stops its clock, never the entrance of its text. */
 .land-story-paused .land-narrator>.land-story-mascot{animation-play-state:paused}
 .land-story-paused .land-narrator-cloud,.land-story-paused .land-example-document,.land-story-paused .land-example-message{animation:none;opacity:1;transform:none}
+
+.land-privacy-link{font-size:.8125rem;color:#5b448d;text-underline-offset:.2em}

@@ -1,8 +1,9 @@
 // Load explicit rehearsal scenarios; never use them as studio business data.
 async function bootTrato() {
   try {
-    const {localizeStaticDocument,installLanguagePreference,uiText}=await import('/i18n.mjs');
+    const {localizeStaticDocument,installLanguagePreference,uiLanguage,uiText}=await import('/i18n.mjs');
     localizeStaticDocument(document);
+    document.querySelector('#workspace-privacy').href='/privacidad?lang='+uiLanguage();
     const {captureAuthReturn}=await import('/auth-return.mjs');
     const authReturn=captureAuthReturn();
     document.title=uiText('app.title');

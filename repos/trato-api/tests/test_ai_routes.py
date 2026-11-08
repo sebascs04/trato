@@ -19,7 +19,10 @@ class Jobs:
 class Repo:
     def __init__(self,*args):pass
     def rows(self,table,params):return [{'id':CLIENT,'contact_email':'client@example.invalid'}]
+    calls=[]
     def rpc(self,name,data):
+        Repo.calls.append((name,data))
+        if name=='edit_plan_stage':return {'position':data['p_position'],'title':data['p_title'].strip()}
         if name=='create_planned_project':return {'id':data['p_key'],'client_id':data['p_client'],'name':data['p_name']}
         if data['p_action']=='lookup':return {'client':{'id':PROFILE}}
         return {'reviews':[{'id':'review','version':1,'body':'The project used clear deliverables.'}], 'next_offset':None}
@@ -33,6 +36,16 @@ class AIRoutesTests(unittest.TestCase):
         @app.exception_handler(ApiError)
         async def error(_,e):return JSONResponse({'error':{'code':e.code}},status_code=e.status)
         self.client=TestClient(app)
+    def test_saved_plan_stage_edits_only_send_wording_to_the_guarded_function(self):
+        project=str(uuid4());url=f'/api/v1/ai/projects/{project}/plan/stages/2';Repo.calls.clear()
+        body={'title':' Design ','deliverables':'Home and menu pages','payment_condition':'On sign-off'}
+        response=self.client.patch(url,json=body)
+        self.assertEqual(response.status_code,200)
+        self.assertEqual(Repo.calls,[('edit_plan_stage',{'p_project':project,'p_position':2,'p_title':' Design ','p_deliverables':'Home and menu pages','p_payment_condition':'On sign-off'})])
+        for bad in ({**body,'amount':'500.00'},{**body,'title':'   '},{'title':'Design'}):
+            self.assertEqual(self.client.patch(url,json=bad).status_code,422)
+        self.assertEqual(self.client.patch(f'/api/v1/ai/projects/{project}/plan/stages/9',json=body).status_code,404)
+        self.assertEqual(len(Repo.calls),1)
     def test_context_is_server_owned_and_extra_reviews_are_rejected(self):
         body={'client_id':CLIENT,'draft_id':DRAFT,'brief':'Build a website','budget':'100.00','target_date':'2026-12-01','output_language':'es'}
         h={'Idempotency-Key':JOB}

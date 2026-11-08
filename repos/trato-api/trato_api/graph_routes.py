@@ -31,7 +31,7 @@ SELECTORS = {
  }""",
  'plan': """CALL (p) {
  OPTIONAL MATCH (anchor:TratoEntity:Plan {entity_key:$anchor,owner_id:p.owner_id,project_id:p.project_id,generation:p.generation})
- OPTIONAL MATCH path=(anchor)-[:HAS_STAGE|DELIVERY_EVIDENCE|STAGE_PAYMENT|PAYMENT_EVIDENCE*0..3]->(n)
+ OPTIONAL MATCH path=(anchor)-[:HAS_STAGE|DELIVERY_EVIDENCE|STAGE_PAYMENT|PAYMENT_EVIDENCE|HAS_CHANGE_REQUEST|HAS_NEW_WORK*0..3]->(n)
  WHERE all(item IN nodes(path) WHERE item.owner_id=p.owner_id AND item.project_id=p.project_id AND item.generation=p.generation)
  AND all(rel IN relationships(path) WHERE rel.owner_id=p.owner_id AND rel.project_id=p.project_id)
  WITH p,anchor,collect(DISTINCT n) AS reached
@@ -42,7 +42,12 @@ SELECTORS = {
  OPTIONAL MATCH path=(anchor)-[:RESPONDS_TO|HAS_REVISION|CURRENT_REVISION|FOR_REVISION|ACCEPTS_REVISION|HAS_REVIEW*0..4]-(n)
  WHERE all(item IN nodes(path) WHERE item.owner_id=p.owner_id AND item.project_id=p.project_id AND item.generation=p.generation)
  AND all(rel IN relationships(path) WHERE rel.owner_id=p.owner_id AND rel.project_id=p.project_id)
- WITH p,anchor,collect(DISTINCT n) AS core
+ WITH p,anchor,collect(DISTINCT n) AS reached
+ // Only the request's own place in the plan (its stage, or the plan for new work): never sibling requests.
+ OPTIONAL MATCH (place:TratoEntity {owner_id:p.owner_id,project_id:p.project_id,generation:p.generation})-[placed:HAS_CHANGE_REQUEST|HAS_NEW_WORK]->(anchor)
+ WHERE placed.owner_id=p.owner_id AND placed.project_id=p.project_id
+ WITH p,anchor,reached,collect(DISTINCT place) AS places
+ WITH p,anchor,reached+places AS core
  CALL (p,core) {
   UNWIND core AS origin
   OPTIONAL MATCH proof=(origin)-[:HAS_PDF|EVIDENCED_BY|REVIEWED_PDF|REQUESTED_CHANGES_FROM|BASED_ON_ACCEPTANCE|SUPPORTED_BY*1..2]->(evidence)

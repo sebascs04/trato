@@ -246,7 +246,8 @@ class ProjectAssistant:
    if refund and file_id not in allowed:raise ApiError('AI_INVALID_CITATION',502)
    if record['source_kind']=='status':
     # Business records can change between the tool call and the answer; cite only the current state.
-    current=status_source(repo,owner,project)
+    # Same server repository as the tool that produced the record, so both read identical business state.
+    current=status_source(self.server if self.server is not None else ThreadStore(self.settings).repo,owner,project)
     if data.get('source_document_ids') or data.get('case_context') or current['source_id']!=record['source_id']:raise ApiError('AI_CONTEXT_INVALID',409)
     canonical.append({k:record[k] for k in ('source_id','file_id','title','source_kind','generation')});continue
    if record['source_kind']=='plan':

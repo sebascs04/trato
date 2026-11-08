@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="{{lang}}">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{privacy.title}} | Trato</title>
+  <link rel="icon" href="/assets/trato-icon.svg" type="image/svg+xml">
+  <style>
+    @font-face{font-family:Manrope;src:url('/assets/fonts/manrope-variable.ttf') format('truetype');font-display:swap}
+    *{box-sizing:border-box}
+    body{margin:0;background:#f7f5f1;color:#302b36;font:1rem/1.7 Manrope,system-ui,sans-serif}
+    header,main{width:min(46rem,calc(100% - 2rem));margin-inline:auto}
+    header{display:flex;align-items:center;justify-content:space-between;gap:1rem;padding-block:1.5rem}
+    header nav{display:flex;gap:1rem}
+    .brand{display:inline-flex;align-items:center;gap:.5rem;font-size:1.3rem;font-weight:800;color:inherit;text-decoration:none}
+    h1,h2{line-height:1.25}
+    h1{font-size:clamp(2rem,6vw,3rem);margin:0 0 1rem}
+    h2{font-size:1.2rem;margin:0}
+    main{background:#fffcf8;border:1px solid #e6e0e8;border-radius:1.5rem;padding:clamp(1.25rem,5vw,3rem);margin-bottom:3rem}
+    section{border-top:1px solid #e6e0e8;padding-top:1.25rem;margin-top:1.5rem}
+    p{margin:.75rem 0 0}
+    a{color:#5b448d;text-underline-offset:.18em;overflow-wrap:anywhere}
+    a:focus-visible{outline:2px solid #5b448d;outline-offset:4px}
+  </style>
+</head>
+<body>
+  <header>
+    <a class="brand" href="/"><img src="/assets/trato-icon.svg" width="32" height="32" alt="">trato.</a>
+    <nav aria-label="{{profile.language}}">
+      <a href="/privacidad" lang="es" hreflang="es">Español</a>
+      <a href="/privacidad?lang=en" lang="en" hreflang="en">English</a>
+    </nav>
+  </header>
+  <main>
+    <h1>{{privacy.title}}</h1>
+    <p>{{privacy.intro}}</p>
+    <section>
+      <h2>{{privacy.workspaceTitle}}</h2>
+      <p>{{privacy.workspace}}</p>
+    </section>
+    <section>
+      <h2>{{privacy.gmailTitle}}</h2>
+      <p>{{privacy.gmailAccess}}</p>
+      <p>{{privacy.gmailStorage}}</p>
+      <p>{{privacy.gmailSharing}}</p>
+      <p>{{privacy.limitedUse}} <a href="https://developers.google.com/terms/api-services-user-data-policy">{{privacy.googlePolicy}}</a>.</p>
+    </section>
+    <section>
+      <h2>{{privacy.processingTitle}}</h2>
+      <p>{{privacy.processing}}</p>
+    </section>
+    <section>
+      <h2>{{privacy.controlTitle}}</h2>
+      <p>{{privacy.control}}</p>
+      <p>{{privacy.contact}} <a href="mailto:tetrato.notificaciones@gmail.com">tetrato.notificaciones@gmail.com</a>.</p>
+    </section>
+  </main>
+</body>
+</html>

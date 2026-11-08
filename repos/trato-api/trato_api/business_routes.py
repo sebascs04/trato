@@ -21,7 +21,13 @@ class ClientInput(BaseModel):
 class CloseRequestInput(BaseModel):
     model_config=ConfigDict(extra='forbid')
     reason:Annotated[str,StringConstraints(pattern='^(rejected|withdrawn)$')]
-    notes:Annotated[str,StringConstraints(strip_whitespace=True,min_length=1,max_length=4000)]
+    # The reason stays required; the detail is optional.
+    notes:Annotated[str,StringConstraints(strip_whitespace=True,max_length=4000)]=''
+
+class PlanPlacementInput(BaseModel):
+    model_config=ConfigDict(extra='forbid')
+    placement:Annotated[str,StringConstraints(pattern='^(stage|new)$')]
+    stage_position:int|None=Field(default=None,strict=True,ge=1,le=8)
 
 
 class ProjectInput(BaseModel):
@@ -113,7 +119,7 @@ def build_business_router(settings, services, require_user, repository_factory=N
     @router.get('/projects/{project_id}/activity/groups')
     def activity_groups(project_id:str,repo=Depends(repository)):
         project=uuid(project_id);repo.project(project)
-        return reply(repo.rpc('project_activity_groups',{'p_project_id':project}))
+        return reply(repo.with_plan_placements(project,repo.rpc('project_activity_groups',{'p_project_id':project})))
     @router.get('/projects/{project_id}/activity/groups/{group_kind}/{group_id}')
     def activity_group(project_id:str,group_kind:str,group_id:str,repo=Depends(repository)):
         if group_kind not in ('project','change','refund'):raise ApiError('ACTIVITY_GROUP_INVALID',422)
@@ -126,6 +132,20 @@ def build_business_router(settings, services, require_user, repository_factory=N
     @router.get('/projects/{project_id}/request-status')
     def request_status(project_id:str,repo=Depends(repository)):
         return reply(repo.request_status(uuid(project_id)))
+
+    @router.put('/requests/{request_id}/plan-placement')
+    async def plan_placement(request_id:str,request:Request,repo=Depends(repository)):
+        request_id=uuid(request_id)
+        try:value=PlanPlacementInput.model_validate_json(await read_bytes(request,1000))
+        except (ValidationError,ValueError) as error:
+            # Diagnostics: rule and field only, never document contents.
+            fields=[{'loc':'.'.join(str(p) for p in e['loc']),'type':e['type']} for e in error.errors()] if isinstance(error,ValidationError) else []
+            print(json.dumps({'event':'plan_placement_rejected','stage':'input','fields':fields}),flush=True)
+            raise ApiError('INVALID_REQUEST',422)
+        try:return reply(await run_in_threadpool(repo.set_plan_placement,request_id,value.placement,value.stage_position))
+        except ApiError as error:
+            print(json.dumps({'event':'plan_placement_rejected','stage':'persistence','code':error.code,'status':error.status,'placement':value.placement,'stage_position':value.stage_position}),flush=True)
+            raise
 
     @router.post('/requests/{request_id}/close')
     async def close_request(request_id:str,request:Request,repo=Depends(repository)):

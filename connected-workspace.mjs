@@ -303,12 +303,26 @@ export class ConnectedWorkspace {
         const command=JSON.stringify([id,metadata,file.size,file.lastModified]);
         if(this.uploadCommand?.command!==command) this.uploadCommand={command,key:crypto.randomUUID()};
         const mime=file.name.toLowerCase().endsWith('.docx')?'application/vnd.openxmlformats-officedocument.wordprocessingml.document':'application/pdf';
+        const choice=metadata.kind==='email_request'?values.get('plan_choice'):null;
+        if(metadata.kind==='email_request'&&form.querySelector('[data-plan-placement]')?.dataset.state!=='ready')throw new Error(uiText('planPlacement.notReady'));
+        let saved;
         try {
-          await this.request(`/api/v1/projects/${id}/documents?${new URLSearchParams(metadata)}`,{method:'POST',body:file,headers:{'Content-Type':mime,'Idempotency-Key':this.uploadCommand.key}});
+          saved=await this.request(`/api/v1/projects/${id}/documents?${new URLSearchParams(metadata)}`,{method:'POST',body:file,headers:{'Content-Type':mime,'Idempotency-Key':this.uploadCommand.key}});
         } catch(error) {await this.loadProject(); throw error;}
         if(epoch!==this.epoch || id!==this.projectId) return;
+        // Where the request sits in the plan, recorded once. On failure the form stays open and a retry reuses the same upload.
+        // Registering the request is complete once it is saved. Placing it in the plan is a second step:
+        // if that fails, say so and offer «Place in the plan» from Changes instead of keeping the form open.
+        let placementError=null;
+        if(choice){
+          const [placement,position]=choice.split(':');
+          const placementBody={placement,stage_position:placement==='stage'?Number(position):null};
+          try{await this.request(`/api/v1/requests/${saved.document.id}/plan-placement`,{...this.json(placementBody),method:'PUT'});}
+          catch(error){console.warn('[TeTrato] plan placement failed',{request:saved.document.id,sent:placementBody,status:error.status,code:error.code});placementError=error;}
+          if(epoch!==this.epoch || id!==this.projectId) return;
+        }
         this.uploadCommand=null; this.comparison=null; this.tab=this.planUploadProject===id?'plan':metadata.purpose?.startsWith('refund_')?'devoluciones':metadata.kind==='initial_agreement'?'acuerdo':metadata.kind==='reference'?'documentos':'solicitudes';this.planUploadProject=null; this.modal.close(); await this.loadProject();
-        this.message=metadata.kind!=='email_request'?uiText("Archivo guardado."):uiText("Pedido guardado."); this.notify();
+        this.message=metadata.kind!=='email_request'?uiText("Archivo guardado."):placementError?uiText('planPlacement.savedWithoutPlace',{reason:placementError.message}):uiText("Pedido guardado."); this.notify();
       }
     });
   }
@@ -325,6 +339,8 @@ export class ConnectedWorkspace {
     if(action==='project') this.openProject(id);
     if(action==='project-delete'){const project=this.projects.find(item=>item.id===id);if(project){this.show(uiText('projectStart.deleteProject'),`<section class="cloud-delete-content"><p class="cloud-delete-intro">${uiText('projectStart.deleteProjectIntro')}</p><div class="cloud-delete-project-card">${uiIcon('folder-open')}<strong>${escape(project.name)}</strong></div><p class="cloud-delete-explanation">${uiText('projectStart.deleteProjectHelp')}</p><form data-cloud-form="project-delete" data-project-id="${escape(id)}"><div class="dialog-actions"><button type="button" class="button secondary" data-cloud-close>${uiText("Cancelar")}</button><button type="submit" class="button cloud-delete-confirm">${uiText('projectStart.deleteProject')}</button></div></form></section>`);this.modal.classList.add('cloud-delete-dialog');}}
     if(action==='upload') this.openSource(target.dataset.cloudPurpose);
+    if(action==='requests-archive'){this.openRequestsArchive();return;}
+    if(action==='placement-retry'){void this.loadPlacementChoices();return;}
     if(action==='reprocess-document'){this.retryDocumentProcessing(id);return;}
     if(action==='graph-preview'){this.historyView='map';this.tab='historial';this.notify();}
     if(action==='history-event'){this.openHistoryEvent(id);return;}
@@ -425,7 +441,30 @@ export class ConnectedWorkspace {
     const initial=purpose!=='request';
     if(!initial&&this.requestStatus?.can_register!==true){this.message=this.requestStatus?.can_register===false?uiText("Termina o cierra el pedido abierto de este proyecto antes de registrar otro."):uiText("Estamos comprobando los pedidos del proyecto. Vuelve a intentar en unos momentos.");this.notify();return;}
     if(!initial && !this.initialSources().some(doc=>this.sourceReady(doc))) {this.tab='acuerdo'; this.notify(); return;}
-    this.show(initial?uiText("Añade lo conversado"):uiText("Registrar pedido del cliente"),`<p class="cloud-notice">${initial?uiText("Adjunta el contrato o la conversación inicial."):uiText("Adjunta la conversación con el nuevo pedido.")}</p><form data-cloud-form="upload"><input type="hidden" name="kind" value="${initial?'initial_agreement':'email_request'}"><label class="field">${initial?uiText("¿Qué contiene este archivo?"):uiText("¿Qué te pidió el cliente?")}<input name="title" class="context-box" required maxlength="200" placeholder="${initial?uiText("Ej.: conversación sobre alcance y precio"):uiText("Ej.: añadir una sección a la web")}"></label><label class="field">${initial?uiText("Contrato o conversación en PDF o Word"):uiText("Conversación del pedido en PDF o Word")}<input name="file" class="context-box" type="file" accept=".pdf,.docx" required></label><p class="cloud-notice">${uiText("Máximo 10 MB.")}</p><div class="dialog-actions"><button type="submit" class="button">${initial?uiText("Guardar fuente del acuerdo"):uiText("Guardar pedido")} →</button></div></form>`);
+    this.show(initial?uiText("Añade lo conversado"):uiText("Registrar pedido del cliente"),`<p class="cloud-notice">${initial?uiText("Adjunta el contrato o la conversación inicial."):uiText("Adjunta la conversación con el nuevo pedido.")}</p><form data-cloud-form="upload"><input type="hidden" name="kind" value="${initial?'initial_agreement':'email_request'}"><label class="field">${initial?uiText("¿Qué contiene este archivo?"):uiText("¿Qué te pidió el cliente?")}<input name="title" class="context-box" required maxlength="200" placeholder="${initial?uiText("Ej.: conversación sobre alcance y precio"):uiText("Ej.: añadir una sección a la web")}"></label>${initial?'':`<div data-plan-placement data-state="loading" aria-live="polite"><label class="field" for="plan-placement-select">${uiText('planPlacement.question')}</label><select id="plan-placement-select" class="context-box" name="plan_choice" disabled><option>${uiText('planPlacement.loading')}</option></select></div>`}<label class="field">${initial?uiText("Contrato o conversación en PDF o Word"):uiText("Conversación del pedido en PDF o Word")}<input name="file" class="context-box" type="file" accept=".pdf,.docx" required></label><p class="cloud-notice">${uiText("Máximo 10 MB.")}</p><div class="dialog-actions"><button type="submit" class="button">${initial?uiText("Guardar fuente del acuerdo"):uiText("Guardar pedido")} →</button></div></form>`);
+    if(!initial)void this.loadPlacementChoices();
+  }
+  // «Is it about a deliverable of the plan or new work?» Only asked when the project has a saved plan.
+  async loadPlacementChoices() {
+    const host=this.modal.querySelector('[data-plan-placement]');if(!host)return;
+    const id=this.projectId,epoch=this.epoch,live=()=>host.isConnected&&epoch===this.epoch&&id===this.projectId;
+    host.dataset.state='loading';
+    let plan,progress;
+    try{[plan,progress]=await Promise.all([this.request(`/api/v1/ai/projects/${id}/plan`),this.request(`/api/v1/projects/${id}/plan-progress`).catch(error=>{if(error.code==='AI_PLAN_NOT_FOUND'||error.status===404)return null;throw error;})]);}
+    catch(error){
+      if(!live())return;
+      if(error.code==='AI_PLAN_NOT_FOUND'){host.dataset.state='ready';host.innerHTML='';return;}
+      host.dataset.state='error';host.innerHTML=`<p class="cloud-error" role="alert">${escape(error.message)}</p><button type="button" class="text-button" data-cloud-action="placement-retry">${uiText('Reintentar')}</button>`;return;
+    }
+    if(!live())return;
+    // A paid deliverable is closed: more work on it is registered as new work, with its own addendum and payment.
+    const stages=(plan?.stages||[]).filter(stage=>Number.isInteger(stage.position));
+    const paid=new Set((progress?.stages||[]).filter(s=>s.status==='completed').map(s=>s.position));
+    const allPaid=stages.length>0&&stages.every(stage=>paid.has(stage.position));
+    host.dataset.state='ready';
+    host.innerHTML=`<label class="field" for="plan-placement-select">${uiText('planPlacement.question')}</label><select id="plan-placement-select" class="context-box" name="plan_choice" required aria-describedby="plan-placement-help"><option value="" ${allPaid?'':'selected'} disabled>${uiText('planPlacement.choose')}</option><optgroup label="${uiText('planPlacement.stagesGroup')}">${stages.map(stage=>`<option value="stage:${stage.position}" ${paid.has(stage.position)?'disabled':''}>${escape(uiText('planPlacement.stageOption',{position:stage.position,title:stage.title}))}${paid.has(stage.position)?` · ${uiText('planPlacement.closed')}`:''}</option>`).join('')}</optgroup><option value="new" ${allPaid?'selected':''}>${uiText('planPlacement.newWorkShort')}</option></select><p class="cloud-notice plan-placement-help" id="plan-placement-help">${uiText(paid.size?'planPlacement.closedHelp':'planPlacement.help')}</p>`;
+    const select=host.querySelector('select'),help=host.querySelector('#plan-placement-help');
+    select.addEventListener('change',()=>{help.textContent=uiText(select.value==='new'?'planPlacement.newWorkHelpFull':paid.size?'planPlacement.closedHelp':'planPlacement.help');});
   }
   sourceRows(sources) {
     return sources.map(doc=>`<article class="cloud-client-row"><div><strong>${escape(doc.title)}</strong><p class="cloud-client-meta">${doc.original_filename?escape(doc.original_filename)+' · ':''}${escape(date(doc.created_at))}</p>${this.sourceReady(doc)?'':`<span class="cloud-client-meta">${escape(this.sourceStatusLabel(doc))}</span>`}</div><button class="text-button" data-cloud-action="${this.sourceReady(doc)?'text':'retry'}" data-cloud-id="${doc.id}" ${this.sourceProcessing(doc)?'disabled':''}>${this.sourceReady(doc)?uiText("Ver documento ↗"):this.sourceProcessing(doc)?uiText("Procesando…"):uiText("Reintentar lectura")}</button></article>`).join('');
@@ -446,8 +485,20 @@ export class ConnectedWorkspace {
     panel.innerHTML=`<div class="cloud-project-overview cloud-summary" aria-label="${uiText("Vista general del proyecto")}"><header class="cloud-summary-heading"><h3>${uiText("Resumen del proyecto")}</h3></header><div class="cloud-summary-layout"><section class="workspace-panel cloud-agreement"><div class="cloud-panel-heading"><div><span class="eyebrow">${uiText("ACUERDO INICIAL")}</span><h3>${sources.length?uiText("Lo conversado al inicio"):uiText('projectSummary.noAgreement')}</h3></div></div><p class="cloud-summary-agreement-help">${uiText('projectSummary.agreementHelp')}</p>${sources.length?`<div class="cloud-source-list">${this.sourceRows(sources.slice(0,3))}</div>${sources.length>3?`<button class="text-button cloud-overview-link" data-cloud-action="tab" data-cloud-tab="documentos">${uiText('Ver todas las fuentes')}${uiIcon('arrow-right')}</button>`:''}`:`<button type="button" class="text-button cloud-overview-link" data-cloud-action="tab" data-cloud-tab="plan">${uiText('projectSummary.openPlan')}${uiIcon('arrow-right')}</button>`}</section><aside class="cloud-summary-aside">${situation}<section class="cloud-summary-inventory"><span class="eyebrow">${uiText('projectSummary.inProject')}</span>${totals}</section></aside></div>${this.proposalError?`<p class="cloud-error" role="alert">${uiText('Estado no disponible')}</p>`:''}</div>`;
   }
   renderRequests(panel) {
-    const requests=this.documents.filter(doc=>doc.kind==='email_request');
-    panel.innerHTML=`<section class="workspace-panel cloud-requests"><div class="cloud-panel-heading cloud-section-note"><div><span class="eyebrow">${uiText("CAMBIOS DEL PROYECTO")}</span><h3>${uiText("Cambios del acuerdo")}</h3><p>${uiText("Revisa pedidos que modifican el trabajo, el precio o la fecha de entrega.")}</p></div><button class="button" data-cloud-action="upload" data-cloud-purpose="request" ${this.requestStatus?.can_register===true?'':'disabled'}>${uiText("Registrar pedido del cliente")}</button></div>${this.requestStatus?.can_register===false?("<p class=\"cloud-notice\">"+uiText("Termina o cierra el pedido abierto antes de registrar otro en este proyecto.")+"</p>"):''}${this.requestRows(requests) || ("<div class=\"cloud-empty-sources\"><strong>"+uiText("Aquí irán los nuevos pedidos")+"</strong><p>"+uiText("Cuando tu cliente pida algo adicional, guarda la conversación para revisarla por separado.")+"</p></div>")}</section>`;
+    // Closed or finalized requests leave the working list; they stay available in «Closed requests».
+    const all=this.documents.filter(doc=>doc.kind==='email_request'),archived=all.filter(doc=>this.requestArchived(doc.id)),requests=all.filter(doc=>!this.requestArchived(doc.id));
+    const archive=archived.length?`<button type="button" class="text-button cloud-requests-archive-open" data-cloud-action="requests-archive">${uiIcon('history')}${uiText('requestsArchive.open',{count:new Intl.NumberFormat(uiLocale()).format(archived.length)})}</button>`:'';
+    panel.innerHTML=`<section class="workspace-panel cloud-requests"><div class="cloud-panel-heading cloud-section-note"><div><span class="eyebrow">${uiText("CAMBIOS DEL PROYECTO")}</span><h3>${uiText("Cambios del acuerdo")}</h3><p>${uiText("Revisa pedidos que modifican el trabajo, el precio o la fecha de entrega.")}</p></div><button class="button" data-cloud-action="upload" data-cloud-purpose="request" ${this.requestStatus?.can_register===true?'':'disabled'}>${uiText("Registrar pedido del cliente")}</button></div>${this.requestStatus?.can_register===false?("<p class=\"cloud-notice\">"+uiText("Termina o cierra el pedido abierto antes de registrar otro en este proyecto.")+"</p>"):''}${this.requestRows(requests) || (archived.length?`<div class="cloud-requests-empty"><span class="cloud-requests-empty-icon" aria-hidden="true">${uiIcon('git-compare-arrows')}</span><div><strong>${uiText('requestsArchive.noneOpen')}</strong><p>${uiText('requestsArchive.noneOpenHelp',{count:new Intl.NumberFormat(uiLocale()).format(archived.length)})}</p></div></div>`:("<div class=\"cloud-empty-sources\"><strong>"+uiText("Aquí irán los nuevos pedidos")+"</strong><p>"+uiText("Cuando tu cliente pida algo adicional, guarda la conversación para revisarla por separado.")+"</p></div>"))}${archive}</section>`;
+  }
+  requestArchived(id) {
+    if(this.requestStatus?.closures?.some(c=>c.request_document_id===id))return true;
+    return ['Finalizado','Cerrado'].includes((this.proposals||[]).find(p=>p.request_document_id===id)?.business_status);
+  }
+  openRequestsArchive() {
+    const archived=this.documents.filter(doc=>doc.kind==='email_request'&&this.requestArchived(doc.id));
+    this.show(uiText('requestsArchive.title'),`<p class="cloud-notice">${uiText('requestsArchive.help')}</p><div class="cloud-requests-archive">${this.requestRows(archived)}</div>`);
+    // Opening one of them leaves the dialog and shows its details in the project.
+    this.modal.querySelector('.cloud-requests-archive')?.addEventListener('click',event=>{if(event.target.closest('[data-cloud-action]'))this.modal.close();},true);
   }
   renderRefunds(panel) {
     panel.innerHTML=`<section class="workspace-panel cloud-refunds" aria-label="${uiText("Devoluciones del proyecto")}"><header class="cloud-refund-heading"><span class="cloud-refund-symbol" aria-hidden="true">${uiIcon('undo-2')}</span><div><span class="eyebrow">${uiText("DEVOLUCIONES")}</span><h3>${uiText("Revisar dinero que ya se pagó")}</h3><p>${uiText("Cuando el cliente pide recuperar todo o parte de un pago, revisa el acuerdo, el trabajo realizado y el importe que corresponde proponer.")}</p></div></header><div class="cloud-refund-context"><strong>${uiText("Una devolución parte de un pago recibido.")}</strong><p>${uiText("Si el cliente pide más trabajo o una nueva fecha, corresponde a Cambios. Si pide dinero de vuelta, corresponde a Devoluciones. Una cancelación puede requerir revisar el cierre antes de decidir si hay dinero que devolver.")}</p></div><div class="cloud-refund-trial"><button type="button" class="button" data-cloud-action="refund-preview">${uiText("Probar flujo de devolución")} ${uiIcon('arrow-right')}</button></div></section>`;
@@ -637,7 +688,7 @@ export class ConnectedWorkspace {
     const opened=this.historyOpen||new Set();
     const content=[...groups.values()].map(group=>{
       const open=opened.has(group.kind+':'+group.id),cached=this.historyGroupData?.get(group.kind+':'+group.id);
-      return `<details class="cloud-history-request" data-activity-group-kind="${escape(group.kind)}" data-activity-group-id="${escape(group.id)}" ${open?'open':''}><summary><span class="cloud-history-chevron" aria-hidden="true">${uiIcon('chevron-right')}</span><span class="cloud-history-request-title">${escape(group.title)}<small>${uiText(group.kind==='refund'?'history.refundGroup':group.kind==='project'?'history.projectGroup':'history.changeGroup')} · ${group.event_count} ${group.event_count===1?uiText("movimiento"):uiText("movimientos")}</small></span><time datetime="${escape(group.last_at)}">${escape(date(group.last_at))}</time></summary><div class="cloud-history-days" ${open&&cached?'data-history-rendered="true"':''}>${open&&cached?this.renderHistoryGroup(cached):''}</div></details>`;
+      return `<details class="cloud-history-request" data-activity-group-kind="${escape(group.kind)}" data-activity-group-id="${escape(group.id)}" ${open?'open':''}><summary><span class="cloud-history-chevron" aria-hidden="true">${uiIcon('chevron-right')}</span><span class="cloud-history-request-title">${escape(group.title)}<small>${uiText(group.kind==='refund'?'history.refundGroup':group.kind==='project'?'history.projectGroup':'history.changeGroup')}${group.plan_placement==='stage'&&Number.isInteger(group.plan_stage_position)?` · ${uiText('planPlacement.stage',{position:group.plan_stage_position})} ${escape(group.plan_stage_title||'')}`:group.plan_placement==='new'?` · ${uiText('planPlacement.newWorkShort')}`:''} · ${group.event_count} ${group.event_count===1?uiText("movimiento"):uiText("movimientos")}</small></span><time datetime="${escape(group.last_at)}">${escape(date(group.last_at))}</time></summary><div class="cloud-history-days" ${open&&cached?'data-history-rendered="true"':''}>${open&&cached?this.renderHistoryGroup(cached):''}</div></details>`;
     }).join('');
     panel.historyGroups=groups;
     panel.innerHTML=`<div class="cloud-project-activity">${content?`<div class="cloud-history-groups">${content}</div>`:("<p class=\"cloud-notice\">"+uiText('history.empty')+"</p>")}</div>`;

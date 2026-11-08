@@ -3,6 +3,7 @@ import {icon} from './icons.mjs';
 const esc=value=>String(value??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const kinds={Refund:[uiText('graph.refund'),'undo-2'],RefundVersion:[uiText('graph.refundProposal'),'file-text'],RefundReceipt:[uiText('graph.refundReceipt'),'credit-card'],Plan:[uiText('graph.initialPlan'),'layout-dashboard'],PlanStage:[uiText('graph.planStage'),'file-text'],Project:[uiText("Proyecto"),'layout-dashboard'],Document:[uiText("Documento"),'file-text'],Extraction:[uiText("Texto extraído"),'file-text'],Proposal:[uiText("Propuesta"),'git-compare-arrows'],Revision:[uiText("Adenda"),'pencil'],Review:[uiText("Revisión"),'eye'],Acceptance:[uiText("Aceptación"),'file-text'],Delivery:[uiText("Envío"),'send'],Payment:[uiText("Pago"),'credit-card']};
 const links={
+ HAS_CHANGE_REQUEST:uiText('graph.hasChangeRequest'),HAS_NEW_WORK:uiText('graph.hasNewWork'),
  HAS_REFUND:uiText('graph.hasRefund'),HAS_REFUND_VERSION:uiText('graph.hasRefundVersion'),
  REFUND_EVIDENCE:uiText('graph.refundEvidence'),REFUND_PDF:uiText('graph.refundPdf'),
  REFUND_ACCEPTANCE_EVIDENCE:uiText('graph.refundAcceptanceEvidence'),REFUND_FEEDBACK_EVIDENCE:uiText('graph.refundFeedbackEvidence'),
@@ -153,7 +154,7 @@ export function layoutProjectGraph(nodes,edges){
  for(const n of nodes){
   const id=n.entity_key;if(id===root)continue;
   let parent;
-  if(n.kind==='Document')parent=incoming(id,'DELIVERY_EVIDENCE')||incoming(id,'HAS_PDF')||incoming(id,'EVIDENCED_BY')||refundDocumentLinks.map(kind=>incoming(id,kind)).find(Boolean)||root;
+  if(n.kind==='Document')parent=incoming(id,'HAS_CHANGE_REQUEST')||incoming(id,'HAS_NEW_WORK')||incoming(id,'DELIVERY_EVIDENCE')||incoming(id,'HAS_PDF')||incoming(id,'EVIDENCED_BY')||refundDocumentLinks.map(kind=>incoming(id,kind)).find(Boolean)||root;
   else if(n.kind==='Refund')parent=incoming(id,'HAS_REFUND')||root;
   else if(n.kind==='RefundVersion')parent=incoming(id,'HAS_REFUND_VERSION')||root;
   else if(n.kind==='RefundReceipt')parent=incoming(id,'REFUND_CONFIRMED_RECEIPT')||root;

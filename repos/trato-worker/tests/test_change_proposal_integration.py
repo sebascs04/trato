@@ -11,18 +11,19 @@ from trato_api.change_proposal import ChangeProposalService,build_change_proposa
 from trato_api.project_assistant import ProjectAssistant,build_project_assistant_router
 from trato_api.errors import ApiError
 from trato_worker.source_tools import BackendToolClient,ToolError
-from change_proposal_test_support import Repo,Jobs,Gateway,OWNER,OTHER,PROJECT,AGREEMENT,REQUEST,PROPOSAL,REVISION
+from change_proposal_test_support import Repo,Jobs,Gateway,OWNER,OTHER,PROJECT,AGREEMENT,REQUEST,PROPOSAL,REVISION,FEEDBACK
 
 from memory_test_support import TestMemory
 
 class ProposalModel:
  name='explicit-test-model'
- def __init__(self,request_only=False):self.calls=0;self.request_only=request_only
+ def __init__(self,request_only=False,feedback=False):self.calls=0;self.request_only=request_only;self.feedback=feedback;self.payload=None
  def generate(self,messages,schema):
   self.calls+=1
-  if self.calls==1:return {'type':'tool_call','tool':'search_document_text','params':{'query':'original scope and requested payment module'}}
+  if self.calls==1:self.payload=json.loads(messages[1]['content']);return {'type':'tool_call','tool':'search_document_text','params':{'query':'original scope and requested payment module'}}
   options=json.loads(messages[-1]['content'])['tool_result']['data']['citation_options']
   roles=['request'] if self.request_only else ['agreement','request']
+  if self.feedback:roles.append('feedback')
   references=[next(option['reference_id'] for option in options if option['role']==role) for role in roles]
   return {'type':'final','result':{'status':'answered','answer':'The supplied request adds a payment module to the original five pages.',
     'proposal':{'scope_summary':'Add the requested payment module.','conditions':'Review integrations before delivery.',
@@ -67,6 +68,26 @@ class ChangeProposalIntegrationTests(unittest.TestCase):
   price=self.api.post('/api/v1/ai/change-proposals/'+id+'/price',json={'rate_minor':101,'confirmed_hours':'0.5'})
   self.assertEqual(price.status_code,200,price.text);self.assertEqual(price.json()['data']['additional_minor'],51)
   self.assertEqual(self.model.calls,2);self.assertEqual(self.repo.mutations,[])
+ def test_sent_revision_reuses_same_agent_with_feedback_pdf_and_optional_user_context(self):
+  self.repo.revise()
+  id=self.enqueue(proposal_id=PROPOSAL,revision_id=REVISION,feedback_document_id=FEEDBACK,feedback_notes='They also mentioned a mobile demo in person.',document_ids=sorted([AGREEMENT,REQUEST,FEEDBACK]))
+  model=ProposalModel(feedback=True);self.run_job(id,model)
+  response=self.api.get('/api/v1/ai/change-proposals/'+id);self.assertEqual(response.status_code,200,response.text)
+  value=response.json()['data']['result'];self.assertEqual(value['status'],'ready')
+  self.assertEqual({s['file_id'] for s in value['sources']},{AGREEMENT,REQUEST,FEEDBACK})
+  bound=model.payload['change_proposal_context'];self.assertEqual(bound['sent_terms']['scope_summary'],'Payment module')
+  self.assertEqual(bound['feedback_notes'],'They also mentioned a mobile demo in person.')
+  self.assertEqual(self.repo.proposal['current_revision_id'],REVISION);self.assertEqual(self.repo.mutations,[])
+ def test_revision_draft_without_optional_notes_is_allowed_but_feedback_citation_is_mandatory(self):
+  self.repo.revise();id=self.enqueue(proposal_id=PROPOSAL,revision_id=REVISION,feedback_document_id=FEEDBACK,document_ids=sorted([AGREEMENT,REQUEST,FEEDBACK]))
+  self.assertEqual(self.jobs.input(OWNER,id)['change_proposal_context']['feedback_notes'],'')
+  with self.assertRaises(ToolError):self.run_job(id,ProposalModel())
+ def test_feedback_from_wrong_revision_or_accepted_change_cannot_be_drafted(self):
+  self.repo.revise();self.repo.contexts[0]['revision_id']=str(uuid4())
+  body={'project_id':PROJECT,'request_document_id':REQUEST,'proposal_id':PROPOSAL,'revision_id':REVISION,'feedback_document_id':FEEDBACK,'output_language':'en'}
+  response=self.api.post('/api/v1/ai/change-proposals',json=body,headers={'Idempotency-Key':str(uuid4())});self.assertEqual(response.status_code,409,response.text)
+  self.repo.contexts[0]['revision_id']=REVISION;self.repo.acceptances=[{'id':str(uuid4()),'revision_id':REVISION,'project_id':PROJECT,'owner_id':OWNER}]
+  response=self.api.post('/api/v1/ai/change-proposals',json=body,headers={'Idempotency-Key':str(uuid4())});self.assertEqual(response.status_code,409,response.text)
  def test_price_requires_confirmed_hours_and_rejects_boolean_rate(self):
   id=self.complete()
   for body in [{'rate_minor':1000},{'rate_minor':True,'confirmed_hours':'2'},{'rate_minor':1000,'confirmed_hours':'0'},{'rate_minor':1000,'confirmed_hours':'NaN'}]:

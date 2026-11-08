@@ -6,6 +6,7 @@ import { readFile } from 'node:fs/promises';
 import {proxyApiRequest} from './proxy-api.mjs';
 import {simulationThreadsEndpoint} from './simulation-threads.mjs';
 import {browserOriginAllowed} from './web-origin.mjs';
+import {textForLanguage} from './i18n.mjs';
 const localPorts = JSON.parse(readFileSync(new URL('./local-ports.json', import.meta.url), 'utf8'));
 const port = Number(process.env.PORT || localPorts.web);
 const assets = new Map([
@@ -27,6 +28,7 @@ const assets = new Map([
   ['/practice-comparison.mjs',['practice-comparison.mjs','text/javascript; charset=utf-8']],
   ['/case-assistant.mjs',['case-assistant.mjs','text/javascript; charset=utf-8']],
   ['/change-reply-assistant.mjs',['change-reply-assistant.mjs','text/javascript; charset=utf-8']],
+  ['/document-progress.mjs',['document-progress.mjs','text/javascript; charset=utf-8']],
   ['/change-proposal-assistant.mjs',['change-proposal-assistant.mjs','text/javascript; charset=utf-8']],
   ['/agent-panel.mjs',['agent-panel.mjs','text/javascript; charset=utf-8']],
   ['/project-assistant.mjs',['project-assistant.mjs','text/javascript; charset=utf-8']],
@@ -68,6 +70,7 @@ const assets = new Map([
   ['/gmail-callback.html', ['gmail-callback.html', 'text/html; charset=utf-8']],
   ['/', ['index.html', 'text/html; charset=utf-8']],
   ['/index.html', ['index.html', 'text/html; charset=utf-8']],
+  ['/privacidad', ['privacy.html', 'text/html; charset=utf-8']],
   ['/styles.css', ['styles.css', 'text/css; charset=utf-8']],
   ['/app.js', ['app.js', 'text/javascript; charset=utf-8']],
   ['/boot.js', ['boot.js', 'text/javascript; charset=utf-8']],
@@ -89,7 +92,7 @@ for (const doc of demo.documents) {
   assets.set(`/data/pdfs/${doc.id}.pdf`, [`data/pdfs/${doc.id}.pdf`, 'application/pdf']);
 }
 http.createServer(async (req, res) => {
-  const pathname = new URL(req.url, 'http://localhost').pathname;
+  const {pathname, searchParams} = new URL(req.url, 'http://localhost');
   if(pathname==='/health'){res.writeHead(200,{'Content-Type':'application/json','Cache-Control':'no-store'});res.end(JSON.stringify({service:'trato-web',status:'ok'}));return;}
   if(process.env.TRATO_DEPLOYMENT_MODE==='connected'&&pathname.startsWith('/api/')&&!pathname.startsWith('/api/v1/')){res.writeHead(404);res.end();return;}
   if (pathname==='/api/simulation/threads'||pathname.startsWith('/api/simulation/threads/')) {await simulationThreadsEndpoint(req,res);return;}
@@ -116,7 +119,12 @@ http.createServer(async (req, res) => {
   const asset = assets.get(pathname);
   if (!asset) { res.writeHead(404); res.end('Not found'); return; }
   try {
-    const body = await readFile(new URL(asset[0], import.meta.url));
+    let body = await readFile(new URL(asset[0], import.meta.url));
+    if (pathname === '/privacidad') {
+      const language = searchParams.get('lang') === 'en' ? 'en' : 'es';
+      body = body.toString('utf8').replace(/\{\{([\w.]+)\}\}/g, (_, key) =>
+        key === 'lang' ? language : textForLanguage(language, key));
+    }
     res.writeHead(200, { 'Content-Type': asset[1], 'Cache-Control': pathname==='/assets/fonts/manrope-variable.ttf'?'public, max-age=86400':'no-store' });
     res.end(body);
   } catch { res.writeHead(500); res.end('Unable to read asset'); }

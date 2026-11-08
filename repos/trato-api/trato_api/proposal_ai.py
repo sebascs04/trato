@@ -9,7 +9,7 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel,ConfigDict,ValidationError
 from starlette.concurrency import run_in_threadpool
 from .business_routes import read_bytes
-from .change_proposal import ChangeProposalService,Draft
+from .change_proposal import ChangeProposalService,Draft,revision_feedback_notes
 from .errors import ApiError
 from .persistence import Repository,uuid
 from .ai_jobs import AIJobs
@@ -27,7 +27,7 @@ def revision_scope(repo,owner,proposal_id,revision_id):
     if len(proposals)!=1:raise ApiError('PROPOSAL_NOT_FOUND',404)
     return rows[0],proposals[0]
 
-def analysis_record(service,repo,owner,job_id,proposal):
+def analysis_record(service,repo,owner,job_id,proposal,revision=None):
     """Read the completed draft job directly: its request context changed when the proposal was created."""
     assistant=service.assistant
     data=assistant.jobs.input(owner,job_id)
@@ -38,6 +38,15 @@ def analysis_record(service,repo,owner,job_id,proposal):
     if job['status']!='completed':raise ApiError('AI_PLAN_NOT_READY',409)
     result=assistant.validate_result(repo,owner,job_id,job['result'],draft_saved=True)
     if result.get('status')!='answered':raise ApiError('AI_CONTEXT_INVALID',409)
+    if bound.get('feedback_document_id'):
+        if revision is None or bound.get('proposal_id')!=proposal['id']:raise ApiError('AI_CONTEXT_INVALID',409)
+        target=repo.rows('proposal_revisions',{'select':'revision_no,feedback_document_id,feedback_notes','id':'eq.'+revision['id'],'owner_id':'eq.'+owner})
+        previous=repo.rows('proposal_revisions',{'select':'revision_no','id':'eq.'+bound['revision_id'],'proposal_id':'eq.'+proposal['id'],'owner_id':'eq.'+owner})
+        expected_notes=revision_feedback_notes(bound,result['answer'])
+        if (len(target)!=1 or len(previous)!=1 or target[0]['revision_no']!=previous[0]['revision_no']+1 or
+            target[0]['feedback_document_id']!=bound['feedback_document_id'] or target[0]['feedback_notes']!=expected_notes):
+            raise ApiError('AI_CONTEXT_INVALID',409)
+
     try:draft=Draft.model_validate(result['proposal'])
     except (ValidationError,KeyError):raise ApiError('AI_INVALID_RESPONSE',502) from None
     sources={s['source_id']:s for s in result['sources']}
@@ -112,7 +121,7 @@ def build_proposal_ai_router(settings,require_user,repository_factory=None,servi
         if existing:
             if existing[0]['job_id']!=str(item.change_proposal_job_id):raise ApiError('AI_CONFLICT',409)
             return JSONResponse({'data':existing[0]},headers={'Cache-Control':'no-store'})
-        record=await run_in_threadpool(analysis_record,service,repo,owner,str(item.change_proposal_job_id),proposal)
+        record=await run_in_threadpool(analysis_record,service,repo,owner,str(item.change_proposal_job_id),proposal,revision)
         await run_in_threadpool(repo.call,'POST','/rest/v1/proposal_revision_ai',json={'revision_id':revision['id'],'proposal_id':revision['proposal_id'],
             'project_id':revision['project_id'],'owner_id':owner,'job_id':str(item.change_proposal_job_id),'proposal':record})
         return JSONResponse({'data':{'job_id':str(item.change_proposal_job_id),'proposal':record}},status_code=201,headers={'Cache-Control':'no-store'})

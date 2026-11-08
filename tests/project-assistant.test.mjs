@@ -123,12 +123,13 @@ test('restored last question stays hidden until history and the current job have
  const cloud={active:true,tab:'asistente',navigationOwner:'owner-a',projectId:'project-a',session:{key:'session'},storage:{getItem:key=>key.includes(':ai-job:')?JSON.stringify({version:1,owner:'owner-a',state:saved}):null,setItem(){}},document:{addEventListener(){},removeEventListener(){},defaultView:{scrollY:0,requestAnimationFrame:callback=>frames.push(callback)},querySelector:()=>({scrollIntoView:options=>scrolls.push(options)})},syncChrome(){},notify(){this.renderProjectAssistant(panel);},request(path){return new Promise(resolve=>{if(path.endsWith('/conversation'))resolveHistory=resolve;else resolveJob=resolve;});}};
  const dispose=installProjectAssistant(cloud);cloud.renderProjectAssistant(panel);
  await new Promise(resolve=>setImmediate(resolve));
- assert.match(panel.innerHTML,/aria-busy="true"/);assert.doesNotMatch(panel.innerHTML,/Most recent question|project-assistant-empty/);
+ assert.match(panel.innerHTML,/aria-busy="true"/);assert.doesNotMatch(panel.innerHTML,/Most recent question|project-assistant-empty|data-project-question|<textarea|type="submit"/);
  resolveHistory({entries:[{id:'turn-1',position:1,result:answer()}],next_before:null});
  await new Promise(resolve=>setImmediate(resolve));
- assert.doesNotMatch(panel.innerHTML,/Two revisions\.|Most recent question/);
+ assert.doesNotMatch(panel.innerHTML,/Two revisions\.|Most recent question|data-project-question|<textarea|type="submit"/);
  resolveJob({id:saved.id,status:'running'});await new Promise(resolve=>setImmediate(resolve));
  assert.match(panel.innerHTML,/Two revisions\./);assert.match(panel.innerHTML,/Most recent question/);
+ assert.match(panel.innerHTML,/data-project-question/);
  assert.equal(scrolls.length,0);assert.equal(frames.length,1);frames.shift()();
  assert.deepEqual(scrolls,[{block:'end',behavior:'instant'}]);dispose();
 });

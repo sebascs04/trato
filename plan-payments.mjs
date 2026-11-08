@@ -52,25 +52,40 @@ export function installPlanPayments(cloud){
  const endpoint=(project,position,tail='')=>`/api/v1/projects/${project}/stages/${position}/checkout${tail}`;
  const message=error=>t(({PLAN_PREVIOUS_STAGE_UNPAID:'previousUnpaid',PLAN_EVIDENCE_REQUIRED:'evidenceRequired',PLAN_EVIDENCE_NOT_READY:'evidencePending',PLAN_EVIDENCE_INVALID:'evidenceInvalid',PLAN_EVIDENCE_PROTECTED:'evidenceProtected',PLAN_STAGE_REQUIRED:'stageRequired',PLAN_LEGACY_PAYMENT_REQUIRES_REVIEW:'legacyReview',INITIAL_PAYER_MISMATCH:'payerMismatch'})[error.code]||'error');
  const originalReset=cloud.reset.bind(cloud);cloud.reset=function(){clearTimeout(timer);modalState=null;revision++;progressLoader.clear();return originalReset();};
- async function progress(host,plan,overview=false){
-  const key=scope(),project=cloud.projectId;if(!key||!host?.isConnected)return;
-  const generation=++revision;
-  const region=doc.createElement('div');region.className='plan-payment-progress';region.setAttribute('role','status');region.textContent=t('loading');(overview?host.querySelector('.cloud-agreement')||host:host).append(region);
-  try{
-   const value=await progressLoader.load(key,project);
-   if(scope()!==key||!host.isConnected||generation!==revision)return;
-   if(!value){region.remove();return;}
-   const paid=value.stages.filter(s=>s.status==='completed').length;
-   region.textContent=value.completed_at?t('completed'):t('paidCount',{paid,total:value.stages.length});
-   if(!overview)region.remove();
-   if(overview){region.classList.add('plan-overview-progress');return;}
-   for(const [i,stage] of plan.stages.entries()){
+ // Last progress per project: a re-render repaints it at once and refreshes quietly, without a loading line.
+ const lastProgress=new Map();
+ function paintProgress(host,plan,value,project,region,overview){
+  // Clear what an earlier paint added, so a repaint never duplicates buttons.
+  if(typeof host.querySelectorAll==='function'){host.querySelectorAll('.plan-stage-pay,.plan-stage-edit-open').forEach(el=>el.remove());
+   host.querySelectorAll('.plan-stage-title-cell').forEach(cell=>{const name=cell.querySelector(':scope > strong');if(name)cell.replaceWith(name);});}
+  if(!value){region?.remove();return;}
+  const paid=value.stages.filter(s=>s.status==='completed').length;
+  if(region)region.textContent=value.completed_at?t('completed'):t('paidCount',{paid,total:value.stages.length});
+  if(overview){region?.classList.add('plan-overview-progress');return;}
+  region?.remove();
+  for(const [i,stage] of plan.stages.entries()){
     const position=stage.position??i+1,row=host.querySelector(`[data-plan-stage-row="${position}"]`);if(!row)continue;
     const state=value.stages.find(s=>s.position===position),allowed=value.stages.filter(s=>s.position<position).every(s=>s.status==='completed');
     const button=doc.createElement('button');button.type='button';button.className='text-button plan-stage-pay';button.textContent=t(state?.status==='completed'?'paid':allowed?'deliveryAndPayment':'locked');button.disabled=!allowed;
     button.addEventListener('click',()=>open(project,position,stage,value));row.append(button);
+    // A deliverable without checkout or delivery evidence has not started: its wording can still be corrected.
+    if(!value.completed_at&&!state?.payment_id&&!state?.evidence_document_id&&cloud.openPlanStageEdit){const edit=doc.createElement('button');edit.type='button';edit.className='icon-button proposal-edit plan-stage-edit-open';edit.innerHTML=icon('pencil');edit.setAttribute('aria-label',uiText('planEdit.title',{number:position}));edit.title=uiText('planEdit.title',{number:position});edit.addEventListener('click',()=>cloud.openPlanStageEdit(position));
+      // Pencil next to the deliverable's name, in the same grid cell, like the addendum card's edit button.
+      const name=row.querySelector(':scope > strong');if(name){const cell=doc.createElement('span');cell.className='plan-stage-title-cell';name.before(cell);cell.append(name,edit);}else row.append(edit);}
    }
-  }catch(error){if(scope()===key&&host.isConnected){region.textContent=message(error);const retry=doc.createElement('button');retry.className='text-button';retry.textContent=t('retry');retry.addEventListener('click',()=>{region.remove();void progress(host,plan,overview);});region.append(retry);}}
+ }
+ async function progress(host,plan,overview=false){
+  const key=scope(),project=cloud.projectId;if(!key||!host?.isConnected)return;
+  const generation=++revision,known=lastProgress.has(key)?lastProgress.get(key):undefined;
+  let region=null;
+  if(overview||known===undefined){region=doc.createElement('div');region.className='plan-payment-progress';region.setAttribute('role','status');region.textContent=t('loading');(overview?host.querySelector('.cloud-agreement')||host:host).append(region);}
+  if(known!==undefined)paintProgress(host,plan,known,project,region,overview);
+  try{
+   const value=await progressLoader.load(key,project);
+   if(scope()!==key||!host.isConnected||generation!==revision)return;
+   const changed=known===undefined||JSON.stringify(known)!==JSON.stringify(value);lastProgress.set(key,value);
+   if(changed)paintProgress(host,plan,value,project,region,overview);
+  }catch(error){if(scope()===key&&host.isConnected){if(!region){region=doc.createElement('div');region.className='plan-payment-progress';region.setAttribute('role','status');(overview?host.querySelector('.cloud-agreement')||host:host).append(region);}region.textContent=message(error);const retry=doc.createElement('button');retry.className='text-button';retry.textContent=t('retry');retry.addEventListener('click',()=>{region.remove();void progress(host,plan,overview);});region.append(retry);}}
  }
  cloud.renderPlanPayments=(host,plan)=>{if(plan)void progress(host,plan);};
  const renderAgreement=cloud.renderAgreement.bind(cloud);cloud.renderAgreement=function(host){renderAgreement(host);void progress(host,null,true);};

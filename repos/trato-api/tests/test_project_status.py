@@ -6,11 +6,12 @@ from trato_api.refund_assistant import financial_facts
 
 PROJECT={'id':'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa','name':'Website'}
 class Repo:
-    def __init__(self,tables,progress=None):self.tables=tables;self.progress=progress;self.calls=[]
+    def __init__(self,tables):self.tables=tables;self.calls=[]
     def rows(self,table,params):
+        # Every read is scoped to owner and project: it runs with the server repository (no signed-in user).
         self.calls.append((table,params));assert params['owner_id']=='eq.owner' and params['project_id']=='eq.'+PROJECT['id']
         return self.tables.get(table,[])
-    def rpc(self,name,data):assert name=='project_plan_progress';return self.progress
+    def rpc(self,name,data):raise AssertionError('status must not depend on RPCs that need a signed-in user: '+name)
 
 class ProjectStatusTests(unittest.TestCase):
     def test_changes_and_plan_payments_are_owner_scoped_verified_records(self):
@@ -21,8 +22,8 @@ class ProjectStatusTests(unittest.TestCase):
             'proposal_deliveries':[{'revision_id':'r1','kind':'adenda','updated_at':'2026-11-05T11:00:00Z'},{'revision_id':'r2','kind':'adenda','updated_at':'2026-11-05T12:00:00Z'}],
             'proposal_acceptances':[{'revision_id':'r2','created_at':'2026-11-05T13:00:00Z'}],
             'proposal_payments':[{'revision_id':'r2','amount_minor':18000,'currency':'USD','updated_at':'2026-11-06T10:00:00Z'}],
-            'project_start_plans':[{'currency':'USD'}],'project_start_stages':[{'position':1,'title':'Design','amount':'180.00'},{'position':2,'title':'Build','amount':'300.00'}]},
-            progress={'stages':[{'position':1,'status':'completed','paid_at':'2026-11-06T07:29:00Z'},{'position':2,'status':'pending_approval','paid_at':None}]})
+            'project_start_plans':[{'currency':'USD'}],'project_start_stages':[{'position':1,'title':'Design','amount':'180.00'},{'position':2,'title':'Build','amount':'300.00'}],
+            'project_initial_checkouts':[{'stage_position':1,'status':'completed','paid_at':'2026-11-06T07:29:00Z'},{'stage_position':2,'status':'pending_approval','paid_at':None}]})
         record=status_source(repo,'owner',PROJECT);value=json.loads(record['text'])
         change=value['change_requests'][0]
         self.assertEqual([v['additional_amount'] for v in change['versions']],['USD 240.00','USD 180.00'])

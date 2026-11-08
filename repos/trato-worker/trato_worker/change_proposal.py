@@ -55,7 +55,9 @@ class ProposalTools(ProjectTools):
                 continue
             file_id = source['file_id']
             role = 'other'
-            if file_id == self.proposal_context['request_document_id']:
+            if file_id == self.proposal_context.get('feedback_document_id'):
+                role = 'feedback'
+            elif file_id == self.proposal_context['request_document_id']:
                 role = 'request'
             elif file_id in self.proposal_context['baseline_document_ids']:
                 role = 'agreement'
@@ -94,6 +96,7 @@ Review the full tool catalog. Identify the original agreement and the client's a
 4. Always return suggested_deadline as null. Ask for the user's delivery date or availability in missing_information. Missing a date or tariff does not prevent a documentary scope proposal; missing the agreement or the actual request does. If either is unavailable or the requested change cannot be established, return insufficient_evidence, explain the gap, and keep unsupported proposal fields empty and estimated_hours null. Do not present a complete project review when source_scope is partial.
 5. Answer follow-up instructions in question only within this drafting task; the normal conversation agent handles general questions about changes and addenda. Never save, send, accept, revise a sent document or execute a payment. Do not claim a tool ran without its result. Tool/provider errors remain failures; no alternative model, source corpus or simulated response is available.
 6. Write answer, scope_summary, conditions, description and missing_information in output_language. Preserve original quotations, document names, JSON keys and IDs.
+7. When feedback_document_id and sent_terms are supplied in change_proposal_context, this is a proposed new version after the client replied to the exact sent addendum. Retrieve original passages from that feedback PDF as well as the original request and agreement. Cite all three documentary roles. Use sent_terms as the authoritative record of that sent version, not as permission to edit it. Propose the complete revised addendum, retaining the previous deliverables except where the feedback changes them. Explain what changes and what remains. feedback_notes are optional user-supplied context, such as a conversation in person: consider them separately, attribute them to the freelancer, never present them as a quote from the PDF or as verified client acceptance. If notes conflict materially with the PDF, identify the conflict and request clarification instead of silently choosing. The proposed estimated_hours refers to the complete revised work for rate-based pricing, not an extra charge to add automatically to the previous price. Keep the existing price and date subject to explicit human review; never claim a new version was saved or sent.
 ## FORMAT
 Return only JSON matching the supplied schema: status (answered or insufficient_evidence), answer (research and estimate reasoning), citations (reference_id selected from citation_options), missing_information, proposal containing scope_summary, conditions, description, estimated_hours and suggested_deadline. An answered result requires citations from the original agreement and the original request. No calculated amount belongs in this schema.'''
 
@@ -117,7 +120,7 @@ def run_change_proposal(data,model,client,job_id,execution_id):
     validate_answer({k:v for k,v in result_dict.items() if k!='proposal'},runtime)
     if result.status=='answered':
         originals={runtime.sources[c.source_id]['file_id'] for c in result.citations if runtime.sources[c.source_id]['source_kind']=='original'}
-        if (context['request_document_id'] not in originals or not originals.intersection(context['baseline_document_ids']) or
+        if (context.get('feedback_document_id') and context['feedback_document_id'] not in originals or context['request_document_id'] not in originals or not originals.intersection(context['baseline_document_ids']) or
             not result.proposal.scope_summary.strip() or not result.proposal.description.strip()):
             raise ToolError('AI_INVALID_CITATION')
     return {'kind':'project_assistant','project_id':data['project_id'],'model':model.name,

@@ -17,6 +17,12 @@ from ..gmail.vault import GmailError
 
 Description=Annotated[str,StringConstraints(strip_whitespace=True,min_length=1,max_length=1000)]
 
+def proposal_language(request):
+    language=request.headers.get('accept-language','es')
+    if language not in ('es','en'):
+        raise ApiError('INVALID_OUTPUT_LANGUAGE',422)
+    return language
+
 class Input(BaseModel):
     model_config=ConfigDict(extra='forbid')
 
@@ -54,11 +60,12 @@ class DraftEdit(Input):
 class Revise(DraftEdit):
     feedback_document_id:UUID|None=None
     feedback_email_id:UUID|None=None
+    feedback_portal_request_id:UUID|None=None
     feedback_notes:Annotated[str,StringConstraints(strip_whitespace=True,min_length=1,max_length=4000)]
 
     @model_validator(mode='after')
     def feedback_source(self):
-        if self.feedback_email_id is None and self.feedback_document_id is None:raise ValueError('Client feedback evidence is required')
+        if self.feedback_email_id is None and self.feedback_document_id is None and self.feedback_portal_request_id is None:raise ValueError('Client feedback evidence is required')
         return self
 
 class Review(Input):
@@ -111,6 +118,11 @@ def build_proposal_router(settings,require_user,repository_factory=None,workflow
     @router.get('/proposals/{proposal_id}')
     def get_proposal(proposal_id:str,summary:bool=False,repo=Depends(repository)):
         return reply(repo.get_proposal(uuid(proposal_id),summary=True) if summary else repo.get_proposal(uuid(proposal_id)))
+    @router.get('/proposals/{proposal_id}/portal-requests')
+    def portal_requests(proposal_id:str,repo=Depends(repository)):
+        # Changes the client asked for from the portal; RLS returns only the owner's rows.
+        proposal=repo.get_proposal(uuid(proposal_id),summary=True)['proposal']
+        return reply(repo.rows('client_portal_change_requests',{'select':'id,revision_id,notes,created_at,updated_at,used_at','proposal_id':'eq.'+proposal['id'],'order':'updated_at.desc','limit':20}))
     @router.get('/proposals/{proposal_id}/revisions/{revision_id}')
     def get_revision(proposal_id:str,revision_id:str,repo=Depends(repository)):
         # sandbox lets the owner open the client's PayPal checkout to test it; Live never shows that shortcut.
@@ -167,11 +179,12 @@ def build_proposal_router(settings,require_user,repository_factory=None,workflow
     @router.post('/proposals/{proposal_id}/revisions/{revision_id}/pdf')
     def save_pdf(proposal_id:str,revision_id:str,request:Request,repo=Depends(repository)):
         proposal_id,revision_id=uuid(proposal_id),uuid(revision_id)
-        artifact=ProposalPdfService().save(repo,proposal_id,revision_id)
+        language=proposal_language(request)
+        artifact=ProposalPdfService().save(repo,proposal_id,revision_id,language=language)
         if os.getenv('TRATO_FILE_PROCESSING_ENABLED')=='true':
             from ..file_processing import remember_options
             document=repo.document(artifact['document_id'])
-            remember_options(settings,repo,document,request.headers.get('accept-language','es'),'generated_addendum',{'revision_id':revision_id})
+            remember_options(settings,repo,document,language,'generated_addendum',{'revision_id':revision_id})
             repo.queue_document(document['id'])
         return reply(artifact)
     @router.post('/projects/{project_id}/proposals')
@@ -198,12 +211,14 @@ def build_proposal_router(settings,require_user,repository_factory=None,workflow
 
         @router.get('/proposals/{proposal_id}/revisions/{revision_id}/email-preview')
         def preview(proposal_id:str,revision_id:str,request:Request,kind:Literal['adenda','payment'],repo=Depends(repository),user=Depends(require_user)):
-            return reply(workflow.preview(repo,user,uuid(proposal_id),uuid(revision_id),kind,freelancer_email=freelancer_contact(request,kind)))
+            language=proposal_language(request)
+            return reply(workflow.preview(repo,user,uuid(proposal_id),uuid(revision_id),kind,freelancer_email=freelancer_contact(request,kind),language=language))
         @router.post('/proposals/{proposal_id}/revisions/{revision_id}/email')
         async def send(proposal_id:str,revision_id:str,request:Request,kind:Literal['adenda','payment'],repo=Depends(repository),user=Depends(require_user)):
             from ..business_routes import read_model
             value=await read_model(request,Send)
-            return reply(await run_in_threadpool(workflow.send,repo,user,uuid(proposal_id),uuid(revision_id),kind,value.digest,freelancer_email=freelancer_contact(request,kind)))
+            language=proposal_language(request)
+            return reply(await run_in_threadpool(workflow.send,repo,user,uuid(proposal_id),uuid(revision_id),kind,value.digest,freelancer_email=freelancer_contact(request,kind),language=language))
         @router.post('/proposals/{proposal_id}/revisions/{revision_id}/payment')
         def payment(proposal_id:str,revision_id:str,repo=Depends(repository),user=Depends(require_user)):
             return reply(workflow.public_payment(workflow.prepare_payment(repo,user,uuid(proposal_id),uuid(revision_id))))

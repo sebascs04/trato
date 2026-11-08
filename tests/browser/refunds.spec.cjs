@@ -119,22 +119,21 @@ test('local simulation endpoint isolates sessions and rejects connected mode or 
  }finally{await one.close();await two.close();}
 });
 
-test('project refund tab opens the simulation only after explicit selection',async({page})=>{
+test('connected refund tab shows project records without the simulation',async({page})=>{
  const requests=[];page.on('request',r=>requests.push(new URL(r.url()).pathname));
  await page.route('**/api/v1/**',route=>{
   const path=new URL(route.request().url()).pathname;
-  const data=path.endsWith('/config')?{supabase_url:'https://tests.supabase.invalid',publishable_key:'sb_publishable_test'}:path==='/api/v1/session'?{user_id:'owner'}:path==='/api/v1/clients'?[{id:'client',name:'Cliente privado'}]:path==='/api/v1/projects'?[{id:'project',client_id:'client',name:'Proyecto privado'}]:path.endsWith('/request-status')?{can_register:true,closures:[],active_request:null}:[];
+  const data=path.endsWith('/config')?{supabase_url:'https://tests.supabase.invalid',publishable_key:'sb_publishable_test'}:path==='/api/v1/session'?{user_id:'owner',role:'freelancer'}:path==='/api/v1/clients'?[{id:'client',name:'Cliente privado'}]:path==='/api/v1/projects'?[{id:'project',client_id:'client',name:'Proyecto privado'}]:path.endsWith('/request-status')?{can_register:true,closures:[],active_request:null}:[];
   return route.fulfill({json:{data}});
  });
  await page.addInitScript(()=>sessionStorage.setItem('trato:tests.supabase.invalid:session',JSON.stringify({access_token:'test',refresh_token:'test',expires_at:9999999999,user:{id:'owner',email:'sender@example.invalid'}})));
  await page.goto('/#clientes');await page.getByRole('button',{name:'Abrir cliente Cliente privado',exact:true}).click();await page.getByRole('button',{name:'Abrir proyecto Proyecto privado',exact:true}).click();
  await page.getByRole('navigation',{name:'Secciones del proyecto'}).getByRole('button',{name:'Devoluciones: Dinero de un pago recibido',exact:true}).click();
- expect(requests.filter(p=>p==='/refund-preview.mjs')).toHaveLength(0);
- await page.getByRole('button',{name:'Probar flujo de devolución',exact:false}).click();
- await expect(page.getByRole('dialog',{name:'Devolución y cierre acordado · simulación',exact:true})).toBeVisible();
- await expect(page.locator('.refund-preview-mode')).toContainText('Caso de ejemplo independiente');
+ await expect(page.locator('.refund-empty')).toBeVisible();
+ await expect(page.getByRole('button',{name:'Probar flujo de devolución',exact:false})).toHaveCount(0);
+ await expect(page.getByRole('button',{name:'Preguntar a TeTrato',exact:true})).toBeVisible();
  expect(requests.filter(p=>p.startsWith('/api/simulation/'))).toHaveLength(0);
- expect(requests.filter(p=>p==='/refund-preview.mjs')).toHaveLength(1);
+ expect(requests.filter(p=>p==='/refund-preview.mjs')).toHaveLength(0);
 });
 
 test('refund evidence map follows this checkpoint and keeps acceptance on its version',async({page})=>{

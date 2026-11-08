@@ -8,7 +8,7 @@ async function setup(page,{documents=[initial,request],proposals=[{id:'proposal'
  await page.route('**/api/v1/**',async route=>{
   const path=new URL(route.request().url()).pathname;calls.push(path);let data;
   if(path.endsWith('/config'))data=config;
-  else if(path.endsWith('/session'))data={user_id:'user'};
+  else if(path.endsWith('/session'))data={user_id:'user',role:'freelancer'};
   else if(path.endsWith('/clients'))data=[{id:'client-a',name:'Estudio Norte'}];
   else if(path==='/api/v1/projects')data=[{id:'project-a',client_id:'client-a',name:'Sitio de la cafetería',status:'draft'}];
   else if(path.endsWith('/documents'))data=documents;

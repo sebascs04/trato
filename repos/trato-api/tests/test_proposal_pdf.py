@@ -19,6 +19,12 @@ class PdfTest(unittest.TestCase):
         new=deepcopy(self.snapshot);new['revision'].update(id='r2',revision_no=2,additional_minor=20);new['line_items'][0]['unit_amount_minor']=20
         self.assertNotEqual(old,render_pdf(new,'Campaña','Cliente'))
         self.assertEqual(old,render_pdf(self.snapshot,'Campaña','Cliente'))
+    def test_english_pdf_localizes_labels_and_preserves_agreed_terms(self):
+        content=render_pdf(self.snapshot,'Campaña','Cliente',language='en')
+        text=subprocess.run(['pdftotext','-','-'],input=content,capture_output=True,check=True).stdout.decode()
+        for expected in ['Addendum · version 1','Scope of change','Client acceptance','Vídeo vertical <final> & subtítulos','USD 0.10']:
+            self.assertIn(expected,text)
+        self.assertNotIn('Alcance del cambio',text)
     def test_unsupported_glyph_and_inconsistent_total_fail_explicitly(self):
         bad=deepcopy(self.snapshot);bad['revision']['additional_minor']=9
         with self.assertRaises(ApiError) as error:render_pdf(bad,'P','C')

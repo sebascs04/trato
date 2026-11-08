@@ -1,5 +1,6 @@
 """Orders v2 sandbox only. Never trusts a browser redirect as payment evidence."""
 import base64
+import hashlib
 from dataclasses import dataclass
 from decimal import Decimal, InvalidOperation
 import json
@@ -12,6 +13,7 @@ from urllib.parse import urlencode, urlparse
 from urllib.request import Request, build_opener, HTTPRedirectHandler
 
 BASE_URL='https://api-m.sandbox.paypal.com'
+DISPUTE_DOCUMENT_LIMIT=10*1024*1024
 
 
 class PayPalError(Exception):
@@ -133,6 +135,59 @@ class PayPalSandboxClient:
         order=self._request('POST','/v2/checkout/orders',payload,request_id)
         self.validate_order(order,item)
         return order
+
+    # Disputes: reads go through paypal/agent_toolkit.py; the toolkit has no way to answer, so these use the REST API directly.
+    # Called only after the freelancer confirms. PayPal documents no idempotency for them, so an uncertain result is never retried here.
+    def _dispute_post(self,dispute_id,action,body,content_type):
+        if not isinstance(dispute_id,str) or not re.fullmatch(r'[A-Za-z0-9-]{1,255}',dispute_id):raise PayPalError('INVALID_DISPUTE_ID',status=422)
+        headers={'Authorization':'Bearer '+self._access_token(),'Content-Type':content_type}
+        response=self.transport('POST',f'/v1/customer/disputes/{dispute_id}/{action}',headers,body)
+        if not 200<=response.status<300:
+            uncertain=response.status>=500 or response.status in (408,429)
+            raise PayPalError('PAYPAL_REQUEST_FAILED' if uncertain else 'PAYPAL_DISPUTE_ACTION_REJECTED',status=503 if uncertain else 409,uncertain=uncertain,http_status=response.status)
+
+    def _dispute_multipart(self,dispute_id,action,payload,files):
+        # PayPal's documented shape: part `input` (JSON) plus `file1`, `file2`...
+        encoded=json.dumps(payload).encode()
+        boundary='trato'+hashlib.sha256(b''.join(f[2] for f in files)+encoded).hexdigest()[:24]
+        body=f'--{boundary}\r\nContent-Disposition: form-data; name="input"\r\nContent-Type: application/json\r\n\r\n'.encode()+encoded+b'\r\n'
+        for number,(filename,content_type,content) in enumerate(files,1):
+            if not re.fullmatch(r'[A-Za-z0-9._-]{1,80}',filename) or content_type not in ('application/pdf','image/jpeg','image/png','image/gif'):raise PayPalError('INVALID_DISPUTE_DOCUMENT',status=422)
+            body+=f'--{boundary}\r\nContent-Disposition: form-data; name="file{number}"; filename="{filename}"\r\nContent-Type: {content_type}\r\n\r\n'.encode()+content+b'\r\n'
+        self._dispute_post(dispute_id,action,body+f'--{boundary}--\r\n'.encode(),'multipart/form-data; boundary='+boundary)
+
+    def send_dispute_message(self,dispute_id,message,files=()):
+        if files:self._dispute_multipart(dispute_id,'send-message',{'message':message},files)
+        else:self._dispute_post(dispute_id,'send-message',json.dumps({'message':message}).encode(),'application/json')
+
+    def provide_dispute_evidence(self,dispute_id,notes,files):
+        self._dispute_multipart(dispute_id,'provide-evidence',{'evidences':[{'evidence_type':'OTHER','notes':notes}]},files)
+
+    def escalate_dispute(self,dispute_id,note):
+        self._dispute_post(dispute_id,'escalate',json.dumps({'note':note}).encode(),'application/json')
+
+    def accept_dispute_claim(self,dispute_id,note):
+        # PayPal closes the dispute for the client and refunds them from the merchant's account. Its documented body is multipart.
+        self._dispute_multipart(dispute_id,'accept-claim',{'note':note},())
+
+    # PayPal documents these two as Sandbox only; the hard-coded base URL of this client is already Sandbox.
+    def sandbox_require_evidence(self,dispute_id):
+        self._dispute_post(dispute_id,'require-evidence',json.dumps({'action':'SELLER_EVIDENCE'}).encode(),'application/json')
+
+    def sandbox_adjudicate(self,dispute_id,outcome):
+        if outcome not in ('BUYER_FAVOR','SELLER_FAVOR'):raise PayPalError('INVALID_DISPUTE_OUTCOME',status=422)
+        self._dispute_post(dispute_id,'adjudicate',json.dumps({'adjudication_outcome':outcome}).encode(),'application/json')
+
+    def fetch_dispute_document(self,url):
+        parsed=urlparse(url) if isinstance(url,str) else None
+        if not parsed or parsed.scheme!='https' or parsed.netloc!=urlparse(BASE_URL).netloc or parsed.query or not re.fullmatch(r'/v2/content/documents/[A-Za-z0-9_-]+/files/[0-9]+/download',parsed.path):raise PayPalError('INVALID_DISPUTE_DOCUMENT',status=422)
+        try:
+            with build_opener(NoRedirect()).open(Request(url,headers={'Authorization':'Bearer '+self._access_token()}),timeout=30) as response:
+                content=response.read(DISPUTE_DOCUMENT_LIMIT+1)
+                if len(content)>DISPUTE_DOCUMENT_LIMIT:raise PayPalError('PROVIDER_RESPONSE_TOO_LARGE')
+                return content,response.headers.get('Content-Type','').split(';',1)[0].strip().lower()
+        except HTTPError:raise PayPalError('PAYPAL_REQUEST_FAILED') from None
+        except (URLError,TimeoutError,OSError):raise PayPalError('PAYPAL_UNAVAILABLE',status=503) from None
 
     def get_capture(self,capture_id):
         if not isinstance(capture_id,str) or not re.fullmatch(r'[A-Za-z0-9_-]{1,64}',capture_id):raise PayPalError('INVALID_CAPTURE_ID',status=422)

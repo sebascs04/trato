@@ -87,7 +87,7 @@ def research_references(data,model,runtime):
         'aspects':{'type':'array','minItems':1,'items':{'type':'object','additionalProperties':False,'required':['aspect','message_indices','rationale'],'properties':{
             'aspect':{'type':'string','minLength':1,'maxLength':500},'rationale':{'type':'string','minLength':1,'maxLength':1000},'message_indices':{'type':'array','minItems':1,'items':{'type':'integer','enum':indices}}}}},
         'unresolved_questions':{'type':'array','items':{'type':'string','minLength':1,'maxLength':1000}}}}
-    payload={k:data[k] for k in ('output_language','scenario','persona','case','messages')};payload['documents']=runtime.catalog['documents']
+    payload={k:data[k] for k in ('output_language','scenario','persona','case','messages')};payload['counterpart']=data.get('counterpart','client');payload['documents']=runtime.catalog['documents']
     value=run_tool_agent(model,runtime,[{'role':'system','content':PROMPT},{'role':'user','content':json.dumps(payload,ensure_ascii=False)}],schema,maximum_context_bytes=600000,max_tool_calls=6)
     try:
         if set(value)!={'aspects','unresolved_questions'} or not isinstance(value['aspects'],list) or not value['aspects'] or not isinstance(value['unresolved_questions'],list) or any(not isinstance(q,str) or not 1<=len(q.strip())<=1000 for q in value['unresolved_questions']):raise ValueError()

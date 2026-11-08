@@ -14,8 +14,10 @@
 | Start | Initial conversation / agreement | AI proposes deliverables and staged payments from the agreement |
 | Delivery | Client's sign-off of each deliverable | AI checks the sign-off; the client pays that stage with PayPal |
 | Change | Client's change request | AI compares it with the agreement and drafts scope, conditions and effort; you set your rate |
-| Addendum | Versioned PDF sent from Gmail | Each version keeps its own PDF, sending and acceptance |
+| Addendum | Versioned PDF sent by email | Each version keeps its own PDF, sending and acceptance |
+| Client's answer | Acceptance or change request in the client portal | The client reviews from a secure link, with no account needed |
 | Payment | PayPal capture verified by the backend | Only then the change or stage is marked as paid |
+| Dispute | The project's evidence | Disputes on verified payments appear in the project, with a response prepared from that evidence |
 | Audit | Project history and map | Every phase above, with its documents, in one timeline |
 
 ## Step-by-step test (about 15 minutes)
@@ -24,14 +26,19 @@ Follow **[ejemplos/cafe-aurora-en/README.md](ejemplos/cafe-aurora-en/README.md)*
 
 1. Create a client and a project from the agreement. AI proposes a plan with three paid deliverables.
 2. Get paid for each deliverable. Upload the client's sign-off, AI verifies it, and the client pays through PayPal Sandbox.
-3. Turn a scope change into a paid addendum. AI drafts it from the documents, the client asks for adjustments, a new version is sent, and the client accepts and pays.
+3. Turn a scope change into a paid addendum. AI drafts it from the documents. Acting as the client in the portal, you request changes, then accept the new version and pay.
 4. Open the project history and map to see every phase with its documents, ask the project assistant, and try a negotiation rehearsal.
 
 Your judge account may also include an example project you can open first to see the result.
 
 ### Paying as the client
 
-In real use the client receives the payment link by email. Use your own email as the client's contact email to see those emails arrive. While PayPal is in Sandbox, a **Test mode (PayPal Sandbox)** box also lets you open the same checkout directly with **Open test payment**. Log in with the **Sandbox buyer account provided in Devpost**, or any PayPal Sandbox buyer account, and approve. Like a real client's accountant or company account, any PayPal account can pay. Trato verifies the order, amount, receiving merchant and currency, and the payment counts only after its backend verifies the capture with PayPal.
+Use your own email as the client's contact email so that the client's emails reach you.
+
+- **Addenda:** the email links to the client portal. There you can **Request changes**, **Accept addendum** and **Pay with PayPal**, without a Trato account.
+- **Deliverables:** the email has the payment link. While PayPal is in Sandbox, a **Test mode (PayPal Sandbox)** box in Trato also lets you open the same checkout with **Open test payment**.
+
+Log in with the **Sandbox buyer account provided in Devpost**, or any PayPal Sandbox buyer account, and approve. Like a real client's accountant or company account, any PayPal account can pay. Trato verifies the order, amount, receiving merchant and currency, and the payment counts only after its backend verifies the capture with PayPal.
 
 ## Notes
 

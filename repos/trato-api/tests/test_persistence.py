@@ -78,7 +78,7 @@ class PersistenceTests(unittest.TestCase):
             self.assertEqual(request.headers['authorization'], 'Bearer user-a')
             if request.url.path.endswith('/projects'):
                 return httpx.Response(200, json=[{'id': PROJECT, 'client_id': CLIENT, 'owner_id':'owner-a'}])
-            if request.url.path.rsplit('/', 1)[-1] in ('document_upload_contexts','refund_settlements','file_processing_artifacts'):
+            if request.url.path.rsplit('/', 1)[-1] in ('document_upload_contexts','project_dispute_documents','refund_settlements','file_processing_artifacts'):
                 self.assertEqual(request.url.params['owner_id'],'eq.owner-a')
                 self.assertEqual(request.url.params['project_id'],'eq.'+PROJECT)
                 return httpx.Response(200,json=[])
@@ -98,12 +98,36 @@ class PersistenceTests(unittest.TestCase):
                 {'id': 'feedback', 'feedback': [revision]},
                 {'id': 'unlinked', 'proposal_artifacts': []}])
         result = self.repo(handler).list_documents(PROJECT)
-        self.assertEqual(len(calls), 8)
+        self.assertEqual(len(calls), 9)
         for index, role in enumerate(('addendum', 'acceptance', 'feedback')):
             self.assertEqual(result[index]['request_links'], [{'request_document_id': DOC, 'revision_no': 2, 'role': role}])
         self.assertEqual(result[0]['proposal_artifacts'], [{'revision_id': 'revision-2'}])
         self.assertEqual(result[3]['request_links'], [])
         self.assertNotIn('acceptances', result[1])
+
+    def test_document_reads_that_only_need_the_documents_run_at_the_same_time(self):
+        import threading
+        together=('document_upload_contexts','project_dispute_documents','file_processing_artifacts','refund_artifacts','refund_acceptances','refund_feedback','refund_settlements')
+        # The barrier opens only if all seven are in flight at once; one after another it times out and fails.
+        barrier=threading.Barrier(len(together),timeout=5)
+        def handler(request):
+            table=request.url.path.rsplit('/',1)[-1]
+            if table=='projects':return httpx.Response(200,json=[{'id':PROJECT,'client_id':CLIENT,'owner_id':'owner-a'}])
+            if table=='documents':return httpx.Response(200,json=[{'id':DOC,'kind':'reference'}])
+            self.assertIn(table,together)
+            barrier.wait()
+            return httpx.Response(200,json=[])
+        self.assertEqual(self.repo(handler).list_documents(PROJECT)[0]['id'],DOC)
+
+    def test_a_failed_document_read_is_an_error_and_never_a_partial_list(self):
+        def handler(request):
+            table=request.url.path.rsplit('/',1)[-1]
+            if table=='projects':return httpx.Response(200,json=[{'id':PROJECT,'client_id':CLIENT,'owner_id':'owner-a'}])
+            if table=='documents':return httpx.Response(200,json=[{'id':DOC,'kind':'reference'}])
+            return httpx.Response(500 if table=='refund_feedback' else 200,json=[])
+        with self.assertRaises(ApiError) as error:
+            self.repo(handler).list_documents(PROJECT)
+        self.assertEqual(error.exception.code,'PERSISTENCE_UNAVAILABLE')
 
     def test_refund_documents_keep_their_own_version_and_do_not_become_paid_addenda(self):
         def handler(request):
@@ -113,7 +137,7 @@ class PersistenceTests(unittest.TestCase):
                 'projects':[{'id':PROJECT,'client_id':CLIENT,'owner_id':'owner-a'}],
                 'documents':[{'id':DOC,'project_id':PROJECT,'kind':'addendum'}],
                 'refund_artifacts':[{'document_id':DOC,'snapshot_id':'snapshot-v2','settlement_id':'refund'}],
-                'refund_acceptances':[], 'refund_feedback':[], 'document_upload_contexts':[], 'refund_settlements':[{'id':'refund','request_evidence':[],'created_at':'2026-11-02T12:00:00Z'}], 'file_processing_artifacts':[],
+                'project_dispute_documents':[], 'refund_acceptances':[], 'refund_feedback':[], 'document_upload_contexts':[], 'refund_settlements':[{'id':'refund','request_evidence':[],'created_at':'2026-11-02T12:00:00Z'}], 'file_processing_artifacts':[],
                 'refund_snapshots':[{'id':'snapshot-v2','version_no':2}],
             }
             if table.startswith('refund_') and table!='refund_settlements':
@@ -130,6 +154,7 @@ class PersistenceTests(unittest.TestCase):
             data={
                 'projects':[{'id':PROJECT,'client_id':CLIENT,'owner_id':'owner-a'}],
                 'documents':[{'id':DOC,'kind':'reference','feedback':[]}],
+                'project_dispute_documents':[],
                 'document_upload_contexts':[{'document_id':DOC,'project_id':PROJECT,'owner_id':'owner-a',
                     'purpose':'addendum_adjustments','request_document_id':'request-a','revision_id':'revision-v1'}],
                 'proposal_revisions':[{'id':'revision-v1','revision_no':1}],

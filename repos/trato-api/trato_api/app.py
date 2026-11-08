@@ -14,6 +14,7 @@ from paypal.email import EmailDeliveryError
 from paypal.client import PayPalError
 from .errors import ApiError
 from .business_routes import build_business_router
+from .client_portal import build_client_portal_router
 from .thread_routes import build_thread_router
 from .reference_tools import build_reference_tools_router
 from .agent_tools import build_agent_tools_router
@@ -25,12 +26,15 @@ from .reputation_vector import build_public_vector_router
 from .file_processing import build_file_processing_router
 from .model_preferences import build_model_preferences_router
 from .rehearsal_routes import build_rehearsal_router
+from .section_help import build_section_help_router
+from .disputes import build_dispute_router
 from .graph_routes import build_graph_router
 from .reputation_routes import build_reputation_router
 from .proposals.routes import build_proposal_router
 from .refunds.routes import build_refund_router
 from .refunds.workflow import RefundWorkflow
 from .refunds.financial import RefundFinance
+from .refunds.confirmation import RefundConfirmation
 from .refunds.webhook import build_refund_webhook_router
 from .refunds.financial_routes import build_refund_financial_router
 from .proposals.workflow import ProposalWorkflow
@@ -152,6 +156,8 @@ def create_app(settings=None, services=None, repository_factory=None, *, gmail_s
     app.include_router(build_initial_payment_router(settings,require_user,gmail=gmail_service))
     app.include_router(build_sandbox_payment_router(sandbox_test_service, require_user))
     app.include_router(build_business_router(settings, services, require_user, repository_factory))
+    proposal_workflow=ProposalWorkflow(settings,gmail_service)
+    app.include_router(build_client_portal_router(settings, payments=proposal_workflow, require_user=require_user))
     app.include_router(build_thread_router(settings))
     app.include_router(build_agent_tools_router(settings))
     app.include_router(build_reference_tools_router(settings))
@@ -169,13 +175,16 @@ def create_app(settings=None, services=None, repository_factory=None, *, gmail_s
     app.include_router(build_file_processing_router(settings,require_user,repository_factory))
     app.include_router(build_model_preferences_router(require_user))
     app.include_router(build_rehearsal_router(require_user,rehearsal_service))
+    app.include_router(build_section_help_router(require_user))
+    app.include_router(build_dispute_router(settings,require_user,repository_factory,replies=proposal_workflow.gmail_replies))
     app.include_router(build_graph_router(settings,require_user,repository_factory,graph_reader))
     app.include_router(build_reputation_router(settings,require_user,repository_factory))
-    app.include_router(build_proposal_router(settings, require_user, proposal_repository_factory, ProposalWorkflow(settings,gmail_service)))
+    app.include_router(build_proposal_router(settings, require_user, proposal_repository_factory, proposal_workflow))
     app.include_router(build_refund_router(settings, require_user, refund_repository_factory, RefundWorkflow(settings,gmail_service)))
     refund_finance=RefundFinance(settings)
-    app.include_router(build_refund_financial_router(settings,require_user,refund_repository_factory,refund_finance))
-    app.include_router(build_refund_webhook_router(refund_finance))
+    refund_confirmation=RefundConfirmation(settings,gmail_service)
+    app.include_router(build_refund_financial_router(settings,require_user,refund_repository_factory,refund_finance,refund_confirmation))
+    app.include_router(build_refund_webhook_router(refund_finance,refund_confirmation))
 
     @app.exception_handler(ApiError)
     async def error_handler(request, error):

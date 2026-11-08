@@ -3,7 +3,8 @@ import {renderAIActivity} from './ai-activity.mjs';
 import {mountModelPreference} from './model-preferences.mjs';
 import {uiText,uiLocale,uiLanguage} from './i18n.mjs';
 import {icon as uiIcon} from './icons.mjs';
-import {SessionClient, apiRequest} from './auth-session.mjs';
+import {SessionClient, apiRequest, createReadCoalescer} from './auth-session.mjs';
+import {mountAgreement} from './portal-view.mjs';
 
 const escape = value => String(value ?? '').replace(/[&<>"']/g, char => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'})[char]);
 export function renderFileLoading(filename='') {
@@ -15,7 +16,7 @@ const date = value => !value || !Number.isFinite(new Date(value).getTime()) ? ui
 
 export class ConnectedWorkspace {
   constructor({document:doc=globalThis.document, location=globalThis.location, fetchFn=globalThis.fetch.bind(globalThis), storage=globalThis.sessionStorage,authReturn=null}={}) {
-    this.document=doc; this.location=location; this.fetch=fetchFn; this.storage=storage;this.authReturn=authReturn;this.authReturnError=false;
+    this.projectReads=createReadCoalescer();this.document=doc; this.location=location; this.fetch=fetchFn; this.storage=storage;this.authReturn=authReturn;this.authReturnError=false;
     this.documentProcessingJobs=new Map();this.active=false; this.state='loading'; this.clients=[]; this.projects=[]; this.documents=[]; this.events=[]; this.projectActivity=[];
     this.clientId=''; this.projectId=''; this.tab='acuerdo'; this.comparison=null; this.requestId=''; this.epoch=0; this.busy=false; this.loading=false; this.directoryLoading=false; this.message='';
     this.historyView='history';this.projectMapGeneration=0;this.resourceOpen={files:false,history:false};this.historyGeneration=0;this.historyLoaded=false;this.historyPending=null;this.projectHistoryGroups=[];this.historyGroupData=new Map();this.historyGroupPending=new Map();
@@ -34,7 +35,7 @@ export class ConnectedWorkspace {
     try {
       const value=JSON.parse(this.storage.getItem(this.navigationKey())||'null');
       const id=value=>typeof value==='string'&&/^[a-zA-Z0-9-]{1,80}$/.test(value);
-      if(value?.version!==1||!['acuerdo','plan','solicitudes','devoluciones','documentos','historial','gestion','comparar','asistente'].includes(value.tab))return null;
+      if(value?.version!==1||!['acuerdo','plan','solicitudes','devoluciones','disputas','documentos','historial','gestion','comparar','asistente'].includes(value.tab))return null;
       if([value.clientId,value.projectId,value.requestId,value.revisionId].some(value=>value!==''&&!id(value)))return null;
       return {...value,historyView:value.historyView==='map'?'map':'history'};
     } catch {return null;}
@@ -47,7 +48,7 @@ export class ConnectedWorkspace {
     const requestId=projectId&&this.documents.some(d=>d.id===this.requestId&&d.kind==='email_request')?this.requestId:'';
     const details=this.proposalDetails?.proposal?.request_document_id===requestId?this.proposalDetails:null;
     const revisionId=this.tab==='gestion'&&requestId?(details?.revision?.id||this.proposalRetryRevision||''):'';
-    const tab=['acuerdo','plan','solicitudes','devoluciones','documentos','historial','gestion','comparar','asistente'].includes(this.tab)?this.tab:'acuerdo';
+    const tab=['acuerdo','plan','solicitudes','devoluciones','disputas','documentos','historial','gestion','comparar','asistente'].includes(this.tab)?this.tab:'acuerdo';
     try {this.storage.setItem(this.navigationKey(),JSON.stringify({version:1,clientId,projectId,tab,requestId,revisionId,historyView:this.historyView==='map'?'map':'history'}));} catch { /* Navigation storage is optional; business operations are unaffected. */ }
   }
   async restoreProjectNavigation(nav) {
@@ -69,8 +70,18 @@ export class ConnectedWorkspace {
     this.session=new SessionClient((await response.json()).data,{storage:this.storage,fetchFn:this.fetch});
   }
   async request(path,options,blob=false) {
-    try {return await apiRequest(this.session,this.base,path,options,blob);}
+    const method=(options?.method||'GET').toUpperCase();
+    // Project state several modules read on their own; any change forgets remembered reads, before and after it runs.
+    const shared=!blob&&method==='GET'&&/^\/api\/v1\/projects\/[^/?]+\/(?:proposals|request-status|plan-progress)$/.test(path);
+    if(method!=='GET')this.projectReads.clear();
+    try {
+      if(shared)return await this.projectReads.read(path,()=>apiRequest(this.session,this.base,path,options,blob));
+      const result=await apiRequest(this.session,this.base,path,options,blob);
+      if(method!=='GET')this.projectReads.clear();
+      return result;
+    }
     catch(error) {
+      if(method!=='GET')this.projectReads.clear();
       if(!this.session?.session && this.active) {this.reset(); this.notify();}
       throw error;
     }
@@ -83,7 +94,7 @@ export class ConnectedWorkspace {
     this.releaseProjectMap();
     this.historyGeneration++;this.historyLoaded=false;this.historyPending=null;this.projectHistoryGroups=[];this.historyGroupData=new Map();this.historyGroupPending=new Map();this.resourceOpen={files:false,history:false};this.projectsLoaded=false;this.projectsLoading=false;this.projectClientsLoaded=new Set();this.projectsPending=new Map();
     for(const job of this.documentProcessingJobs.values())job.dispose();this.documentProcessingJobs.clear();
-    this.epoch++; this.active=false; this.state='anonymous'; this.clients=[]; this.projects=[]; this.documents=[]; this.events=[]; this.projectActivity=[];
+    this.projectReads.clear();this.epoch++; this.active=false; this.state='anonymous'; this.role=''; this.clientAgreements=[]; this.clientNotice=''; this.clients=[]; this.projects=[]; this.documents=[]; this.events=[]; this.projectActivity=[];
     this.clientId=''; this.projectId=''; this.tab='acuerdo'; this.comparison=null; this.requestId=''; this.uploadCommand=null; this.message=''; this.loading=false; this.directoryLoading=false;
   }
   attach(notify) {
@@ -129,7 +140,9 @@ export class ConnectedWorkspace {
       const [session,clients]=await Promise.all([this.request('/api/v1/session'),this.request('/api/v1/clients')]);
       if(epoch!==this.epoch) return;
       if(typeof session.user_id!=='string'||!/^[a-zA-Z0-9-]{1,80}$/.test(session.user_id))throw new Error(uiText("No pudimos verificar tu sesión."));
-      this.navigationOwner=session.user_id;
+      if(!['freelancer','client'].includes(session.role))throw new Error(uiText("No pudimos verificar tu sesión."));
+      this.navigationOwner=session.user_id;this.role=session.role;
+      if(this.role==='client'){await this.loadClientAgreements();if(epoch!==this.epoch)return;}
       const nav=restoreNavigation&&!['#ensayos','#reputacion'].includes(this.location.hash)?this.readNavigation():null;
       if(nav){this.clientId=nav.clientId;this.projectId=nav.projectId;this.tab=['gestion','comparar'].includes(nav.tab)?'solicitudes':nav.tab;this.requestId='';this.historyView=nav.historyView;}
       this.directoryLoading=false;
@@ -161,6 +174,12 @@ export class ConnectedWorkspace {
     this.projectsPending.set(clientId,pending);
     try{await pending;}finally{if(this.projectsPending.get(clientId)===pending)this.projectsPending.delete(clientId);}
   }
+  // Fresh document list without the project's loading state, for changes made from a panel.
+  async refreshDocumentList() {
+    const project=this.projectId,epoch=this.epoch;if(!project)return;
+    const documents=await this.request(`/api/v1/projects/${project}/documents`);
+    if(project===this.projectId&&epoch===this.epoch){this.documents=documents;this.notify();}
+  }
   async loadProject() {
     this.stopIngestionPolling();
     this.releaseProjectMap();
@@ -190,7 +209,7 @@ export class ConnectedWorkspace {
       try{
         const groups=await this.request(`/api/v1/projects/${id}/activity/groups`);
         if(!current())return;
-        if(!Array.isArray(groups)||groups.some(g=>!['project','change','refund'].includes(g.group_kind)||typeof g.group_id!=='string'||!Number.isInteger(g.event_count)||g.event_count<1||!Number.isFinite(Date.parse(g.last_at))))throw Error(uiText('history.groupError'));
+        if(!Array.isArray(groups)||groups.some(g=>!['project','change','refund','dispute'].includes(g.group_kind)||typeof g.group_id!=='string'||!Number.isInteger(g.event_count)||g.event_count<1||!Number.isFinite(Date.parse(g.last_at))))throw Error(uiText('history.groupError'));
         this.projectHistoryGroups=groups;this.historyProject=id;this.historyLoaded=true;
         for(const [key,cached] of this.historyGroupData){if(!groups.some(g=>g.group_kind+':'+g.group_id===key&&cached.signature===g.last_at+':'+g.event_count))this.historyGroupData.delete(key);}
         this.projectActivity=[...this.historyGroupData.values()].flatMap(g=>g.events);
@@ -246,7 +265,7 @@ export class ConnectedWorkspace {
   }
   show(title,html) {
     this.releasePreview();
-    this.modal.classList.remove('cloud-history-dialog','cloud-profile-dialog','cloud-auth-dialog','cloud-document-preview','cloud-mail-dialog','cloud-project-setup','cloud-delete-dialog','cloud-project-create-dialog','cloud-change-steps-dialog');
+    this.modal.classList.remove('cloud-history-dialog','cloud-profile-dialog','cloud-auth-dialog','cloud-signup-dialog','cloud-document-preview','cloud-mail-dialog','cloud-project-setup','cloud-delete-dialog','cloud-project-create-dialog','cloud-change-steps-dialog');
     if(this.modal.open) this.modal.close();
     this.modal.innerHTML=`<div class="upload-modal-header"><div><span class="eyebrow">${uiText("TU ESPACIO EN TRATO")}</span><h2 id="cloud-dialog-title">${escape(title)}</h2></div><button type="button" class="close" data-cloud-close aria-label="${uiText("Cerrar")}" title="${uiText("Cerrar")}">${uiIcon('x')}</button></div>${html}<p class="cloud-error" data-cloud-error role="alert"></p>`;
     this.modal.showModal();
@@ -259,8 +278,8 @@ export class ConnectedWorkspace {
       void mountModelPreference(this);
     } else {
       const signup=mode==='signup';
-      this.show(uiText(signup?'landing.signupTitle':'Accede a tu estudio'),`<p class="cloud-auth-intro">${uiText(signup?'auth.signupIntro':'auth.loginIntro')}</p><form data-cloud-form="auth"><label class="field" for="cloud-email">${uiText("Correo")}</label><input class="context-box" id="cloud-email" name="email" type="email" autocomplete="username" required><label class="field" for="cloud-password">${uiText("Contraseña")}</label><input class="context-box" id="cloud-password" name="password" type="password" minlength="8" autocomplete="${signup?'new-password':'current-password'}" required><div class="dialog-actions"><button type="submit" class="button" value="${signup?'signup':'login'}">${uiText(signup?'Crear cuenta':'Iniciar sesión')}</button></div></form><p class="cloud-auth-switch">${uiText(signup?'auth.hasAccount':'auth.noAccount')} <button type="button" data-cloud-auth-mode="${signup?'login':'signup'}">${uiText(signup?'Iniciar sesión':'Crear cuenta')}</button></p>`);
-      this.modal.classList.add('cloud-auth-dialog');
+      this.show(uiText(signup?'landing.signupTitle':'Accede a tu estudio'),`<p class="cloud-auth-intro">${uiText(signup?'auth.signupIntro':'auth.loginIntro')}</p><form data-cloud-form="auth">${signup?`<fieldset class="cloud-role-choice"><legend class="field">${uiText('auth.roleLegend')}</legend><div class="cloud-role-cards">${['freelancer','client'].map((role,index)=>`<label class="cloud-role-option"><input type="radio" name="role" value="${role}" required><span class="cloud-role-icon" aria-hidden="true">${uiIcon(role==='freelancer'?'folder-open':'user-round')}</span><span class="cloud-role-text"><strong>${uiText(`auth.role.${role}`)}</strong><small>${uiText(`auth.role.${role}Hint`)}</small></span></label>`).join('')}</div><p class="cloud-role-hint">${uiText('auth.roleFixed')}</p></fieldset>`:''}<label class="field" for="cloud-email">${uiText("Correo")}</label><input class="context-box" id="cloud-email" name="email" type="email" autocomplete="username" required><label class="field" for="cloud-password">${uiText("Contraseña")}</label><input class="context-box" id="cloud-password" name="password" type="password" minlength="8" autocomplete="${signup?'new-password':'current-password'}" required><div class="dialog-actions"><button type="submit" class="button" value="${signup?'signup':'login'}">${uiText(signup?'Crear cuenta':'Iniciar sesión')}</button></div></form><p class="cloud-auth-switch">${uiText(signup?'auth.hasAccount':'auth.noAccount')} <button type="button" data-cloud-auth-mode="${signup?'login':'signup'}">${uiText(signup?'Iniciar sesión':'Crear cuenta')}</button></p>`);
+      this.modal.classList.add('cloud-auth-dialog');if(signup)this.modal.classList.add('cloud-signup-dialog');
     }
   }
   async submit(event) {
@@ -269,13 +288,35 @@ export class ConnectedWorkspace {
     await this.run(async()=>{
       if(kind==='auth') {
         const accessStatus=this.modal.querySelector('[data-cloud-error]');accessStatus.classList.remove('cloud-auth-confirmation');accessStatus.setAttribute('role','alert');
-        await this.connect();
+        // Visible progress from the click until the workspace opens; a failure brings the form back with its error.
+        const submitButton=form.querySelector('button[type="submit"]'),submitLabel=submitButton?.innerHTML;
+        const restoreLabel=()=>{if(submitButton)submitButton.innerHTML=submitLabel;};
+        if(submitButton)submitButton.textContent=uiText('auth.connecting');
         let ready=true;
-        if(mode==='signup') ready=await this.session.signup(values.get('email').trim(),values.get('password'),this.base);
-        else await this.session.login(values.get('email').trim(),values.get('password'));
+        try{
+          await this.connect();
+          if(mode==='signup') ready=await this.session.signup(values.get('email').trim(),values.get('password'),this.base,values.get('role'));
+          else await this.session.login(values.get('email').trim(),values.get('password'));
+        }catch(error){restoreLabel();throw error;}
         form.querySelector('[name="password"]').value='';
-        if(!ready) {const status=this.modal.querySelector('[data-cloud-error]');status.textContent=uiText('landing.confirmEmail');status.classList.add('cloud-auth-confirmation');status.setAttribute('role','status');return;}
-        await this.load(); this.modal.close(); this.location.hash='clientes';
+        if(!ready) {
+          // The confirmation link opens Trato in a new tab, so this one can be closed.
+          const email=values.get('email').trim();
+          this.modal.querySelector('h2')?.replaceChildren(uiText('auth.checkEmailTitle'));
+          for(const node of this.modal.querySelectorAll('.cloud-auth-intro,form[data-cloud-form="auth"],.cloud-auth-switch,[data-cloud-error]'))node.remove();
+          const panel=this.document.createElement('section');panel.className='cloud-auth-sent';panel.setAttribute('role','status');
+          panel.innerHTML=`<span class="cloud-auth-sent-icon" aria-hidden="true">${uiIcon('mail')}</span><p>${uiText('auth.checkEmailCopy',{email:escape(email)})}</p><p class="cloud-auth-sent-close">${uiText('auth.checkEmailClose')}</p><p class="cloud-auth-sent-tip">${uiText('auth.checkEmailSpam')}</p><div class="dialog-actions"><button type="button" class="button" data-cloud-close-sent>${uiText('auth.checkEmailDone')}</button></div>`;
+          panel.querySelector('[data-cloud-close-sent]').addEventListener('click',()=>this.modal.close());
+          this.modal.append(panel);return;
+        }
+        const hidden=[...this.modal.querySelectorAll('.cloud-auth-intro,form[data-cloud-form="auth"],.cloud-auth-switch')];
+        const opening=this.document.createElement('div');opening.className='cloud-auth-opening';opening.setAttribute('role','status');
+        opening.innerHTML=renderAIActivity({label:uiText('auth.opening'),compact:true});
+        for(const node of hidden)node.hidden=true;
+        this.modal.append(opening);
+        try{await this.load();}
+        catch(error){opening.remove();for(const node of hidden)node.hidden=false;restoreLabel();throw error;}
+        this.modal.close(); this.location.hash='clientes';
       } else if(kind==='logout') {
         this.epoch++; this.clearNavigation(); await this.session.logout(); this.reset(); this.modal.close(); this.notify();
       } else if(kind==='client') {
@@ -321,7 +362,7 @@ export class ConnectedWorkspace {
           catch(error){console.warn('[TeTrato] plan placement failed',{request:saved.document.id,sent:placementBody,status:error.status,code:error.code});placementError=error;}
           if(epoch!==this.epoch || id!==this.projectId) return;
         }
-        this.uploadCommand=null; this.comparison=null; this.tab=this.planUploadProject===id?'plan':metadata.kind==='initial_agreement'?'acuerdo':metadata.kind==='reference'?'documentos':'solicitudes';this.planUploadProject=null; this.modal.close(); await this.loadProject();
+        this.uploadCommand=null; this.comparison=null; this.tab=this.planUploadProject===id?'plan':metadata.purpose?.startsWith('refund_')?'devoluciones':metadata.kind==='initial_agreement'?'acuerdo':metadata.kind==='reference'?'documentos':'solicitudes';this.planUploadProject=null; this.modal.close(); await this.loadProject();
         this.message=metadata.kind!=='email_request'?uiText("Archivo guardado."):placementError?uiText('planPlacement.savedWithoutPlace',{reason:placementError.message}):uiText("Pedido guardado."); this.notify();
       }
     });
@@ -334,7 +375,9 @@ export class ConnectedWorkspace {
     if(action==='access') {this.openAccount(); return;}
     if(action==='reconnect') {this.run(()=>this.restore()); return;}
     if(!this.active) return;
-    if(action==='client') this.show(uiText("Nuevo cliente"),`<form data-cloud-form="client"><label class="field">${uiText("Nombre")}<input name="name" class="context-box" required maxlength="200"></label><label class="field">${uiText("Correo de contacto")}<input name="email" class="context-box" type="email" maxlength="254"></label><div class="dialog-actions"><button type="submit" class="button">${uiText("Guardar cliente")}</button></div></form>`);
+    if(action==='client-agreement'){this.clientProposal=id;if(this.location.hash!=='#acuerdos')this.location.hash='acuerdos';else this.notify();return;}
+    if(action==='client-agreement-back'){this.clientProposal='';this.agreementView?.release();this.loadClientAgreements().then(()=>this.notify(),()=>this.notify());return;}
+    if(action==='client') this.show(uiText("Nuevo cliente"),`<form data-cloud-form="client"><label class="field">${uiText("Nombre")}<input name="name" class="context-box" required maxlength="200"></label><label class="field">${uiText("Correo de contacto")}<input name="email" class="context-box" type="email" maxlength="254" required aria-describedby="cloud-client-email-why"></label><details class="cloud-field-why" id="cloud-client-email-why"><summary>${uiIcon('info')}${uiText('client.emailWhy')}</summary><p>${uiText('client.emailWhyDetail')}</p></details><div class="dialog-actions"><button type="submit" class="button">${uiText("Guardar cliente")}</button></div></form>`);
     if(action==='client-delete'){const client=this.clients.find(c=>c.id===id);if(client)this.show(uiText("Eliminar cliente"),`<p>${uiText("Eliminarás a")} <strong>${escape(client.name)}</strong> de tu espacio junto con sus proyectos y documentos.</p><p>${uiText("Conservaremos los registros mediante borrado lógico para permitir su recuperación.")}</p><form data-cloud-form="client-delete" data-client-id="${escape(client.id)}"><div class="dialog-actions"><button class="button cloud-delete-confirm" type="submit">${uiIcon('trash-2')}${uiText("Eliminar cliente")}</button><button class="button secondary" type="button" data-cloud-close>${uiText("Cancelar")}</button></div></form>`);}
     if(action==='project') this.openProject(id);
     if(action==='project-delete'){const project=this.projects.find(item=>item.id===id);if(project){this.show(uiText('projectStart.deleteProject'),`<section class="cloud-delete-content"><p class="cloud-delete-intro">${uiText('projectStart.deleteProjectIntro')}</p><div class="cloud-delete-project-card">${uiIcon('folder-open')}<strong>${escape(project.name)}</strong></div><p class="cloud-delete-explanation">${uiText('projectStart.deleteProjectHelp')}</p><form data-cloud-form="project-delete" data-project-id="${escape(id)}"><div class="dialog-actions"><button type="button" class="button secondary" data-cloud-close>${uiText("Cancelar")}</button><button type="submit" class="button cloud-delete-confirm">${uiText('projectStart.deleteProject')}</button></div></form></section>`);this.modal.classList.add('cloud-delete-dialog');}}
@@ -480,7 +523,7 @@ export class ConnectedWorkspace {
     const project=this.project();
     const metrics=[['documents',this.documents.length],['changes',this.documents.filter(doc=>doc.kind==='email_request').length],['refunds',project?.refund_totals?.[0]?.count]].filter(([,value])=>Number.isSafeInteger(value)&&value>=0);
     const totals=`<div class="cloud-summary-totals">${metrics.map(([label,value])=>`<div><strong>${new Intl.NumberFormat(uiLocale()).format(value)}</strong><span>${uiText(`projectSummary.metric.${label}`)}</span></div>`).join('')}</div>`;
-    const tracking=active?`<section class="cloud-summary-attention" aria-label="${uiText('projectSummary.tracking')}"><span class="cloud-summary-symbol" aria-hidden="true">${uiIcon(refund?'undo-2':'git-compare-arrows')}</span><div><span class="eyebrow">${uiText(refund?'projectSummary.refundPending':'projectSummary.changePending')}</span><h4>${escape(active.title||uiText(refund?'Devoluciones':'Pedido del cliente'))}</h4>${proposal?.business_status?`<p>${escape(uiText(proposal.business_status))}</p>`:''}</div>${refund?`<span class="cloud-refund-soon-badge">${uiText('caseAssistant.comingSoon')}</span>`:`<button type="button" class="button secondary" data-cloud-action="tab" data-cloud-tab="solicitudes">${uiText('projectSummary.continue')}${uiIcon('arrow-right')}</button>`}</section>`:'';
+    const tracking=active?`<section class="cloud-summary-attention" aria-label="${uiText('projectSummary.tracking')}"><span class="cloud-summary-symbol" aria-hidden="true">${uiIcon(refund?'undo-2':'git-compare-arrows')}</span><div><span class="eyebrow">${uiText(refund?'projectSummary.refundPending':'projectSummary.changePending')}</span><h4>${escape(active.title||uiText(refund?'Devoluciones':'Pedido del cliente'))}</h4>${proposal?.business_status?`<p>${escape(uiText(proposal.business_status))}</p>`:''}</div><button type="button" class="button secondary" data-cloud-action="tab" data-cloud-tab="${refund?'devoluciones':'solicitudes'}">${uiText('projectSummary.continue')}${uiIcon('arrow-right')}</button></section>`:'';
     const situation=tracking||`<section class="cloud-summary-current"><span class="eyebrow">${uiText('projectSummary.now')}</span><h4>${uiText(this.requestStatus?.can_register===true?'projectSummary.noOpenRequests':'Estado no disponible')}</h4></section>`;
     panel.innerHTML=`<div class="cloud-project-overview cloud-summary" aria-label="${uiText("Vista general del proyecto")}"><header class="cloud-summary-heading"><h3>${uiText("Resumen del proyecto")}</h3></header><div class="cloud-summary-layout"><section class="workspace-panel cloud-agreement"><div class="cloud-panel-heading"><div><span class="eyebrow">${uiText("ACUERDO INICIAL")}</span><h3>${sources.length?uiText("Lo conversado al inicio"):uiText('projectSummary.noAgreement')}</h3></div></div><p class="cloud-summary-agreement-help">${uiText('projectSummary.agreementHelp')}</p>${sources.length?`<div class="cloud-source-list">${this.sourceRows(sources.slice(0,3))}</div>${sources.length>3?`<button class="text-button cloud-overview-link" data-cloud-action="tab" data-cloud-tab="documentos">${uiText('Ver todas las fuentes')}${uiIcon('arrow-right')}</button>`:''}`:`<button type="button" class="text-button cloud-overview-link" data-cloud-action="tab" data-cloud-tab="plan">${uiText('projectSummary.openPlan')}${uiIcon('arrow-right')}</button>`}</section><aside class="cloud-summary-aside">${situation}<section class="cloud-summary-inventory"><span class="eyebrow">${uiText('projectSummary.inProject')}</span>${totals}</section></aside></div>${this.proposalError?`<p class="cloud-error" role="alert">${uiText('Estado no disponible')}</p>`:''}</div>`;
   }
@@ -500,15 +543,18 @@ export class ConnectedWorkspace {
     // Opening one of them leaves the dialog and shows its details in the project.
     this.modal.querySelector('.cloud-requests-archive')?.addEventListener('click',event=>{if(event.target.closest('[data-cloud-action]'))this.modal.close();},true);
   }
-  renderRefundsSoon(panel) {
-    panel.innerHTML=`<section class="workspace-panel cloud-refunds-soon" aria-label="${uiText("Devoluciones del proyecto")}"><div class="land-narrator"><div class="land-narrator-cloud" role="status"><p>${uiText('refunds.comingSoonTitle')}</p></div><img class="land-story-mascot" src="/assets/mascot/trato-guide.png" alt="" width="190" height="190"></div><button type="button" class="button secondary" data-cloud-action="tab" data-cloud-tab="acuerdo">${uiText("← Volver al proyecto")}</button></section>`;
+  openRequestsArchive() {
+    const archived=this.documents.filter(doc=>doc.kind==='email_request'&&this.requestArchived(doc.id));
+    this.show(uiText('requestsArchive.title'),`<p class="cloud-notice">${uiText('requestsArchive.help')}</p><div class="cloud-requests-archive">${this.requestRows(archived)}</div>`);
+    // Opening one of them leaves the dialog and shows its details in the project.
+    this.modal.querySelector('.cloud-requests-archive')?.addEventListener('click',event=>{if(event.target.closest('[data-cloud-action]'))this.modal.close();},true);
   }
   renderRefunds(panel) {
     panel.innerHTML=`<section class="workspace-panel cloud-refunds" aria-label="${uiText("Devoluciones del proyecto")}"><header class="cloud-refund-heading"><span class="cloud-refund-symbol" aria-hidden="true">${uiIcon('undo-2')}</span><div><span class="eyebrow">${uiText("DEVOLUCIONES")}</span><h3>${uiText("Revisar dinero que ya se pagó")}</h3><p>${uiText("Cuando el cliente pide recuperar todo o parte de un pago, revisa el acuerdo, el trabajo realizado y el importe que corresponde proponer.")}</p></div></header><div class="cloud-refund-context"><strong>${uiText("Una devolución parte de un pago recibido.")}</strong><p>${uiText("Si el cliente pide más trabajo o una nueva fecha, corresponde a Cambios. Si pide dinero de vuelta, corresponde a Devoluciones. Una cancelación puede requerir revisar el cierre antes de decidir si hay dinero que devolver.")}</p></div><div class="cloud-refund-trial"><button type="button" class="button" data-cloud-action="refund-preview">${uiText("Probar flujo de devolución")} ${uiIcon('arrow-right')}</button></div></section>`;
   }
   projectNavigation(tab) {
-    const selected=['solicitudes','comparar','gestion'].includes(tab)?'solicitudes':['plan','devoluciones','documentos','historial','asistente'].includes(tab)?tab:'acuerdo';
-    const sections=[['acuerdo','folder-open',uiText('projectSummary.tab'),uiText("Acuerdo y fuentes iniciales")],['asistente','messages-square',uiText('projectAssistant.nav'),uiText('projectAssistant.navigation')],['plan','wallet',uiText('projectStart.plan'),uiText('projectStart.planNavigation')],['solicitudes','git-compare-arrows',uiText("Cambios"),uiText("Alcance, precio o plazo")],['devoluciones','undo-2',uiText("Devoluciones"),uiText("Dinero de un pago recibido")],['documentos','file-text',uiText("Documentos"),uiText("Archivos por pedido")],['historial','history',uiText("Historial del proyecto"),uiText("Historial y mapa")]];
+    const selected=['solicitudes','comparar','gestion'].includes(tab)?'solicitudes':['plan','devoluciones','disputas','documentos','historial','asistente'].includes(tab)?tab:'acuerdo';
+    const sections=[['acuerdo','folder-open',uiText('projectSummary.tab'),uiText("Acuerdo y fuentes iniciales")],['asistente','messages-square',uiText('projectAssistant.nav'),uiText('projectAssistant.navigation')],['plan','wallet',uiText('projectStart.plan'),uiText('projectStart.planNavigation')],['solicitudes','git-compare-arrows',uiText("Cambios"),uiText("Alcance, precio o plazo")],['devoluciones','undo-2',uiText("Devoluciones"),uiText("Dinero de un pago recibido")],['disputas','shield-check',uiText('disputes.nav'),uiText('disputes.navigation')],['documentos','file-text',uiText("Documentos"),uiText("Archivos por pedido")],['historial','history',uiText("Historial del proyecto"),uiText("Historial y mapa")]];
     return `<nav class="cloud-project-navigation" aria-label="${uiText("Secciones del proyecto")}">${sections.map(([id,icon,title,description])=>`<button type="button" data-cloud-action="tab" data-cloud-tab="${id}" aria-label="${title}: ${description}" ${selected===id?'aria-current="page"':''}>${uiIcon(icon)}<span><strong>${title}</strong><small>${description}</small></span></button>`).join('')}</nav>`;
   }
   async reviewChange(id) {
@@ -566,11 +612,89 @@ export class ConnectedWorkspace {
     const tools=[{icon:'star',title:'home.reputationTitle',description:'home.reputationDescription',action:'home.reputationAction',href:'#reputacion',tag:'home.reputationTag'},{icon:'messages-square',title:'home.practiceTitle',description:'home.practiceDescription',action:'home.practiceAction',href:'#ensayos',tag:'home.practiceTag'}];
     workspace.innerHTML=`<div class="cloud-home without-resume">${intro}${clientSection}<div class="cloud-home-tools">${tools.map(tool=>`<section class="workspace-panel cloud-home-tool"><div class="cloud-home-tool-heading"><span class="cloud-home-tool-icon" aria-hidden="true">${uiIcon(tool.icon)}</span><span class="eyebrow">${uiText(tool.tag)}</span></div><h2>${uiText(tool.title)}</h2><p>${uiText(tool.description)}</p><a href="${tool.href}" class="text-button">${uiText(tool.action)}${uiIcon('arrow-right')}</a></section>`).join('')}</div></div>`;
   }
+  async loadClientAgreements() {
+    // Every sent addendum addressed to this account's verified email, from any freelancer (checked in the database).
+    this.clientNotice='';
+    this.clientAgreements=await this.request('/api/v1/portal/account/agreements');
+    void this.loadClientDisputes();
+  }
+  async loadClientDisputes() {
+    // PayPal answers in seconds: the overview is already on screen and updates when this arrives.
+    const epoch=this.epoch;
+    // Last answer seen in this browser session shows at once; PayPal's answer then replaces it.
+    const key=`${this.session?.key}:client-disputes:${this.navigationOwner}`;
+    this.clientDisputes=null;this.clientDisputesFailed=false;
+    try{const saved=JSON.parse(this.storage.getItem(key));if(saved&&typeof saved==='object'&&!Array.isArray(saved))this.clientDisputes=saved;}catch{}
+    try{
+      const value=await this.request('/api/v1/portal/account/disputes');
+      if(epoch!==this.epoch)return;
+      if(!value||typeof value!=='object'||Array.isArray(value))throw new Error('Invalid disputes');
+      this.clientDisputes=value;
+      try{this.storage.setItem(key,JSON.stringify(value));}catch{}
+    }catch{
+      if(epoch!==this.epoch)return;
+      this.clientDisputesFailed=true;
+    }
+    this.notify();
+  }
+  clientAgreementState(item) {
+    return item.payment_status==='completed'?['paid','clientAccount.state.paid']:item.change_requested&&item.status!=='accepted'?['waiting','clientAccount.state.changesRequested']:item.status==='accepted'?(item.additional_minor>0?['pay','clientAccount.state.toPay']:['done','clientAccount.state.accepted']):['open','clientAccount.state.toReview'];
+  }
+  clientAgreementRow(item,{withProject=true}={}) {
+    const money=item.additional_minor>0?new Intl.NumberFormat(uiLocale(),{style:'currency',currency:item.currency||'USD'}).format(item.additional_minor/100):uiText('portal.noCharge');
+    const inDispute=this.clientDisputes?.[item.proposal_id]&&this.clientDisputes[item.proposal_id].status!=='RESOLVED';
+    // A paid addendum's final state depends on PayPal: nothing definitive is shown until that is known.
+    const checking=item.payment_status==='completed'&&!this.clientDisputes&&!this.clientDisputesFailed;
+    const [kind,label]=inDispute?['dispute','clientAccount.state.inDispute']:checking?['waiting','clientAccount.state.checking']:this.clientAgreementState(item);
+    const title=withProject?escape(item.project_name):uiText('portal.eyebrow',{number:escape(item.revision_no)});
+    const meta=withProject?`${uiText('portal.eyebrow',{number:escape(item.revision_no)})} · ${money}`:money;
+    return `<li><button type="button" class="cloud-client-agreement-row" data-cloud-action="client-agreement" data-cloud-id="${escape(item.proposal_id)}"><span class="cloud-client-agreement-text"><strong>${title}</strong><small>${meta}</small></span><span class="cloud-client-agreement-state ${kind}">${uiText(label)}</span>${uiIcon('arrow-right')}</button></li>`;
+  }
+  renderClientAccount(workspace) {
+    // Overview: a summary and the pending actions first. Projects grouped by freelancer live in #acuerdos.
+    const steps=['open','review','decide'].map((step,index)=>`<li><span class="cloud-client-step-number" aria-hidden="true">${index+1}</span><span><strong>${uiText(`clientAccount.step.${step}`)}</strong><small>${uiText(`clientAccount.step.${step}Hint`)}</small></span></li>`).join('');
+    const timeline=`<section class="workspace-panel cloud-client-steps" aria-label="${uiText('clientAccount.stepsLabel')}"><h3>${uiText('clientAccount.stepsTitle')}</h3><ol>${steps}</ol></section>`;
+    const items=this.clientAgreements||[];
+    if(!items.length){workspace.innerHTML=`<div class="cloud-home cloud-client-account-home"><section class="workspace-panel cloud-home-intro"><img src="/assets/mascot/trato-guide.png" alt="" width="120" height="120"><div><span class="eyebrow">${uiText('clientAccount.eyebrow')}</span><h2>${uiText('clientAccount.emptyTitle')}</h2><p>${uiText('clientAccount.emptyCopy')}</p></div></section>${timeline}</div>`;return;}
+    const count=kind=>items.filter(item=>this.clientAgreementState(item)[0]===kind).length;
+    const disputed=this.clientDisputes?items.filter(item=>this.clientDisputes[item.proposal_id]&&this.clientDisputes[item.proposal_id].status!=='RESOLVED'):[];
+    const tiles=[['open','clientAccount.summary.toReview',count('open')],['pay','clientAccount.summary.toPay',count('pay')],['done','clientAccount.summary.closed',count('paid')+count('done')],['dispute','clientAccount.summary.openDisputes',this.clientDisputes?disputed.length:null]];
+    const pending=items.filter(item=>['open','pay'].includes(this.clientAgreementState(item)[0]));
+    const projects=new Set(items.map(item=>item.project_id)).size,freelancers=new Set(items.map(item=>item.freelancer_email)).size;
+    workspace.innerHTML=`<div class="cloud-home cloud-client-account-home"><section class="workspace-panel cloud-client-summary" aria-label="${uiText('clientAccount.summaryLabel')}"><div class="cloud-client-tiles">${tiles.map(([kind,label,value])=>`<div class="cloud-client-tile ${kind}"><strong>${value===null?(this.clientDisputesFailed?'—':'…'):new Intl.NumberFormat(uiLocale()).format(value)}</strong><span>${uiText(label)}</span></div>`).join('')}</div><p class="cloud-client-summary-foot">${uiText('clientAccount.summaryFoot',{projects,freelancers})} <a href="#acuerdos" class="text-button">${uiText('clientAccount.seeProjects')}${uiIcon('arrow-right')}</a></p>${this.clientDisputesFailed?`<p class="cloud-error" role="alert">${uiText('clientAccount.disputesError')}</p>`:disputed.length?`<div class="cloud-client-agreements cloud-client-summary-disputes"><h3>${uiText('clientAccount.summary.openDisputes')}</h3><ul>${disputed.map(item=>this.clientAgreementRow(item)).join('')}</ul></div>`:''}</section>
+      <section class="workspace-panel cloud-client-agreements"><h3>${uiText('clientAccount.pendingTitle')}</h3>${pending.length?`<ul>${pending.map(item=>this.clientAgreementRow(item)).join('')}</ul>`:`<p class="cloud-client-empty">${uiText('clientAccount.nothingPending')}</p>`}</section></div>`;
+  }
+  renderClientAgreement(workspace) {
+    // Mounted once per agreement: re-rendering the shell must not reload the addendum or close its dialogs.
+    const id=this.clientProposal;
+    if(this.agreementHost?.isConnected&&this.agreementHostId===id&&workspace.contains(this.agreementHost))return;
+    this.agreementView?.release();
+    workspace.innerHTML=`<div class="cloud-breadcrumb"><button class="text-button" data-cloud-action="client-agreement-back">${uiText('portal.backToProjects')}</button></div><div class="portal-embedded" data-agreement-host></div>`;
+    this.agreementHost=workspace.querySelector('[data-agreement-host]');this.agreementHostId=id;
+    const api=(action,body,{binary=false}={})=>this.request(`/api/v1/portal/account/agreements/${encodeURIComponent(id)}/${action}`,this.json(body),binary);
+    const known=this.clientDisputes?.[id];
+    this.agreementView=mountAgreement(this.agreementHost,{api,inDisputeHint:!!known&&known.status!=='RESOLVED'});
+  }
+  renderClientProjects(workspace) {
+    const groups=new Map();
+    for(const item of this.clientAgreements||[]){
+      if(!groups.has(item.freelancer_email))groups.set(item.freelancer_email,new Map());
+      const projects=groups.get(item.freelancer_email);
+      if(!projects.has(item.project_id))projects.set(item.project_id,{name:item.project_name,items:[]});
+      projects.get(item.project_id).items.push(item);
+    }
+    if(!groups.size){workspace.innerHTML=`<section class="workspace-panel cloud-home-intro"><img src="/assets/mascot/trato-guide.png" alt="" width="120" height="120"><div><h2>${uiText('clientAccount.emptyTitle')}</h2><p>${uiText('clientAccount.emptyCopy')}</p></div></section>`;return;}
+    workspace.innerHTML=`<div class="cloud-client-projects">${[...groups].map(([email,projects])=>`<section class="workspace-panel cloud-client-freelancer"><header><span class="cloud-directory-avatar" aria-hidden="true">${escape((email||'').slice(0,2).toUpperCase())}</span><div><span class="eyebrow">${uiText('clientAccount.freelancer')}</span><strong>${escape(email)}</strong></div></header>${[...projects.values()].map(project=>`<details class="cloud-client-project" open><summary><strong>${escape(project.name)}</strong><span>${uiText('clientAccount.agreementsCount',{count:project.items.length})}</span></summary><ul class="cloud-client-agreements-list">${project.items.map(item=>this.clientAgreementRow(item,{withProject:false})).join('')}</ul></details>`).join('')}</section>`).join('')}</div>`;
+  }
   renderWorkspace(workspace) {
     if(this.state==='loading' || this.directoryLoading || this.restoringNavigation){workspace.innerHTML=`<section class="workspace-panel cloud-initial-loading"><h2 class="sr-only">${uiText("Recuperando tu espacio…")}</h2>${this.renderSkeleton('list',this.active?uiText("Actualizando clientes y proyectos…"):uiText("Cargando clientes y proyectos…"))}</section>`;return;}
     if(!this.active) {
       workspace.innerHTML=`<section class="workspace-panel" aria-label="${uiText("Acceso a tu espacio")}"><h2>${this.state==='loading'?uiText("Recuperando tu espacio…"):this.state==='error'?uiText("Volvamos a conectar"):uiText("Tu espacio empieza aquí")}</h2><p role="status">${escape(this.message || (this.state==='loading'?uiText("Estamos recuperando tus clientes y proyectos."):uiText("Inicia sesión para ver tus clientes y continuar con tus proyectos.")))}</p>${this.state==='loading'?'':`<button class="button" data-cloud-action="${this.state==='error'?'reconnect':'access'}">${this.state==='error'?uiText("Volver a intentar"):uiText("Iniciar sesión o crear cuenta")}</button>`}</section>`; return;
     }
+    if(this.role==='client'){this.stopIngestionPolling();if(this.projectMapPanel)this.releaseProjectMap();if(this.location.hash!=='#acuerdos')this.clientProposal='';
+      // Clients rehearse too: TeTrato plays their freelancer (practice-workspace.mjs picks the client situations from cloud.role).
+      if(this.location.hash==='#ensayos'){this.renderPracticeWorkspace(workspace);return;}
+      if(this.clientProposal)this.renderClientAgreement(workspace);else if(this.location.hash==='#acuerdos')this.renderClientProjects(workspace);else this.renderClientAccount(workspace);return;}
     if(this.location.hash==='#inicio'||!this.location.hash){this.stopIngestionPolling();if(this.projectMapPanel)this.releaseProjectMap();this.renderHome(workspace);return;}
     if(this.location.hash==='#reputacion'){this.stopIngestionPolling();if(this.projectMapPanel)this.releaseProjectMap();this.renderReputationWorkspace(workspace);return;}
     if(this.location.hash==='#ensayos'){this.stopIngestionPolling();if(this.projectMapPanel)this.releaseProjectMap();this.renderPracticeWorkspace(workspace);return;}
@@ -593,7 +717,8 @@ export class ConnectedWorkspace {
     else if(tab==='solicitudes') this.renderRequests(panel);
     else if(tab==='documentos') this.renderDocuments(panel);
     else if(tab==='historial') this.renderProjectHistory(panel);
-    else if(tab==='devoluciones') this.renderRefundsSoon(panel);
+    else if(tab==='devoluciones') this.renderRefunds(panel);
+    else if(tab==='disputas') this.renderDisputes(panel);
     else this.renderAgreement(panel);
   }
   releaseProjectMap() {
@@ -627,11 +752,17 @@ export class ConnectedWorkspace {
       case 'initial_source_added':return uiText('history.initialSource',{title:event.title});
       case 'plan_confirmed':return uiText('history.planConfirmed',{count:event.stages,amount:new Intl.NumberFormat(uiLocale(),{style:'currency',currency:event.currency}).format(event.amount_minor/100)});
       case 'delivery_evidence_added':return uiText('history.deliveryEvidence',{number:event.stage_position});
+      case 'dispute_opened':return uiText('history.disputeOpened');
+      case 'client_message':return uiText(event.documents?.length?'history.disputeClientMessageDocs':'history.disputeClientMessage',{count:event.documents?.length||0});
+      case 'freelancer_message':return uiText(event.documents?.length?'history.disputeYourMessageDocs':'history.disputeYourMessage',{count:event.documents?.length||0});
+      case 'paypal_message':return uiText('history.disputePaypalMessage');
+      case 'dispute_status':return uiText(event.outcome==='CANCELED_BY_BUYER'?'history.disputeCanceled':event.status==='RESOLVED'?'history.disputeResolved':event.escalated?'history.disputeEscalated':event.stage&&event.stage!=='INQUIRY'?'history.disputeStage':'history.disputeReview');
       case 'stage_paid':return uiText('history.stagePaid',{number:event.stage_position,amount:new Intl.NumberFormat(uiLocale(),{style:'currency',currency:event.currency}).format(event.amount_minor/100)});
       case 'plan_completed':return uiText('history.planCompleted');
       case 'request_registered':return uiText('history.request');
       case 'adenda_sent':return uiText('history.adenda',{version:event.revision_no});
-      case 'acceptance_recorded':return uiText('history.acceptance',{version:event.revision_no});
+      case 'acceptance_recorded':return uiText(event.source==='client_portal'?'history.portalAcceptance':'history.acceptance',{version:event.revision_no});
+      case 'client_changes_requested':return uiText('history.portalChanges',{version:event.revision_no});
       case 'payment_requested':return uiText('history.paymentRequested');
       case 'payment_completed':return uiText('history.paid',{amount:new Intl.NumberFormat(uiLocale(),{style:'currency',currency:event.currency}).format(event.amount_minor/100)});
       case 'request_closed':return uiText(event.reason==='rejected'?'history.closedRejected':event.reason==='withdrawn'?'history.closedWithdrawn':'history.closed');
@@ -674,7 +805,7 @@ export class ConnectedWorkspace {
     }catch(error){if(current())body.innerHTML=`<p class="cloud-error" role="alert">${uiText('history.groupError')}</p><button type="button" class="text-button" data-cloud-action="history-group-retry">${uiText('history.retryGroup')}</button>`;}
   }
   renderHistoryGroup(group) {
-    const icons={project_created:'folder-open',initial_source_added:'file-text',plan_confirmed:'layout-dashboard',delivery_evidence_added:'file-check',stage_paid:'credit-card',plan_completed:'circle-check',request_registered:'file-text',adenda_sent:'send',acceptance_recorded:'file-text',payment_requested:'mail',payment_completed:'credit-card',request_closed:'x',refund_requested:'undo-2',refund_proposal_sent:'send',refund_feedback_reviewed:'file-text',refund_acceptance_recorded:'file-text',refund_financial_authorized:'credit-card',refund_completed:'credit-card',refund_closed:'check'};
+    const icons={dispute_opened:'flag',client_message:'mail',freelancer_message:'send',paypal_message:'mail',dispute_status:'shield-check',project_created:'folder-open',initial_source_added:'file-text',plan_confirmed:'layout-dashboard',delivery_evidence_added:'file-check',stage_paid:'credit-card',plan_completed:'circle-check',request_registered:'file-text',adenda_sent:'send',acceptance_recorded:'file-text',client_changes_requested:'messages-square',payment_requested:'mail',payment_completed:'credit-card',request_closed:'x',refund_requested:'undo-2',refund_proposal_sent:'send',refund_feedback_reviewed:'file-text',refund_acceptance_recorded:'file-text',refund_financial_authorized:'credit-card',refund_completed:'credit-card',refund_closed:'check'};
     const dayFormat=new Intl.DateTimeFormat(uiLocale(),{dateStyle:'long',timeZone:'America/Lima'});
     const clockFormat=new Intl.DateTimeFormat(uiLocale(),{timeStyle:'short',timeZone:'America/Lima'});
     const valid=value=>value&&Number.isFinite(Date.parse(value));
@@ -691,7 +822,7 @@ export class ConnectedWorkspace {
     const opened=this.historyOpen||new Set();
     const content=[...groups.values()].map(group=>{
       const open=opened.has(group.kind+':'+group.id),cached=this.historyGroupData?.get(group.kind+':'+group.id);
-      return `<details class="cloud-history-request" data-activity-group-kind="${escape(group.kind)}" data-activity-group-id="${escape(group.id)}" ${open?'open':''}><summary><span class="cloud-history-chevron" aria-hidden="true">${uiIcon('chevron-right')}</span><span class="cloud-history-request-title">${escape(group.title)}<small>${uiText(group.kind==='refund'?'history.refundGroup':group.kind==='project'?'history.projectGroup':'history.changeGroup')}${group.plan_placement==='stage'&&Number.isInteger(group.plan_stage_position)?` · ${uiText('planPlacement.stage',{position:group.plan_stage_position})} ${escape(group.plan_stage_title||'')}`:group.plan_placement==='new'?` · ${uiText('planPlacement.newWorkShort')}`:''} · ${group.event_count} ${group.event_count===1?uiText("movimiento"):uiText("movimientos")}</small></span><time datetime="${escape(group.last_at)}">${escape(date(group.last_at))}</time></summary><div class="cloud-history-days" ${open&&cached?'data-history-rendered="true"':''}>${open&&cached?this.renderHistoryGroup(cached):''}</div></details>`;
+      return `<details class="cloud-history-request" data-activity-group-kind="${escape(group.kind)}" data-activity-group-id="${escape(group.id)}" ${open?'open':''}><summary><span class="cloud-history-chevron" aria-hidden="true">${uiIcon('chevron-right')}</span><span class="cloud-history-request-title">${escape(group.title)}<small>${uiText(group.kind==='refund'?'history.refundGroup':group.kind==='project'?'history.projectGroup':group.kind==='dispute'?'history.disputeGroup':'history.changeGroup')}${group.plan_placement==='stage'&&Number.isInteger(group.plan_stage_position)?` · ${uiText('planPlacement.stage',{position:group.plan_stage_position})} ${escape(group.plan_stage_title||'')}`:group.plan_placement==='new'?` · ${uiText('planPlacement.newWorkShort')}`:''} · ${group.event_count} ${group.event_count===1?uiText("movimiento"):uiText("movimientos")}</small></span><time datetime="${escape(group.last_at)}">${escape(date(group.last_at))}</time></summary><div class="cloud-history-days" ${open&&cached?'data-history-rendered="true"':''}>${open&&cached?this.renderHistoryGroup(cached):''}</div></details>`;
     }).join('');
     panel.historyGroups=groups;
     panel.innerHTML=`<div class="cloud-project-activity">${content?`<div class="cloud-history-groups">${content}</div>`:("<p class=\"cloud-notice\">"+uiText('history.empty')+"</p>")}</div>`;
@@ -711,6 +842,8 @@ export class ConnectedWorkspace {
     if(event.kind==='project_created')return this.documents.filter(doc=>doc.kind==='initial_agreement');
     if(['initial_source_added','delivery_evidence_added','stage_paid'].includes(event.kind))return this.documents.filter(doc=>doc.id===event.document_id);
     if(event.kind==='request_registered')return this.documents.filter(doc=>doc.id===event.request_document_id);
+    // Files sent with this dispute message: the link is recorded by Trato within moments of PayPal posting the message.
+    if(event.kind==='freelancer_message'&&event.documents?.length)return this.documents.filter(doc=>(doc.dispute_links||[]).some(link=>link.dispute_id===event.group_id&&link.role==='sent'&&Math.abs(Date.parse(link.created_at)-Date.parse(event.created_at))<300000));
     // A business event is not a document. Only use explicit scoped associations.
     const roles={adenda_sent:['addendum'],acceptance_recorded:['acceptance'],refund_requested:['request'],refund_proposal_sent:['proposal'],refund_feedback_reviewed:['feedback'],refund_acceptance_recorded:['acceptance']};
     if(!roles[event.kind])return [];
@@ -755,8 +888,15 @@ export class ConnectedWorkspace {
     const oldest=(a,b)=>new Date(a.created_at)-new Date(b.created_at)||String(a.id||'').localeCompare(String(b.id||''));
     const newest=(a,b)=>oldest(b,a);
     const requests=new Map(this.documents.filter(doc=>doc.kind==='email_request').map(doc=>[doc.id,{kind:'request',id:doc.id,title:doc.title,created_at:doc.created_at,docs:[{...doc,documentRole:uiText("Pedido del cliente"),documentOrder:0}]}]));
-    const initial=[],stageEvidence=[],other=[],unlinked=[],pendingRefund=[],refundGroups=new Map();
+    const initial=[],stageEvidence=[],other=[],unlinked=[],pendingRefund=[],refundGroups=new Map(),disputeGroups=new Map();
     for(const doc of this.documents){
+      // A document also shown under a dispute keeps its usual group; the link adds a place, it does not move the file.
+      for(const link of doc.dispute_links||[]){
+        if(!disputeGroups.has(link.dispute_id))disputeGroups.set(link.dispute_id,{kind:'dispute',id:link.dispute_id,title:uiText('documentLibrary.disputeGroup',{case:link.dispute_id}),created_at:link.created_at,docs:[]});
+        const group=disputeGroups.get(link.dispute_id),documentRole=uiText(`documentLibrary.disputeRole.${link.role==='sent'?'sent':'uploaded'}`),existing=group.docs.find(item=>item.id===doc.id);
+        if(existing){if(!existing.documentRole.includes(documentRole))existing.documentRole+=` / ${documentRole}`;}
+        else group.docs.push({...doc,documentRole,documentOrder:link.role==='sent'?1:2});
+      }
       if(doc.kind==='email_request')continue;
       if(doc.kind==='initial_agreement'){initial.push(doc);continue;}
       if(doc.kind==='delivery'&&doc.upload_context?.stage_position){stageEvidence.push(doc);continue;}
@@ -769,7 +909,7 @@ export class ConnectedWorkspace {
       }
       if(!doc.refund_links?.length&&['refund_request','refund_evidence'].includes(doc.upload_context?.purpose)){pendingRefund.push(doc);continue;}
       const links=doc.request_links || [];
-      if(!links.length){(doc.kind==='addendum'?unlinked:other).push(doc);continue;}
+      if(!links.length){if(!doc.dispute_links?.length)(doc.kind==='addendum'?unlinked:other).push(doc);continue;}
       for(const link of links){
         if(!requests.has(link.request_document_id))requests.set(link.request_document_id,{kind:'request',id:link.request_document_id,title:uiText("Pedido vinculado · fuente no incluida en esta lista"),docs:[]});
         const group=requests.get(link.request_document_id);
@@ -780,7 +920,7 @@ export class ConnectedWorkspace {
         else group.docs.push({...doc,documentRole,documentVersion:link.revision_no,documentOrder:{addendum:1,feedback:2,response:3,acceptance:3,reference:4}[link.role]??4});
       }
     }
-    const groups=[...requests.values(),...refundGroups.values()];
+    const groups=[...requests.values(),...refundGroups.values(),...disputeGroups.values()];
     groups.sort((a,b)=>oldest({id:a.id,created_at:a.created_at??[...a.docs].sort(oldest)[0]?.created_at},{id:b.id,created_at:b.created_at??[...b.docs].sort(oldest)[0]?.created_at}));
     const sections=initial.length?[{kind:'initial_agreement',title:uiText("Acuerdo inicial"),docs:initial.sort(newest)}]:[];
     if(stageEvidence.length)sections.push({kind:'plan_delivery',title:uiText('planPayment.evidenceGroup'),docs:stageEvidence.sort(newest)});
@@ -813,8 +953,12 @@ export class ConnectedWorkspace {
     this.document.body.classList.toggle('cloud-design',connected);
     this.document.body.classList.toggle('cloud-project-view',connected&&active&&workspaceView&&!['#ensayos','#reputacion'].includes(this.location.hash)&&!!this.project());
     this.document.body.classList.toggle('cloud-client-view',connected&&active&&workspaceView&&!['#ensayos','#reputacion'].includes(this.location.hash)&&!!this.clientId);
-    this.clientButton.hidden=!active || !workspaceView || !!this.clientId || ['#ensayos','#reputacion'].includes(this.location.hash);
-    if(active&&(this.location.hash==='#inicio'||!this.location.hash)){this.$('#page-title').textContent=uiText('home.title');this.$('#page-description').textContent=uiText('home.subtitle');}
+    const clientAccount=active&&this.role==='client';
+    this.document.body.classList.toggle('cloud-client-account',clientAccount);
+    this.clientButton.hidden=clientAccount || !active || !workspaceView || !!this.clientId || ['#ensayos','#reputacion'].includes(this.location.hash);
+    if(clientAccount&&this.location.hash==='#ensayos'){this.$('#page-title').textContent=uiText('practice.title');this.$('#page-description').textContent=uiText('practice.subtitle');}
+    else if(clientAccount){const projectsView=this.location.hash==='#acuerdos';this.$('#page-title').textContent=uiText(projectsView?'Mis proyectos':'clientAccount.title');this.$('#page-description').textContent=uiText(projectsView?'clientAccount.projectsSubtitle':'clientAccount.subtitle');}
+    else if(active&&(this.location.hash==='#inicio'||!this.location.hash)){this.$('#page-title').textContent=uiText('home.title');this.$('#page-description').textContent=uiText('home.subtitle');}
     else if(active&&this.location.hash==='#reputacion'){this.$('#page-title').textContent=uiText('reputation.title');this.$('#page-description').textContent=uiText('reputation.subtitle');}
     else if(active&&this.location.hash==='#ensayos'){this.$('#page-title').textContent=uiText('practice.title');this.$('#page-description').textContent=uiText('practice.subtitle');}
     else if(active && workspaceView) {this.$('#page-title').textContent=this.project()?.name || (this.clientId?this.clients.find(c=>c.id===this.clientId)?.name:uiText("Clientes"));this.$('#page-description').textContent=this.project()?uiText("Tu información inicial y los nuevos pedidos, en el mismo espacio."):this.clientId?uiText("Los proyectos y acuerdos de este cliente."):uiText("Cada cliente tiene sus proyectos. Elige uno para entrar a su espacio de trabajo.");}
@@ -825,7 +969,9 @@ export class ConnectedWorkspace {
       this.$('#page-title').textContent=uiText("Tu espacio en Trato");
       this.$('#page-description').textContent=uiText("Tus clientes, proyectos y acuerdos en un solo lugar.");
     }
-    this.$('.footer span:last-child').textContent=uiText("Tu estudio · Clientes, proyectos y acuerdos");
+    this.$('.footer span:last-child').textContent=clientAccount?uiText('clientAccount.footer'):uiText("Tu estudio · Clientes, proyectos y acuerdos");
+    const eyebrow=this.$('.page-heading .eyebrow');
+    if(eyebrow){this.defaultEyebrow??=eyebrow.textContent;eyebrow.textContent=clientAccount?uiText('clientAccount.pageEyebrow'):this.defaultEyebrow;}
   }
 }
 

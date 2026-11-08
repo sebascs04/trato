@@ -36,7 +36,7 @@ test('workspace restoration logs in a confirmed user before requesting private w
   if(path==='/api/v1/config')return {ok:true,json:async()=>({data:config})};
   if(path==='/auth/v1/user')return {ok:true,json:async()=>user};
   assert.ok(calls.includes('/auth/v1/user'));
-  if(path==='/api/v1/session')return {ok:true,json:async()=>({data:{user_id:user.id}})};
+  if(path==='/api/v1/session')return {ok:true,json:async()=>({data:{user_id:user.id,role:'freelancer'}})};
   if(path==='/api/v1/clients')return {ok:true,json:async()=>({data:[]})};
   throw Error('Unexpected request');
  };

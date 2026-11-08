@@ -46,6 +46,14 @@ def analysis_record(service,repo,owner,job_id,proposal,revision=None):
         if (len(target)!=1 or len(previous)!=1 or target[0]['revision_no']!=previous[0]['revision_no']+1 or
             target[0]['feedback_document_id']!=bound['feedback_document_id'] or target[0]['feedback_notes']!=expected_notes):
             raise ApiError('AI_CONTEXT_INVALID',409)
+    elif bound.get('feedback_portal_request_id'):
+        # Same check for a version prepared from a client portal request.
+        if revision is None or bound.get('proposal_id')!=proposal['id']:raise ApiError('AI_CONTEXT_INVALID',409)
+        target=repo.rows('proposal_revisions',{'select':'revision_no,feedback_portal_request_id,feedback_notes','id':'eq.'+revision['id'],'owner_id':'eq.'+owner})
+        previous=repo.rows('proposal_revisions',{'select':'revision_no','id':'eq.'+bound['revision_id'],'proposal_id':'eq.'+proposal['id'],'owner_id':'eq.'+owner})
+        if (len(target)!=1 or len(previous)!=1 or target[0]['revision_no']!=previous[0]['revision_no']+1 or
+            target[0]['feedback_portal_request_id']!=bound['feedback_portal_request_id'] or target[0]['feedback_notes']!=revision_feedback_notes(bound,result['answer'])):
+            raise ApiError('AI_CONTEXT_INVALID',409)
 
     try:draft=Draft.model_validate(result['proposal'])
     except (ValidationError,KeyError):raise ApiError('AI_INVALID_RESPONSE',502) from None

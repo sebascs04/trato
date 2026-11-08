@@ -25,7 +25,7 @@ for(const lang of ['es','en'])for(const mobile of [false,true])test(`one refund 
   const req=route.request(),path=new URL(req.url()).pathname;paths.push(path);let data;
   expect(req.method()).toBe('GET');
   if(path.endsWith('/config'))data={supabase_url:'https://history.supabase.invalid',publishable_key:'sb_publishable_test'};
-  else if(path.endsWith('/session'))data={user_id:'owner'};
+  else if(path.endsWith('/session'))data={user_id:'owner',role:'freelancer'};
   else if(path.endsWith('/clients'))data=[{id:'client',name:'History Client'}];
   else if(path.endsWith('/projects'))data=[{id:'project',client_id:'client',name:'History Project'}];
   else if(path.endsWith('/activity'))data=milestones;

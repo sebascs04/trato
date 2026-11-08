@@ -1,18 +1,27 @@
 import {uiText,uiLocale} from './i18n.mjs';
 import {icon} from './icons.mjs';
 const esc=value=>String(value??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-const kinds={Plan:[uiText('graph.initialPlan'),'layout-dashboard'],PlanStage:[uiText('graph.planStage'),'file-text'],Project:[uiText("Proyecto"),'layout-dashboard'],Document:[uiText("Documento"),'file-text'],Extraction:[uiText("Texto extraído"),'file-text'],Proposal:[uiText("Propuesta"),'git-compare-arrows'],Revision:[uiText("Adenda"),'pencil'],Review:[uiText("Revisión"),'eye'],Acceptance:[uiText("Aceptación"),'file-text'],Delivery:[uiText("Envío"),'send'],Payment:[uiText("Pago"),'credit-card']};
-const links={HAS_CHANGE_REQUEST:uiText('graph.hasChangeRequest'),HAS_NEW_WORK:uiText('graph.hasNewWork'),HAS_PLAN:uiText('graph.hasPlan'),HAS_STAGE:uiText('graph.hasStage'),DELIVERY_EVIDENCE:uiText('graph.deliveryEvidence'),STAGE_PAYMENT:uiText('graph.stagePayment'),PAYMENT_EVIDENCE:uiText('graph.paymentEvidence'),HAS_INITIAL_AGREEMENT:uiText('graph.hasInitialAgreement'),RECEIVES_REQUEST:uiText('graph.receivesRequest'),HAS_CHANGE_PROPOSAL:uiText('graph.hasChangeProposal'),HAS_DOCUMENT:uiText("Contiene"),HAS_EXTRACTION:uiText("Tiene texto extraído"),HAS_PROPOSAL:uiText("Incluye propuesta"),RESPONDS_TO:uiText("Responde al pedido"),HAS_REVISION:uiText("Tiene adenda"),CURRENT_REVISION:uiText("Tiene como vigente"),SUPPORTED_BY:uiText("Usa como fuente"),HAS_PDF:uiText("Tiene PDF"),HAS_REVIEW:uiText("Tiene revisión"),REVIEWED_PDF:uiText("Revisa"),ACCEPTS_REVISION:uiText("Acepta esta adenda"),EVIDENCED_BY:uiText("Se respalda en"),FOR_REVISION:uiText("Corresponde a"),FOLLOWS_ACCEPTANCE:uiText("Sigue a"),REPLACES_DRAFT:uiText("Reemplaza"),REQUESTED_CHANGES_FROM:uiText("Recoge ajustes de"),BASED_ON_ACCEPTANCE:uiText("Se basa en"),CURRENT_ACCEPTANCE:uiText("Tiene acuerdo vigente")};
-const states={planned:uiText('graph.planActive'),finished:uiText('graph.planCompleted'),draft:uiText("Borrador"),active:uiText("Activo"),closed:uiText("Cerrado"),queued:uiText("Por leer"),ready:uiText("Disponible"),error:uiText("Error"),accepted:uiText("Aceptado"),ready_for_review:uiText("Por revisar"),completed:uiText("Pagado"),created:uiText("Pendiente"),sending:uiText("Enviando"),accepted_by_gmail:uiText("Envío registrado"),failed:uiText("Falló"),delivery_uncertain:uiText("Envío por verificar")};
+const kinds={Dispute:[uiText('graph.dispute'),'messages-square'],ClientChangeRequest:[uiText('graph.clientChangeRequest'),'messages-square'],Refund:[uiText('graph.refund'),'undo-2'],RefundVersion:[uiText('graph.refundProposal'),'file-text'],RefundReceipt:[uiText('graph.refundReceipt'),'credit-card'],Plan:[uiText('graph.initialPlan'),'layout-dashboard'],PlanStage:[uiText('graph.planStage'),'file-text'],Project:[uiText("Proyecto"),'layout-dashboard'],Document:[uiText("Documento"),'file-text'],Extraction:[uiText("Texto extraído"),'file-text'],Proposal:[uiText("Propuesta"),'git-compare-arrows'],Revision:[uiText("Adenda"),'pencil'],Review:[uiText("Revisión"),'eye'],Acceptance:[uiText("Aceptación"),'file-text'],Delivery:[uiText("Envío"),'send'],Payment:[uiText("Pago"),'credit-card']};
+const links={
+ HAS_DISPUTE:uiText('graph.hasDispute'),HAS_CHANGE_REQUEST:uiText('graph.hasChangeRequest'),HAS_NEW_WORK:uiText('graph.hasNewWork'),
+ HAS_REFUND:uiText('graph.hasRefund'),HAS_REFUND_VERSION:uiText('graph.hasRefundVersion'),
+ REFUND_EVIDENCE:uiText('graph.refundEvidence'),REFUND_PDF:uiText('graph.refundPdf'),
+ REFUND_ACCEPTANCE_EVIDENCE:uiText('graph.refundAcceptanceEvidence'),REFUND_FEEDBACK_EVIDENCE:uiText('graph.refundFeedbackEvidence'),
+ REFUND_ORIGINAL_PAYMENT:uiText('graph.refundOriginalPayment'),REFUND_CONFIRMED_RECEIPT:uiText('graph.refundConfirmedReceipt'),
+ REFUND_APPLIES_TO_PAYMENT:uiText('graph.refundAppliesToPayment'),HAS_PLAN:uiText('graph.hasPlan'),HAS_STAGE:uiText('graph.hasStage'),DELIVERY_EVIDENCE:uiText('graph.deliveryEvidence'),STAGE_PAYMENT:uiText('graph.stagePayment'),PAYMENT_EVIDENCE:uiText('graph.paymentEvidence'),HAS_INITIAL_AGREEMENT:uiText('graph.hasInitialAgreement'),RECEIVES_REQUEST:uiText('graph.receivesRequest'),HAS_CHANGE_PROPOSAL:uiText('graph.hasChangeProposal'),HAS_DOCUMENT:uiText("Contiene"),HAS_EXTRACTION:uiText("Tiene texto extraído"),HAS_PROPOSAL:uiText("Incluye propuesta"),RESPONDS_TO:uiText("Responde al pedido"),HAS_REVISION:uiText("Tiene adenda"),CURRENT_REVISION:uiText("Tiene como vigente"),SUPPORTED_BY:uiText("Usa como fuente"),HAS_PDF:uiText("Tiene PDF"),HAS_REVIEW:uiText("Tiene revisión"),REVIEWED_PDF:uiText("Revisa"),ACCEPTS_REVISION:uiText("Acepta esta adenda"),EVIDENCED_BY:uiText("Se respalda en"),FOR_REVISION:uiText("Corresponde a"),FOLLOWS_ACCEPTANCE:uiText("Sigue a"),REPLACES_DRAFT:uiText("Reemplaza"),REQUESTED_CHANGES_FROM:uiText("Recoge ajustes de"),BASED_ON_ACCEPTANCE:uiText("Se basa en"),CURRENT_ACCEPTANCE:uiText("Tiene acuerdo vigente")};
+const states={open:uiText('graph.disputeOpen'),escalated:uiText('graph.disputeEscalated'),resolved:uiText('graph.disputeResolved'),planned:uiText('graph.planActive'),finished:uiText('graph.planCompleted'),draft:uiText("Borrador"),active:uiText("Activo"),closed:uiText("Cerrado"),queued:uiText("Por leer"),ready:uiText("Disponible"),error:uiText("Error"),accepted:uiText("Aceptado"),ready_for_review:uiText("Por revisar"),completed:uiText("Pagado"),created:uiText("Pendiente"),sending:uiText("Enviando"),accepted_by_gmail:uiText("Envío registrado"),failed:uiText("Falló"),delivery_uncertain:uiText("Envío por verificar")};
 const formatDate=value=>value?new Intl.DateTimeFormat(uiLocale(),{dateStyle:'medium',timeStyle:'short',timeZone:'America/Lima'}).format(new Date(value)):'';
-const title=n=>n.title||(n.kind==='Plan'?uiText('graph.initialPlan'):null)||(n.kind==='Revision'?`${uiText("Adenda v")}${n.revision_no}`:n.kind==='Document'?n.title:n.kind==='Payment'?new Intl.NumberFormat(uiLocale(),{style:'currency',currency:n.currency}).format(n.amount_minor/100):kinds[n.kind]?.[0]||uiText("Registro"));
+const refundDocumentLinks=['REFUND_EVIDENCE','REFUND_PDF','REFUND_ACCEPTANCE_EVIDENCE','REFUND_FEEDBACK_EVIDENCE'];
+const scopeKeys={plan:'project_start_plans:',change:'documents:',refund:'refund_settlements:'};
+const caseRoot=n=>['Plan','Refund'].includes(n.kind)||n.kind==='Document'&&n.business_kind==='email_request';
+const title=n=>n.title||(n.kind==='RefundVersion'?uiText('graph.refundVersion',{version:n.revision_no}):null)||(n.kind==='Plan'?uiText('graph.initialPlan'):null)||(n.kind==='Revision'?`${uiText("Adenda v")}${n.revision_no}`:n.kind==='Document'?n.title:['Payment','RefundReceipt'].includes(n.kind)?new Intl.NumberFormat(uiLocale(),{style:'currency',currency:n.currency}).format(n.amount_minor/100):kinds[n.kind]?.[0]||uiText("Registro"));
 // User-facing graph: keep business records, fold verified extraction paths into documents.
 // The persisted Neo4j projection and its audit metadata are never rewritten here.
 export function presentProjectGraph(data){
  const records=new Map(data.nodes.map(node=>[node.entity_key,node]));
  const replaced=new Set(data.edges.filter(e=>e.kind==='REPLACES_DRAFT').map(e=>e.target));
  const referenced=new Set(data.edges.filter(e=>['ACCEPTS_REVISION','FOR_REVISION'].includes(e.kind)).map(e=>e.target));
- const businessKinds=new Set(['Project','Document','Proposal','Revision','Acceptance','Payment','Plan','PlanStage']);
+ const businessKinds=new Set(['Project','Document','Proposal','Revision','Acceptance','Payment','Plan','PlanStage','ClientChangeRequest','Dispute','Refund','RefundVersion','RefundReceipt']);
  const nodes=data.nodes.filter(n=>businessKinds.has(n.kind)&&(!replaced.has(n.entity_key)||referenced.has(n.entity_key)));
  const visible=new Set(nodes.map(n=>n.entity_key)),edges=[];
  const currentEdges=data.edges.filter(e=>e.kind==='CURRENT_REVISION'&&visible.has(e.source)&&visible.has(e.target));
@@ -104,22 +113,25 @@ export function renderProjectGraphReading(){
 
 export function projectGraphMilestone(node){
  const milestones={created:uiText('graph.version.created'),sent:uiText('graph.version.sent'),accepted:uiText('graph.version.accepted'),rejected:uiText('graph.version.rejected')};
+ if(node.kind==='Refund')return uiText(`refund.status.${node.status}`);
+ if(node.kind==='RefundReceipt')return uiText('graph.refundVerified');
+ if(node.kind==='RefundVersion')return node.status==='accepted'?uiText('graph.version.accepted'):'';
  if(node.kind==='PlanStage')return uiText('graph.stageNumber',{number:node.position})+' · '+new Intl.NumberFormat(uiLocale(),{style:'currency',currency:'USD'}).format(Number(node.amount));
  return node.kind==='Revision'?milestones[node.milestone||'created']:(states[node.status]||'');
 }
 
 // Colors identify a request's story, never its payment or acceptance status.
 export function assignProjectGraphCases(graph){
- const requests=graph.nodes.filter(n=>(n.kind==='Document'&&n.business_kind==='email_request'||n.kind==='Plan')).sort((a,b)=>(a.created_at||'').localeCompare(b.created_at||'')||a.entity_key.localeCompare(b.entity_key));
+ const requests=graph.nodes.filter(caseRoot).sort((a,b)=>(a.created_at||'').localeCompare(b.created_at||'')||a.entity_key.localeCompare(b.entity_key));
  const palette=[['#7350b5','#f2edf9'],['#1476a8','#eaf5fc'],['#b15c13','#fff3e8'],['#14806e','#e8f7f3'],['#bd3c6c','#fceef4'],['#5168b5','#eef1fc'],['#7a771a','#f6f5e7'],['#a4472b','#fcf0eb']];
- const cases=requests.map((n,index)=>{const [color,soft]=palette[index]||[`hsl(${(index*137.508)%360} 55% 37%)`,`hsl(${(index*137.508)%360} 60% 96%)`];return {id:n.entity_key,index,title:n.kind==='Plan'?uiText('graph.initialPlan'):n.title||uiText('graph.unnamedRequest',{number:index+1}),color,soft};});
- const memberships=new Map(graph.nodes.map(n=>[n.entity_key,new Set(n.kind==='Plan'||n.kind==='Document'&&n.business_kind==='email_request'?[n.entity_key]:[])]));
+ const cases=requests.map((n,index)=>{const [color,soft]=palette[index]||[`hsl(${(index*137.508)%360} 55% 37%)`,`hsl(${(index*137.508)%360} 60% 96%)`];return {id:n.entity_key,index,title:n.kind==='Plan'?uiText('graph.initialPlan'):n.kind==='Refund'?uiText('graph.refundCase',{number:index+1}):n.title||uiText('graph.unnamedRequest',{number:index+1}),color,soft};});
+ const memberships=new Map(graph.nodes.map(n=>[n.entity_key,new Set(caseRoot(n)?[n.entity_key]:[])]));
  for(let pass=0;pass<graph.nodes.length;pass++){
   let changed=false;
   for(const e of graph.edges){
    let from,to;
    if(['RESPONDS_TO','ACCEPTS_REVISION','FOR_REVISION','FOLLOWS_ACCEPTANCE'].includes(e.kind)){from=e.target;to=e.source;}
-   else if(['HAS_CHANGE_PROPOSAL','HAS_REVISION','HAS_PDF','EVIDENCED_BY','HAS_STAGE','DELIVERY_EVIDENCE','STAGE_PAYMENT','PAYMENT_EVIDENCE'].includes(e.kind)){from=e.source;to=e.target;}
+   else if(['HAS_CHANGE_PROPOSAL','HAS_REVISION','HAS_PDF','EVIDENCED_BY','HAS_STAGE','DELIVERY_EVIDENCE','STAGE_PAYMENT','PAYMENT_EVIDENCE','HAS_REFUND_VERSION','REFUND_ORIGINAL_PAYMENT','REFUND_CONFIRMED_RECEIPT',...refundDocumentLinks].includes(e.kind)){from=e.source;to=e.target;}
    else continue;
    for(const id of memberships.get(from)||[])if(memberships.has(to)&&!memberships.get(to).has(id)){memberships.get(to).add(id);changed=true;}
   }
@@ -142,7 +154,10 @@ export function layoutProjectGraph(nodes,edges){
  for(const n of nodes){
   const id=n.entity_key;if(id===root)continue;
   let parent;
-  if(n.kind==='Document')parent=incoming(id,'HAS_CHANGE_REQUEST')||incoming(id,'HAS_NEW_WORK')||incoming(id,'DELIVERY_EVIDENCE')||incoming(id,'HAS_PDF')||incoming(id,'EVIDENCED_BY')||root;
+  if(n.kind==='Document')parent=incoming(id,'HAS_CHANGE_REQUEST')||incoming(id,'HAS_NEW_WORK')||incoming(id,'DELIVERY_EVIDENCE')||incoming(id,'HAS_PDF')||incoming(id,'EVIDENCED_BY')||refundDocumentLinks.map(kind=>incoming(id,kind)).find(Boolean)||root;
+  else if(n.kind==='Refund')parent=incoming(id,'HAS_REFUND')||root;
+  else if(n.kind==='RefundVersion')parent=incoming(id,'HAS_REFUND_VERSION')||root;
+  else if(n.kind==='RefundReceipt')parent=incoming(id,'REFUND_CONFIRMED_RECEIPT')||root;
   else if(n.kind==='Plan')parent=incoming(id,'HAS_PLAN')||root;
   else if(n.kind==='PlanStage')parent=incoming(id,'HAS_STAGE')||root;
   else if(n.kind==='Proposal')parent=outgoing(id,'RESPONDS_TO')||root;
@@ -150,8 +165,10 @@ export function layoutProjectGraph(nodes,edges){
   else if(n.kind==='Extraction')parent=incoming(id,'HAS_EXTRACTION')||root;
   else if(n.kind==='Review')parent=incoming(id,'HAS_REVIEW')||root;
   else if(n.kind==='Acceptance')parent=outgoing(id,'ACCEPTS_REVISION')||root;
+  else if(n.kind==='ClientChangeRequest')parent=outgoing(id,'ASKS_TO_CHANGE')||root;
+  else if(n.kind==='Dispute')parent=incoming(id,'HAS_DISPUTE')||root;
   else if(n.kind==='Delivery')parent=outgoing(id,'FOR_REVISION')||root;
-  else if(n.kind==='Payment')parent=incoming(id,'STAGE_PAYMENT')||outgoing(id,'FOLLOWS_ACCEPTANCE')||outgoing(id,'FOR_REVISION')||root;
+  else if(n.kind==='Payment')parent=incoming(id,'STAGE_PAYMENT')||outgoing(id,'FOLLOWS_ACCEPTANCE')||outgoing(id,'FOR_REVISION')||incoming(id,'REFUND_ORIGINAL_PAYMENT')||root;
   parents.set(id,byId.has(parent)?parent:root);
  }
  // Cycles in source relationships must never make layout traversal loop.
@@ -257,26 +274,32 @@ export function createProjectGraphReader({projectId,request,isCurrent=()=>true})
   invalidate(){epoch++;},
   async read(option={scope:'all'},expectedGeneration){
    const run=++epoch,scope=option.scope;
-   if(!['all','plan','change'].includes(scope)||scope==='change'&&!/^[a-f0-9-]{36}$/i.test(option.id||''))throw new Error(uiText("Las conexiones recibidas no corresponden al proyecto."));
+   const caseScope=scope==='change'||scope==='refund';
+   if(scope!=='all'&&!Object.hasOwn(scopeKeys,scope)||caseScope&&!/^[a-f0-9-]{36}$/i.test(option.id||''))throw new Error(uiText("Las conexiones recibidas no corresponden al proyecto."));
    const base=`/api/v1/projects/${encodeURIComponent(projectId)}/graph`;
-   const url=base+(scope==='plan'?'?scope=plan':scope==='change'?'?scope=change&request_id='+encodeURIComponent(option.id):'');
+   const url=base+(scope==='all'?'':'?scope='+scope+(caseScope?'&request_id='+encodeURIComponent(option.id):''));
    try{
     const value=await request(url);
     if(run!==epoch||!isCurrent())return null;
     const root=value?.nodes?.find(n=>n.kind==='Project'&&n.source_id===projectId),ids=new Set((value?.nodes||[]).map(n=>n.entity_key));
     if(!root||!Array.isArray(value.edges)||!Array.isArray(value.scopes)||!Number.isInteger(value.generation)
      ||expectedGeneration!==undefined&&value.generation!==expectedGeneration
-     ||value.scope?.kind!==scope||(value.scope.request_id??null)!==(scope==='change'?option.id:null)
+     ||value.scope?.kind!==scope||(value.scope.request_id??null)!==(caseScope?option.id:null)
      ||value.nodes.some(n=>n.project_id!==projectId||n.owner_id!==root.owner_id||n.generation!==value.generation)
      ||value.edges.some(e=>!ids.has(e.source)||!ids.has(e.target)||e.owner_id!==root.owner_id||e.project_id!==projectId)
-     ||value.scopes.some(o=>!o||!['plan','change'].includes(o.scope)||typeof o.title!=='string'||typeof o.id!=='string'
-       ||o.key!==(o.scope==='plan'?'project_start_plans:':'documents:')+o.id||o.scope==='plan'&&o.id!==projectId)
+     ||value.scopes.some(o=>!o||!Object.hasOwn(scopeKeys,o.scope)||typeof o.title!=='string'||typeof o.id!=='string'
+       ||o.key!==scopeKeys[o.scope]+o.id||o.scope==='plan'&&o.id!==projectId)
      ||new Set(value.scopes.map(o=>o.key)).size!==value.scopes.length
      ||scope!=='all'&&!value.scopes.some(o=>o.scope===scope&&o.id===(scope==='plan'?projectId:option.id)))throw new Error(uiText("Las conexiones recibidas no corresponden al proyecto."));
     return value;
    }catch(error){if(run!==epoch||!isCurrent())return null;throw error;}
   }
  };
+}
+function graphError(error){
+ const messages={GRAPH_NOT_CONFIGURED:'graph.notConfigured',GRAPH_UNAVAILABLE:'graph.unavailable',GRAPH_STALE:'graph.stale',
+  GRAPH_PROJECTION_VERSION_UNSUPPORTED:'graph.syncFailed'};
+ return messages[error.code]?uiText(messages[error.code]):error.message;
 }
 export async function openProjectGraph({projectId,request,returnFocus,isCurrent=()=>true,container}){
  if(!container&&document.querySelector('.gd-dialog'))return;
@@ -304,14 +327,28 @@ export async function openProjectGraph({projectId,request,returnFocus,isCurrent=
    job=await request(`/api/v1/threads/${encodeURIComponent(job.thread_id||job.id)}`);
   }
   if(!current(run))return;
-  if(job.status!=='ready')throw new Error('No se pudo sincronizar el mapa. '+(job.error_code||''));
+  if(job.status!=='ready')throw Object.assign(new Error(uiText('graph.syncFailed')),{code:job.error_code});
   data=await scopeReader.read();
   if(!current(run)||!data)return;
   scopeOptions=data.scopes;requestFilter='all';
   ({nodes:all,edges,cases}=presentProjectGraph(data));byId=new Map(all.map(n=>[n.entity_key,n]));
   selected=byId.has(selected)?selected:all.find(n=>n.kind==='Project').entity_key;
   render();
- }catch(error){if(current(run))root.innerHTML=header()+`<section class="gd-error" role="alert"><h2>${uiText("No se pudo abrir el mapa")}</h2><p>${esc(error.message)}</p><button class="gd-filter" data-live-refresh>${uiText("Volver a intentar")}</button></section>`;}
+ }catch(error){if(current(run))root.innerHTML=header()+`<section class="gd-error" role="alert"><h2>${uiText("No se pudo abrir el mapa")}</h2><p>${esc(graphError(error))}</p><button class="gd-filter" data-live-refresh>${uiText("Volver a intentar")}</button></section>`;}
+ }
+ async function showScope(value){
+  const mapRun=generation,option=value==='all'?{scope:'all'}:scopeOptions.find(o=>o.key===value);
+  if(!option)return;
+  const expectedGeneration=data.generation;
+  requestFilter=value;scopeBusy=true;scopeError=null;selectedRelation=null;render();
+  try{
+   const scoped=await scopeReader.read(option,expectedGeneration);
+   if(!scoped||!current(mapRun))return;
+   data=scoped;scopeOptions=scoped.scopes;scopeBusy=false;
+   ({nodes:all,edges,cases}=presentProjectGraph(scoped));byId=new Map(all.map(n=>[n.entity_key,n]));
+   selected=byId.has(value)?value:all.find(n=>n.kind==='Project').entity_key;
+   render();
+  }catch(error){if(!current(mapRun))return;scopeBusy=false;scopeError=error;render();}
  }
  async function showScope(value){
   const mapRun=generation,option=value==='all'?{scope:'all'}:scopeOptions.find(o=>o.key===value);
@@ -328,7 +365,7 @@ export async function openProjectGraph({projectId,request,returnFocus,isCurrent=
   }catch(error){if(!current(mapRun))return;scopeBusy=false;scopeError=error;render();}
  }
  function render(){
- const requests=scopeOptions.map((o,index)=>({entity_key:o.key,label:o.scope==='plan'?uiText('graph.initialPlan'):o.title||uiText('graph.unnamedRequest',{number:index+1})}));
+ const requests=scopeOptions.map((o,index)=>({entity_key:o.key,label:o.scope==='plan'?uiText('graph.initialPlan'):o.scope==='refund'?uiText('graph.refundCase',{number:index+1}):o.title||uiText('graph.unnamedRequest',{number:index+1})}));
  const toolbar=`<div class="gd-toolbar"><label>${uiText("Ver")} <select data-live-request aria-label="${uiText("graph.filterStory")}"><option value="all" ${requestFilter==='all'?'selected':''}>${uiText("Todo el proyecto")}</option>${requests.map(n=>`<option value="${esc(n.entity_key)}" ${n.entity_key===requestFilter?'selected':''}>${esc(n.label)}</option>`).join('')}</select></label>`;
  if(scopeBusy||scopeError){
   resizeObserver?.disconnect();viewport=null;scene=null;
@@ -363,7 +400,7 @@ export async function openProjectGraph({projectId,request,returnFocus,isCurrent=
   placeRelationLabels();
   return;
  }
- const description=node.scope_summary||node.deliverables||node.summary||(node.business_kind==='email_request'?uiText("Conversación que respalda el pedido del cliente."):node.kind==='Acceptance'?uiText("Aceptación registrada mediante revisión manual del documento devuelto."):node.kind==='Payment'?(node.status==='completed'?uiText("Pago confirmado por el backend."):uiText("Este pago aún no está confirmado.")):uiText("Registro del proyecto y sus conexiones documentadas."));
+ const description=node.scope_summary||node.deliverables||node.summary||(node.business_kind==='email_request'?uiText("Conversación que respalda el pedido del cliente."):node.kind==='Acceptance'?uiText(node.method==='client_portal'?'graph.portalAcceptance':"Aceptación registrada mediante revisión manual del documento devuelto."):node.kind==='Dispute'?uiText('graph.disputeDetail'):node.kind==='ClientChangeRequest'?uiText('graph.clientChangeRequestDetail'):node.kind==='Payment'?(node.status==='completed'?uiText("Pago confirmado por el backend."):uiText("Este pago aún no está confirmado.")):uiText("Registro del proyecto y sus conexiones documentadas."));
  aside.innerHTML=close+`<span class="gd-eyebrow">${esc(kinds[node.kind]?.[0])}</span><h2>${esc(title(node))}</h2><p class="gd-detail-copy">${esc(description)}</p>${node.kind==='PlanStage'?`<p class="gd-detail-copy"><strong>${uiText('graph.paymentCondition')}</strong><br>${esc(node.payment_condition)}</p>`:''}${related.some(e=>e.evidence_relations?.some(source=>source.kind==='SUPPORTED_BY'))?`<p class="gd-relation-evidence">${uiText('graph.requestSourceNote')}</p>`:''}<div class="gd-connections"><h3>${uiText("Conectado con")}</h3><div class="gd-connection-legend" aria-label="${uiText("graph.directionLegend")}"><span>${icon('arrow-left')}${uiText("graph.incoming")}</span><span>${icon('arrow-right')}${uiText("graph.outgoing")}</span></div>${related.map(e=>{const other=byId.get(e.source===selected?e.target:e.source);return `<button class="gd-connection" data-live-select="${esc(other.entity_key)}">${icon(kinds[other.kind]?.[1]||'file-text')}<span>${esc(title(other))}<small>${e.source===selected?'→':'←'} ${esc(links[e.kind]||e.kind)}</small></span>${icon('chevron-right')}</button>`;}).join('')||("<p class=\"gd-detail-copy\">"+uiText("Sin conexiones registradas.")+"</p>")}</div>${node.kind==='Document'?`<button class="gd-document-action" data-live-document="${esc(node.source_id)}">${icon('file-text')}${uiText("Ver documento fuente")}</button>`:(node.documents||[]).map(doc=>`<button class="gd-document-action" data-live-document="${esc(doc.id)}">${icon('file-text')}${uiText(doc.role==='pdf'?'graph.openVersionPdf':'graph.openAcceptancePdf')}</button>`).join('')}`;
   placeRelationLabels();
  }

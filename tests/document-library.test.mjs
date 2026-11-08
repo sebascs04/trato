@@ -67,3 +67,17 @@ test('request and refund headings follow registration dates even when refund evi
   assert.ok(initial<Math.min(request,refund));assert.equal(refund<request,refundFirst);
  }
 });
+
+test('dispute documents get their own group and an addendum also stays in its change',()=>{
+ const sent={dispute_id:'PP-R-1',role:'sent',created_at:'2026-11-08T12:00:00Z'},uploaded={dispute_id:'PP-R-1',role:'uploaded',created_at:'2026-11-08T11:00:00Z'};
+ const html=render([
+  file('request-a','email_request','01'),
+  file('addendum-a','addendum','02',{request_links:[{request_document_id:'request-a',role:'addendum',revision_no:1}],dispute_links:[sent]}),
+  file('proof','delivery','03',{dispute_links:[uploaded,sent]}),
+ ]);
+ const group=html.slice(html.indexOf('data-document-kind="dispute"'));
+ assert.ok(group.includes('addendum-a')&&group.includes('proof'));
+ const request=html.slice(html.indexOf('data-document-kind="request"'),html.indexOf('data-document-kind="dispute"'));
+ assert.ok(request.includes('addendum-a'),'the addendum stays in its change');
+ assert.ok(!html.includes('data-document-kind="reference"'),'a linked proof does not also land in the general group');
+});

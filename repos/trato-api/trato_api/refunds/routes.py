@@ -5,7 +5,7 @@ import os
 
 from fastapi import APIRouter, Depends, Request
 from fastapi.responses import JSONResponse, Response
-from pydantic import ValidationError, Field, model_validator
+from pydantic import ValidationError, Field, field_validator, model_validator
 from starlette.concurrency import run_in_threadpool
 
 from ..business_routes import read_bytes
@@ -46,7 +46,18 @@ class FeedbackReview(Confirmation):
 class AcceptanceReview(Confirmation):
     evidence: DocumentEvidence | EmailEvidence
 
-class SendInput(Contract):
+class EmailNote(Contract):
+    note: str = Field(default='', max_length=600)
+
+    @field_validator('note')
+    @classmethod
+    def clean_note(cls,value):
+        value=value.replace('\r\n','\n').strip()
+        if any(ord(c)<32 and c!='\n' for c in value):raise ValueError('Invalid note')
+        return value
+
+
+class SendInput(EmailNote):
     digest: Hash
     confirmed: bool = Field(strict=True)
 
@@ -172,10 +183,15 @@ def build_refund_router(settings, require_user, repository_factory=None, workflo
     def preview(settlement_id:str,snapshot_id:str,repo=Depends(repository),owner=Depends(require_user)):
         return reply(workflow.preview(repo,owner,uuid(settlement_id),uuid(snapshot_id)))
 
+    @router.post('/refunds/{settlement_id}/snapshots/{snapshot_id}/email-preview')
+    async def preview_with_note(settlement_id:str,snapshot_id:str,request:Request,repo=Depends(repository),owner=Depends(require_user)):
+        data=await read(request,EmailNote)
+        return reply(await run_in_threadpool(workflow.preview,repo,owner,uuid(settlement_id),uuid(snapshot_id),data['note']))
+
     @router.post('/refunds/{settlement_id}/snapshots/{snapshot_id}/email')
     async def send(settlement_id:str,snapshot_id:str,request:Request,repo=Depends(repository),owner=Depends(require_user)):
         key=operation_key(request);data=await read(request,SendInput)
-        return reply(await run_in_threadpool(workflow.send,repo,owner,uuid(settlement_id),uuid(snapshot_id),data['digest'],key))
+        return reply(await run_in_threadpool(workflow.send,repo,owner,uuid(settlement_id),uuid(snapshot_id),data['digest'],key,**({'note':data['note']} if data['note'] else {})))
 
     @router.post('/refunds/{settlement_id}/snapshots/{snapshot_id}/email/reconcile')
     def reconcile_email(settlement_id:str,snapshot_id:str,request:Request,repo=Depends(repository),owner=Depends(require_user)):

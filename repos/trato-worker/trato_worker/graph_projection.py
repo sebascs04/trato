@@ -6,17 +6,22 @@ from neo4j import GraphDatabase
 from neo4j.exceptions import Neo4jError, DriverError
 from .connected import JobError
 
-GRAPH_PROJECTION_VERSION=2
+GRAPH_PROJECTION_VERSIONS=(2,3)
 
-KINDS={'Project','Document','Extraction','Proposal','Revision','Review','Acceptance','Delivery','Payment','Plan','PlanStage'}
+KINDS={'Project','Document','Extraction','Proposal','Revision','Review','Acceptance','Delivery','Payment','Plan','PlanStage',
+       'Refund','RefundVersion','RefundReceipt'}
+REFUND_DOCUMENT_LINKS={'source':'REFUND_EVIDENCE','pdf':'REFUND_PDF','acceptance':'REFUND_ACCEPTANCE_EVIDENCE','feedback':'REFUND_FEEDBACK_EVIDENCE'}
 RELATIONS={'HAS_DOCUMENT','HAS_EXTRACTION','HAS_PROPOSAL','RESPONDS_TO','HAS_REVISION','CURRENT_REVISION',
  'SUPPORTED_BY','HAS_PDF','HAS_REVIEW','REVIEWED_PDF','ACCEPTS_REVISION','EVIDENCED_BY','FOR_REVISION',
  'FOLLOWS_ACCEPTANCE','REPLACES_DRAFT','REQUESTED_CHANGES_FROM','BASED_ON_ACCEPTANCE','CURRENT_ACCEPTANCE','HAS_PLAN','HAS_STAGE','DELIVERY_EVIDENCE','STAGE_PAYMENT','PAYMENT_EVIDENCE',
- 'HAS_CHANGE_REQUEST','HAS_NEW_WORK'}
+ 'HAS_CHANGE_REQUEST','HAS_NEW_WORK',
+
+ 'HAS_REFUND','HAS_REFUND_VERSION','REFUND_ORIGINAL_PAYMENT','REFUND_CONFIRMED_RECEIPT','REFUND_APPLIES_TO_PAYMENT',*REFUND_DOCUMENT_LINKS.values()}
 
 
 def build_projection(snapshot,context):
-    if type(snapshot.get('projection_version')) is not int or snapshot['projection_version']!=GRAPH_PROJECTION_VERSION:
+    version=snapshot.get('projection_version')
+    if type(version) is not int or version not in GRAPH_PROJECTION_VERSIONS:
         raise JobError('GRAPH_PROJECTION_VERSION_UNSUPPORTED')
     if any(not isinstance(snapshot.get(field),list) for field in ('project_start_plans','project_start_stages','plan_stage_evidence','plan_stage_payments')):
         raise JobError('INVALID_GRAPH_SOURCE')
@@ -39,7 +44,7 @@ def build_projection(snapshot,context):
         if source not in nodes or target not in nodes:raise JobError('GRAPH_SOURCE_MISSING')
         e={'edge_key':source+'|'+kind+'|'+target,'source':source,'target':target,'kind':kind,**props}
         if not any(x['edge_key']==e['edge_key'] for x in edges):edges.append(e)
-    pk=node('projects',project_id,'Project',{'title':project['name'],'status':project['status'],'client_name':project['client_name'],'projection_version':GRAPH_PROJECTION_VERSION})
+    pk=node('projects',project_id,'Project',{'title':project['name'],'status':project['status'],'client_name':project['client_name'],'projection_version':version})
     for row in snapshot['documents']:
         dk=node('documents',row['id'],'Document',row);edge(pk,'HAS_DOCUMENT',dk)
     for row in snapshot['document_extractions']:
@@ -118,6 +123,50 @@ def build_projection(snapshot,context):
         if row['placement']=='stage' and row.get('stage_position') in stage_keys:edge(stage_keys[row['stage_position']],'HAS_CHANGE_REQUEST',request)
         elif row['placement']=='new' and row.get('stage_position') is None:edge(pl,'HAS_NEW_WORK',request)
         else:raise JobError('INVALID_GRAPH_SOURCE')
+    if version==3:
+        fields=('refund_cases','refund_versions','refund_documents','refund_payments','refund_receipts')
+        if any(not isinstance(snapshot.get(field),list) for field in fields):raise JobError('INVALID_GRAPH_SOURCE')
+        for row in snapshot['refund_cases']:
+            refund=node('refund_settlements',row['id'],'Refund',{
+                'summary':row['reason'],'status':row['status'],'created_at':row['created_at'],
+                'amount_minor':row['confirmed_refund_minor'],'currency':'USD',
+            })
+            edge(pk,'HAS_REFUND',refund)
+        versions={}
+        for row in snapshot['refund_versions']:
+            refund=key('refund_settlements',row['settlement_id'])
+            version_key=node('refund_snapshots',row['id'],'RefundVersion',{
+                'revision_no':row['version_no'],'draft_sequence':row['draft_sequence'],'amount_minor':row['amount_minor'],
+                'currency':'USD','created_at':row['created_at'],'is_current_revision':row['is_current_revision'],
+                'status':'accepted' if row.get('accepted_at') else None,
+            })
+            versions[(row['settlement_id'],row['id'])]=version_key
+            edge(refund,'HAS_REFUND_VERSION',version_key)
+        for row in snapshot['refund_documents']:
+            refund=key('refund_settlements',row['settlement_id'])
+            origin=versions[(row['settlement_id'],row['snapshot_id'])] if row['snapshot_id'] else refund
+            edge(origin,REFUND_DOCUMENT_LINKS[row['role']],key('documents',row['document_id']))
+        payment_keys={}
+        staged={r['received_payment_id']:key('project_initial_checkouts',r['id']) for r in payments}
+        for row in snapshot['refund_payments']:
+            payment=staged.get(row['id'])
+            if row['proposal_payment_id']:
+                recorded=key('proposal_payments',row['proposal_payment_id'])
+                if recorded in nodes:payment=recorded
+            if payment is None:
+                payment=node('project_received_payments',row['id'],'Payment',{
+                    'amount_minor':row['amount_minor'],'currency':row['currency'],'status':'completed',
+                    'business_kind':row['origin'],'created_at':row['verified_at'],
+                })
+            payment_keys[(row['settlement_id'],row['id'])]=payment
+            edge(key('refund_settlements',row['settlement_id']),'REFUND_ORIGINAL_PAYMENT',payment)
+        for row in snapshot['refund_receipts']:
+            receipt=node('refund_provider_receipts',row['id'],'RefundReceipt',{
+                'amount_minor':row['amount_minor'],'currency':row['currency'],
+                'status':'completed','created_at':row['confirmed_at'],
+            })
+            edge(key('refund_settlements',row['settlement_id']),'REFUND_CONFIRMED_RECEIPT',receipt)
+            edge(receipt,'REFUND_APPLIES_TO_PAYMENT',payment_keys[(row['settlement_id'],row['payment_id'])])
     return {'nodes':list(nodes.values()),'edges':edges}
 
 

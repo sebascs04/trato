@@ -54,7 +54,7 @@ def refund_capture_id(record):
 
 
 class RefundWebhook:
-    def __init__(self,finance):self.finance=finance
+    def __init__(self,finance,confirmation=None):self.finance,self.confirmation=finance,confirmation
 
     def receive(self,raw,headers):
         event=decode_event(raw);flow=self.finance
@@ -99,14 +99,15 @@ class RefundWebhook:
             # scan checks the order and all known attempt IDs before any attribution.
             recovery.scan(pay['owner_id'],pay,lookup['attempts'],client,hints=[rid])
         else:recovery.scan(pay['owner_id'],pay,lookup['attempts'],client)
+        if self.confirmation:self.confirmation.after_confirmation(pay['owner_id'],payment=pay['id'])
         return True
 
 
-def build_refund_webhook_router(finance):
+def build_refund_webhook_router(finance,confirmation=None):
     router=APIRouter()
     @router.post('/api/v1/refunds/webhooks/paypal')
     async def receive(request:Request):
         raw=await read_bytes(request,256*1024)
-        result=await run_in_threadpool(RefundWebhook(finance).receive,raw,dict(request.headers))
+        result=await run_in_threadpool(RefundWebhook(finance,confirmation).receive,raw,dict(request.headers))
         return JSONResponse({'data':result},headers={'Cache-Control':'no-store'})
     return router

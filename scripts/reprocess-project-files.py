@@ -50,12 +50,10 @@ def main():
     if project['owner_id'] != args.owner:
         raise ApiError('PROJECT_NOT_FOUND', 404)
     gateway = VectorGateway(settings)
-    _, files = gateway.snapshot(repo, args.owner, args.project)
     if args.document:
-        wanted = set(args.document)
-        if len(wanted) != len(args.document) or not wanted.issubset({f['id'] for f in files}):
+        if len(set(args.document)) != len(args.document):
             raise ApiError('DOCUMENT_NOT_FOUND', 404)
-        files = [file for file in files if file['id'] in wanted]
+    _, files = gateway.snapshot(repo, args.owner, args.project, file_ids=args.document)
     jobs = AIJobs()
     model = ModelPreferences().selected(args.owner)
     # Read only this operator's selected project. Retain running and review outcomes.
@@ -89,6 +87,9 @@ def main():
                 action = 'review_required'
             elif any(r['status'] == 'failed' for r in history):
                 action = 'retry_failed' if args.retry_failed else 'failed_requires_explicit_retry'
+            elif any(r['status'] == 'completed' and json.loads(r.get('result', '{}')).get('status')
+                     == 'processed' for r in history):
+                action = 'reindex'
             else:
                 action = 'process'
         row['action'] = action
@@ -99,9 +100,9 @@ def main():
         print(json.dumps({'mode': 'blocked', 'error': 'EXTRACTION_REQUIRED', 'files': plan}))
         return 1
     for row in plan:
-        if args.apply and row['action'] in ('process', 'retry_failed'):
+        if args.apply and row['action'] in ('process', 'retry_failed', 'reindex'):
             result = enqueue_processing(repo, jobs, args.owner, args.project, row['file_id'], model,
-                                        job_id=str(uuid4()) if row['action'] == 'retry_failed' else None)
+                                        job_id=str(uuid4()) if row['action'] != 'process' else None)
             row.update(job_id=result['id'], job_status=result['status'])
         print(json.dumps({'mode': 'enqueue' if args.apply else 'inspect', **row}), flush=True)
     return 0

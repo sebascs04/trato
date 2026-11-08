@@ -31,6 +31,7 @@ from .proposals.routes import build_proposal_router
 from .refunds.routes import build_refund_router
 from .refunds.workflow import RefundWorkflow
 from .refunds.financial import RefundFinance
+from .refunds.confirmation import RefundConfirmation
 from .refunds.webhook import build_refund_webhook_router
 from .refunds.financial_routes import build_refund_financial_router
 from .proposals.workflow import ProposalWorkflow
@@ -174,8 +175,9 @@ def create_app(settings=None, services=None, repository_factory=None, *, gmail_s
     app.include_router(build_proposal_router(settings, require_user, proposal_repository_factory, ProposalWorkflow(settings,gmail_service)))
     app.include_router(build_refund_router(settings, require_user, refund_repository_factory, RefundWorkflow(settings,gmail_service)))
     refund_finance=RefundFinance(settings)
-    app.include_router(build_refund_financial_router(settings,require_user,refund_repository_factory,refund_finance))
-    app.include_router(build_refund_webhook_router(refund_finance))
+    refund_confirmation=RefundConfirmation(settings,gmail_service)
+    app.include_router(build_refund_financial_router(settings,require_user,refund_repository_factory,refund_finance,refund_confirmation))
+    app.include_router(build_refund_webhook_router(refund_finance,refund_confirmation))
 
     @app.exception_handler(ApiError)
     async def error_handler(request, error):

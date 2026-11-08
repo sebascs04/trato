@@ -83,16 +83,16 @@ class GraphScopeQueryTests(unittest.TestCase):
   driver=MagicMock();session=driver.__enter__.return_value.session.return_value.__enter__.return_value
   session.run.return_value.single.return_value={'nodes':[],'edges':[],'scopes':[],'scope_found':found,'synced_at':'2026-11-06'}
   with patch.dict(os.environ,{'NEO4J_URI':'neo4j+s://test.databases.neo4j.io','NEO4J_PASSWORD':'test'}),patch('trato_api.graph_routes.GraphDatabase.driver',return_value=driver):
-   result=GraphReader().read(OWNER,PROJECT,{'generation':17,'content_hash':'b'*64},scope,PROJECT if scope=='change' else None)
+   result=GraphReader().read(OWNER,PROJECT,{'generation':17,'content_hash':'b'*64},scope,PROJECT if scope in ('change','refund') else None)
   return result,session.run.call_args
  def test_static_scopes_have_bounded_paths_and_exact_project_anchor(self):
-  for scope in ('all','plan','change'):
+  for scope in ('all','plan','change','refund'):
    result,call=self.read(scope);query=call.args[0]
    self.assertEqual(query.timeout,15)
    self.assertEqual(call.kwargs['owner'],OWNER);self.assertEqual(call.kwargs['project'],PROJECT)
-   self.assertEqual(call.kwargs['projection_version'],2);self.assertIn('projection_version:$projection_version',query.text)
+   self.assertEqual(call.kwargs['projection_versions'],[2,3]);self.assertIn('p.projection_version IN $projection_versions',query.text)
    self.assertEqual(call.kwargs['generation'],17);self.assertEqual(call.kwargs['hash'],'b'*64)
-   self.assertEqual(result['scope'],{'kind':scope,'request_id':PROJECT if scope=='change' else None})
+   self.assertEqual(result['scope'],{'kind':scope,'request_id':PROJECT if scope in ('change','refund') else None})
    self.assertIn('r.owner_id=p.owner_id AND r.project_id=p.project_id',query.text)
    self.assertIn('a IN chosen AND b IN chosen',query.text)
    if scope=='plan':
@@ -100,6 +100,9 @@ class GraphScopeQueryTests(unittest.TestCase):
    if scope=='change':
     self.assertEqual(call.kwargs['anchor'],'documents:'+PROJECT);self.assertIn('*0..4',query.text)
     self.assertNotIn('[:HAS_DOCUMENT',query.text)
+   if scope=='refund':
+    self.assertEqual(call.kwargs['anchor'],'refund_settlements:'+PROJECT);self.assertIn('*0..2',query.text)
+    self.assertIn('REFUND_PDF',query.text)
  def test_missing_scope_is_404_not_an_entire_project_fallback(self):
   with self.assertRaises(ApiError) as error:self.read('change',False)
   self.assertEqual(error.exception.code,'GRAPH_SCOPE_NOT_FOUND');self.assertEqual(error.exception.status,404)

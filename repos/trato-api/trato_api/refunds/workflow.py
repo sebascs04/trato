@@ -82,8 +82,8 @@ class RefundWorkflow:
             'amount_minor':amount,'merchant_id':client.merchant_id,'notes':data['notes'],
             'evidence':data['evidence'],'operation_key':key})
 
-    def context(self,repo,parent,snapshot):
-        data=repo.snapshot(parent,snapshot)
+    def context(self,repo,parent,snapshot,*,data=None):
+        if data is None:data=repo.snapshot(parent,snapshot)
         if data['settlement']['current_snapshot_id']!=snapshot:raise ApiError('REFUND_REVISION_CONFLICT',409)
         if len(data['artifacts'])!=1 or not data['artifacts'][0]['document_id']:raise ApiError('REFUND_PDF_REQUIRED',409)
         artifact=data['artifacts'][0];document=repo.document(artifact['document_id']);content=repo.download(document)
@@ -102,38 +102,55 @@ class RefundWorkflow:
         preview={'sender':sender,'recipient':item.recipient_email,'subject':str(message['Subject']),
                  'body':message.get_body(preferencelist=('plain',)).get_content(),'document_id':data['artifacts'][0]['document_id'],
                  'filename':item.agreement.filename,'sha256':item.agreement.sha256,'snapshot_id':snapshot}
+        if item.note:preview['note']=item.note
         preview['digest']=sha256(json.dumps(preview,sort_keys=True,ensure_ascii=False).encode()).hexdigest()
         return preview
 
-    def preview(self,repo,owner,parent,snapshot):
-        return self.prepared_preview(*self.context(repo,parent,snapshot),snapshot)
+    def preview(self,repo,owner,parent,snapshot,note=''):
+        data,item,sender=self.context(repo,parent,snapshot)
+        return self.prepared_preview(data,replace(item,note=note),sender,snapshot)
 
-    def send(self,repo,owner,parent,snapshot,digest,key):
-        data,item,sender=self.context(repo,parent,snapshot);preview=self.prepared_preview(data,item,sender,snapshot)
+    def send(self,repo,owner,parent,snapshot,digest,key,note=''):
+        data=repo.snapshot(parent,snapshot)
+        existing=next((m for m in data['deliveries'] if m['operation_key']==key),None)
+        if existing:
+            if not secrets.compare_digest(existing['message_hash'],digest):raise ApiError('EMAIL_PREVIEW_CHANGED',409)
+            return self.recorded_send(repo,parent,existing)
+        data,item,sender=self.context(repo,parent,snapshot,data=data)
+        item=replace(item,note=note)
+        preview=self.prepared_preview(data,item,sender,snapshot)
         if not secrets.compare_digest(preview['digest'],digest):raise ApiError('EMAIL_PREVIEW_CHANGED',409)
         command={'settlement_id':parent,'snapshot_id':snapshot,'operation_key':key,'recipient':preview['recipient'],'sender':sender,'message_hash':digest,'preview':preview}
         claim=self.backend().command(owner,'mail_reserve',command)
-        if not claim['acquired']:
-            if claim['status']=='accepted_by_gmail':return {'settlement':repo.settlement(parent),'delivery':claim}
-            raise ApiError('EMAIL_DELIVERY_UNCERTAIN',409)
+        if not claim['acquired']:return self.recorded_send(repo,parent,claim)
         try:result=self.gmail.send_refund(owner,item,claim['id'],expected_sender=sender)
         except EmailDeliveryError as error:
-            self.backend().command(owner,'mail_finish',{'settlement_id':parent,'snapshot_id':snapshot,'delivery_id':claim['id'],'status':'delivery_uncertain' if error.uncertain else 'failed','error_code':error.code})
-            raise ApiError('EMAIL_DELIVERY_UNCERTAIN' if error.uncertain else error.code,503) from None
+            try:
+                self.backend().command(owner,'mail_finish',{'settlement_id':parent,'snapshot_id':snapshot,'delivery_id':claim['id'],'status':'delivery_uncertain' if error.uncertain else 'failed','error_code':error.code})
+            except ApiError:raise ApiError('EMAIL_DELIVERY_UNCERTAIN',503) from None
+            if error.uncertain:raise ApiError('EMAIL_DELIVERY_UNCERTAIN',503) from None
+            raise ApiError(error.code,409) from None
         try:delivery=self.backend().command(owner,'mail_finish',{'settlement_id':parent,'snapshot_id':snapshot,'delivery_id':claim['id'],**result})
         except ApiError:raise ApiError('EMAIL_DELIVERY_UNCERTAIN',503) from None
         return {'settlement':repo.settlement(parent),'delivery':delivery}
 
+    @staticmethod
+    def recorded_send(repo,parent,delivery):
+        if delivery['status']=='accepted_by_gmail':return {'settlement':repo.settlement(parent),'delivery':delivery}
+        if delivery['status']=='failed':raise ApiError(delivery.get('error_code') or 'GMAIL_SEND_FAILED',409)
+        raise ApiError('EMAIL_DELIVERY_UNCERTAIN',409)
+
     def reconcile_send(self,repo,owner,parent,snapshot,key):
-        data,item,sender=self.context(repo,parent,snapshot)
+        data=repo.snapshot(parent,snapshot)
         delivery=next((m for m in data['deliveries'] if m['operation_key']==key),None)
         if not delivery:raise ApiError('REFUND_DELIVERY_NOT_FOUND',404)
         if delivery['status'] in ('accepted_by_gmail','failed'):
             return {'state':'confirmed','result':{'settlement':repo.settlement(parent),'delivery':delivery}}
+        data,item,sender=self.context(repo,parent,snapshot,data=data)
         if sender.lower()!=delivery['sender'].lower():raise ApiError('GMAIL_SENDER_CHANGED',409)
         message=self.gmail_call('find_refund_sent',owner,delivery['id'])
         if message is None:return {'state':'unconfirmed'}
-        expected=build_settlement_email(delivery['sender'],replace(item,recipient_email=delivery['recipient']),delivery['id'])
+        expected=build_settlement_email(delivery['sender'],replace(item,recipient_email=delivery['recipient'],note=delivery.get('message_preview',{}).get('note','')),delivery['id'])
         address=lambda name:{email.lower() for _,email in getaddresses([self.gmail._header(message,name)])}
         content=self.gmail_call('message_content',message)
         from email.header import decode_header,make_header

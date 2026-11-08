@@ -302,9 +302,34 @@ export function installProjectPlanning(cloud){
   const submit=root.querySelector('[data-plan-form] button[type="submit"]');
   if(submit)submit.disabled=uploading||!wizard.documents.some(doc=>doc.kind==='initial_agreement');
  }
- function renderExistingSetup(){
-  root.innerHTML=`<section class="project-planning"><button type="button" class="text-button" data-plan-action="back">${icon('arrow-left')}${t('backClient')}</button><header class="plan-setup-identity"><strong>${esc(wizard.project.name)}</strong><span>${esc(cloud.clients.find(c=>c.id===wizard.project.client_id)?.name)}</span></header><section class="workspace-panel plan-editor"><header class="plan-heading"><span class="eyebrow">${t('agreement')}</span><h3>${uiText('Guarda lo que han conversado')}</h3></header><form data-plan-form>${sources()}<p class="plan-file-error cloud-error" role="alert" data-plan-error></p><footer class="plan-actions"><small>${t('filesStay')}</small><button class="button" type="submit" ${!wizard.documents.some(doc=>doc.kind==='initial_agreement')||uploading?'disabled':''}>${t(wizard.isNew?(wizard.created?'finishSaving':'createFinal'):'openPreparedProject')}${icon('arrow-right')}</button></footer></form></section></section>`;
+ // Ongoing route: documents (typed by role) → review → create. Roles map to the kinds the backend accepts.
+ const ROLES=[['initial_agreement','roleInitial'],['email_request','roleRequest'],['addendum','roleAddendum'],['delivery','roleDelivery'],['reference','roleReference']];
+ const hasAgreement=()=>wizard.documents.some(doc=>doc.kind==='initial_agreement');
+ const roleLabel=kind=>t(ROLES.find(([value])=>value===kind)?.[1]||'roleReference');
+ const bytes=size=>new Intl.NumberFormat(uiLocale(),{maximumFractionDigits:1}).format(size>=1048576?size/1048576:Math.max(size/1024,0.1))+(size>=1048576?' MB':' KB');
+ function suggestRole(name,docs){
+  const n=name.toLowerCase();
+  if(/acuerdo|agreement|contrato|contract/.test(n))return 'initial_agreement';
+  if(/adenda|addend/.test(n))return 'addendum';
+  if(/entregable|entrega|deliver|conformidad|acknowledg|accept|aceptaci/.test(n))return 'delivery';
+  if(/conversaci|conversation|correo|email|pedido|request/.test(n))return docs.some(d=>d.kind==='initial_agreement')?'email_request':'initial_agreement';
+  return docs.some(d=>d.kind==='initial_agreement')?'reference':'initial_agreement';
  }
+ function documentRow(doc){
+  const local=!!doc.pending_file&&!wizard.created;
+  return `<li class="plan-uploaded-source">${icon('file-text')}<div><strong>${esc(doc.title)}</strong><small>${doc.size?bytes(doc.size)+' · ':''}${esc(doc.pending_file?t('filePrepared'):cloud.sourceStatusLabel(doc))}</small></div>${local?`<select class="context-box plan-role" data-plan-role="${esc(doc.id)}" aria-label="${esc(t('roleFor',{name:doc.title}))}" ${uploading?'disabled':''}>${ROLES.map(([value,key])=>`<option value="${value}" ${doc.kind===value?'selected':''}>${t(key)}</option>`).join('')}</select><button type="button" class="icon-button" data-plan-action="remove-file" data-plan-file="${esc(doc.id)}" aria-label="${esc(t('removeFile',{name:doc.title}))}" title="${esc(t('removeFile',{name:doc.title}))}" ${uploading?'disabled':''}>${icon('trash-2')}</button>`:`<span class="plan-role-static">${esc(roleLabel(doc.kind))}</span>`}</li>`;
+ }
+ function renderExistingSetup(){
+  const step=wizard.ongoingStep===2&&hasAgreement()?2:1,ready=hasAgreement()&&!uploading,errors=wizard.fileErrors||[];
+  const client=cloud.clients.find(c=>c.id===wizard.project.client_id)?.name||'';
+  const steps=['ongoingStepDocs','ongoingStepReview'].map((name,i)=>`<li ${step===i+1?'aria-current="step"':''}><span>${i+1}</span>${t(name)}</li>`).join('');
+  const list=wizard.documents.length?`<p class="plan-docs-count" role="status">${t('docsAdded',{count:wizard.documents.length})}</p><ul class="plan-source-list plan-doc-list">${wizard.documents.map(documentRow).join('')}</ul>`:'';
+  const body=step===1
+   ?`<header class="plan-heading"><div><span class="eyebrow">${t('agreement')}</span><h3 tabindex="-1" data-plan-heading>${t('ongoingDocsTitle')}</h3><p>${t('ongoingDocsIntro')}</p></div></header><form data-plan-form><label class="plan-dropzone" data-plan-dropzone><span class="plan-dropzone-icon">${icon('file-up')}</span><strong data-plan-drop-title>${t('dropTitle')}</strong><span>${t('dropChoose')}</span><small>${t('dropHint')}</small><input type="file" accept=".pdf,application/pdf" multiple data-plan-setup-file ${uploading?'disabled':''}></label>${list}<div class="plan-file-error cloud-error" role="alert" data-plan-error>${errors.map(message=>`<p>${esc(message)}</p>`).join('')}</div><footer class="plan-actions"><small ${hasAgreement()?'':'class="plan-need-agreement"'}>${hasAgreement()?t('filesStay'):t('needAgreement')}</small><button class="button" type="submit" ${ready?'':'disabled'}>${t('continueReview')}${icon('arrow-right')}</button></footer></form>`
+   :`<header class="plan-heading"><div><span class="eyebrow">${t('ongoingStepReview')}</span><h3 tabindex="-1" data-plan-heading>${t('reviewHeading')}</h3><p>${esc(t('reviewSummary',{project:wizard.project.name,client}))}</p></div></header><form data-plan-form>${ROLES.map(([kind,key])=>({kind,key,docs:wizard.documents.filter(doc=>doc.kind===kind)})).filter(group=>group.docs.length).map(group=>`<section class="plan-review-group"><h4>${t(group.key)}</h4><ul class="plan-source-list">${group.docs.map(doc=>`<li class="plan-uploaded-source">${icon('file-text')}<div><strong>${esc(doc.title)}</strong></div></li>`).join('')}</ul></section>`).join('')}<div class="plan-file-error cloud-error" role="alert" data-plan-error>${errors.map(message=>`<p>${esc(message)}</p>`).join('')}</div><footer class="plan-actions"><button type="button" class="text-button" data-plan-action="edit-docs" ${uploading?'disabled':''}>${icon('arrow-left')}${t('editDocs')}</button><button class="button" type="submit" ${uploading?'disabled':''}>${t(wizard.isNew?(wizard.created?'finishSaving':'createFinal'):'openPreparedProject')}${icon('arrow-right')}</button></footer></form>`;
+  root.innerHTML=`<section class="project-planning"><button type="button" class="text-button" data-plan-action="back" ${uploading?'disabled':''}>${icon('arrow-left')}${t(step===2?'back':'backClient')}</button><header class="plan-setup-identity"><strong>${esc(wizard.project.name)}</strong><span>${esc(client)}</span></header><ol class="plan-steps" aria-label="${t('progress')}">${steps}</ol><section class="workspace-panel plan-editor">${body}</section></section>`;
+ }
+ function goOngoingStep(step){wizard.ongoingStep=step;renderExistingSetup();root.querySelector('[data-plan-heading]')?.focus({preventScroll:true});cloud.modal.scrollTop=0;}
  async function finishSetup(){
   if(!wizard||uploading||wizard.committing)return;
   const pending=wizard,oldDraftKey=key(),oldDraft=draft();
@@ -329,7 +354,7 @@ export function installProjectPlanning(cloud){
    }
    for(const item of pending.files){
     if(pending.uploaded.has(item.key))continue;
-    const metadata=new URLSearchParams({filename:item.file.name,title:item.file.name.slice(0,200),kind:'initial_agreement'});
+    const metadata=new URLSearchParams({filename:item.file.name,title:item.file.name.slice(0,200),kind:pending.documents.find(doc=>doc.id===item.key)?.kind||'initial_agreement'});
     await cloud.request(`/api/v1/projects/${pending.project.id}/documents?${metadata}`,{method:'POST',body:item.file,headers:{'Content-Type':'application/pdf','Idempotency-Key':item.key}});
     if(!current())return;
     pending.uploaded.add(item.key);
@@ -366,34 +391,64 @@ export function installProjectPlanning(cloud){
    planAI?.dispose();planAI=null;planReview?.dispose();planReview=null;wizard=null;root=null;currentKey='';uploading=false;requestGeneration++;
   }});
  }
- cloud.document.addEventListener('change',async event=>{
-  const input=event.target;if(!wizard||!input.matches('[data-plan-setup-file]')||!root?.contains(input)||uploading)return;
-  const file=input.files[0];input.value='';if(!file)return;const pending=wizard;
-  if(!/\.pdf$/i.test(file.name)||!file.size||file.size>10485760||(await file.slice(0,5).text())!=='%PDF-'){root.querySelector('[data-plan-error]').textContent=t('pdfError');return;}
-  if(wizard!==pending)return;
-  if(pending.isNew&&!pending.created){
+ // Accepts one or several PDFs (picker or drag and drop). Each file is validated on its own; a bad one never blocks the others.
+ async function addFiles(list){
+  const pending=wizard;if(!pending||uploading)return;
+  const files=[...list];if(!files.length)return;
+  const ongoing=pending.route==='ongoing',errors=[],local=pending.isNew&&!pending.created;
+  for(const file of files){
+   if(!/\.pdf$/i.test(file.name)||!file.size||file.size>10485760||(await file.slice(0,5).text())!=='%PDF-'){errors.push(ongoing?t('fileRejected',{name:file.name}):t('pdfError'));continue;}
+   if(wizard!==pending)return;
    const command=JSON.stringify([file.name,file.size,file.lastModified]);
-   if(!pending.uploadKeys.has(command)){
-    const fileKey=crypto.randomUUID();pending.uploadKeys.set(command,fileKey);
-    pending.files.push({file,key:fileKey});pending.documents.push({id:fileKey,kind:'initial_agreement',title:file.name,original_filename:file.name,pending_file:true});
+   if(local){
+    if(!pending.uploadKeys.has(command)){
+     const fileKey=crypto.randomUUID();pending.uploadKeys.set(command,fileKey);
+     pending.files.push({file,key:fileKey});pending.documents.push({id:fileKey,kind:ongoing?suggestRole(file.name,pending.documents):'initial_agreement',title:file.name,original_filename:file.name,size:file.size,pending_file:true});
+    }
+    continue;
    }
-   render();return;
+   pending.sourceGeneration++;uploading=true;render();
+   if(!pending.uploadKeys.has(command))pending.uploadKeys.set(command,crypto.randomUUID());
+   try{
+    const metadata=new URLSearchParams({filename:file.name,title:file.name.slice(0,200),kind:ongoing?suggestRole(file.name,pending.documents):'initial_agreement'});
+    await cloud.request(`/api/v1/projects/${pending.project.id}/documents?${metadata}`,{method:'POST',body:file,headers:{'Content-Type':'application/pdf','Idempotency-Key':pending.uploadKeys.get(command)}});
+    const documents=await cloud.request(`/api/v1/projects/${pending.project.id}/documents`);
+    if(wizard===pending&&owner()===pending.owner)pending.documents=documents;
+   }catch(issue){errors.push(issue.message);}
+   finally{if(wizard===pending)uploading=false;}
   }
-  pending.sourceGeneration++;uploading=true;render();
-  const command=JSON.stringify([file.name,file.size,file.lastModified]);if(!pending.uploadKeys.has(command))pending.uploadKeys.set(command,crypto.randomUUID());
-  try{
-   const metadata=new URLSearchParams({filename:file.name,title:file.name.slice(0,200),kind:'initial_agreement'});
-   await cloud.request(`/api/v1/projects/${pending.project.id}/documents?${metadata}`,{method:'POST',body:file,headers:{'Content-Type':'application/pdf','Idempotency-Key':pending.uploadKeys.get(command)}});
-   const documents=await cloud.request(`/api/v1/projects/${pending.project.id}/documents`);
-   if(wizard===pending&&owner()===pending.owner)pending.documents=documents;
-  }catch(issue){if(wizard===pending)pending.uploadError=issue.message;}
-  finally{if(wizard===pending){uploading=false;render();if(pending.uploadError){root.querySelector('[data-plan-error]').textContent=pending.uploadError;pending.uploadError='';}}}
+  if(wizard!==pending)return;
+  pending.fileErrors=errors;render();
+  if(!ongoing){const target=root.querySelector('[data-plan-error]');if(target&&errors.length)target.textContent=errors[0];}
+  if(ongoing)root.querySelector(errors.length?'[data-plan-error]':'[data-plan-dropzone]')?.scrollIntoView?.({block:'nearest'});
+ }
+ cloud.document.addEventListener('change',async event=>{
+  const input=event.target;if(!wizard||!root?.contains(input)||uploading)return;
+  if(input.matches('[data-plan-role]')){
+   const doc=wizard.documents.find(item=>item.id===input.dataset.planRole);if(!doc||!doc.pending_file||wizard.created)return;
+   doc.kind=ROLES.some(([value])=>value===input.value)?input.value:doc.kind;wizard.fileErrors=[];renderExistingSetup();root.querySelector(`[data-plan-role="${CSS.escape(doc.id)}"]`)?.focus({preventScroll:true});return;
+  }
+  if(!input.matches('[data-plan-setup-file]'))return;
+  const files=[...input.files];input.value='';await addFiles(files);
+ });
+ // Drag and drop: only PDFs dropped on the zone are read; anything else is rejected per file, never uploaded silently.
+ for(const type of ['dragenter','dragover'])cloud.document.addEventListener(type,event=>{
+  const zone=event.target.closest?.('[data-plan-dropzone]');if(!zone||!wizard||!root?.contains(zone))return;
+  event.preventDefault();if(uploading)return;zone.classList.add('is-dragging');const title=zone.querySelector('[data-plan-drop-title]');if(title)title.textContent=t('dropActive');
+ });
+ cloud.document.addEventListener('dragleave',event=>{
+  const zone=event.target.closest?.('[data-plan-dropzone]');if(!zone||zone.contains(event.relatedTarget))return;
+  zone.classList.remove('is-dragging');const title=zone.querySelector('[data-plan-drop-title]');if(title)title.textContent=t('dropTitle');
+ });
+ cloud.document.addEventListener('drop',event=>{
+  const zone=event.target.closest?.('[data-plan-dropzone]');if(!zone||!wizard||!root?.contains(zone))return;
+  event.preventDefault();zone.classList.remove('is-dragging');void addFiles(event.dataTransfer?.files||[]);
  });
  function validStages(d){return d.stages.every(stage=>stage.title.trim()&&stage.body.trim()&&stage.when.trim()&&Number.isInteger(Number(stage.percent))&&Number(stage.percent)>0&&Number(stage.percent)<=100)&&d.stages.reduce((sum,stage)=>sum+Number(stage.percent),0)===100;}
  cloud.document.addEventListener('input',event=>{if(!visible()||!root?.contains(event.target))return;const el=event.target,d=draft();if(el.dataset.planField){d[el.dataset.planField]=el.value;d.plan_job_id=null;d.analysis=null;}if(el.dataset.planStage!==undefined){d.stages[Number(el.dataset.planStage)][el.dataset.planPart]=el.value;d.review_job_id=null;d.reviewed=null;if(el.dataset.planPart==='percent'){const total=root.querySelector('.plan-percent-total');if(total)total.outerHTML=percentTotal(d);}}});
  cloud.document.addEventListener('submit',async event=>{
   if(!visible()||!root?.contains(event.target))return;
-  if(!event.target.matches('[data-plan-form]'))return;event.preventDefault();if(wizard?.route==='ongoing'){if(wizard.documents.some(doc=>doc.kind==='initial_agreement')&&!uploading)cloud.run(finishSetup);return;}const d=draft();d.error='';if(d.step===2&&d.planView==='edit'&&!validStages(d)){d.error=t('percentError');const invalid=d.stages.findIndex(stage=>!stage.title.trim()||!stage.body.trim()||!stage.when.trim()||!(Number.isInteger(Number(stage.percent))&&Number(stage.percent)>0&&Number(stage.percent)<=100));if(invalid>=0)d.stageIndex=invalid;movePlanView();return;}
+  if(!event.target.matches('[data-plan-form]'))return;event.preventDefault();if(wizard?.route==='ongoing'){if(!hasAgreement()||uploading)return;if(wizard.ongoingStep!==2){goOngoingStep(2);return;}cloud.run(finishSetup);return;}const d=draft();d.error='';if(d.step===2&&d.planView==='edit'&&!validStages(d)){d.error=t('percentError');const invalid=d.stages.findIndex(stage=>!stage.title.trim()||!stage.body.trim()||!stage.when.trim()||!(Number.isInteger(Number(stage.percent))&&Number(stage.percent)>0&&Number(stage.percent)<=100));if(invalid>=0)d.stageIndex=invalid;movePlanView();return;}
   if(d.step===1){const dateInput=root.querySelector('[data-plan-field="date"]');if(dateInput)dateInput.min=projectToday();if(!d.date||d.date<projectToday()){d.error=t('pastDate');render();root.querySelector('[data-plan-field="date"]')?.focus();return;}if(d.plan_job_id&&d.analysis&&d.stages?.length&&d.plan_sources===planSourcesKey()){d.error='';d.step=2;d.planView='rationale';save();movePlanView();return;}try{await generatePlan();}catch{d.error=t('aiFailure');render();}return;}
   if(d.step===2&&d.planView!=='edit'){d.planView='edit';save();movePlanView();return;}
   if(d.step===2&&d.planView==='edit'&&needsPlanReview(d)&&!d.review_job_id){try{await reviewEdits();}catch{d.error=t('aiFailure');render();}return;}
@@ -409,7 +464,9 @@ export function installProjectPlanning(cloud){
    case 'add-stage':{if(d.stages.length>=8)break;d.stages.push({title:'',body:'',when:'',percent:''});d.stageIndex=d.stages.length-1;d.review_job_id=null;d.reviewed=null;save();render();root.querySelector(`[data-plan-stage-index="${d.stageIndex}"]`)?.focus({preventScroll:true});break;}
    case 'remove-stage':{const index=Number(target.dataset.planStageIndex);if(d.stages.length<=1||!Number.isInteger(index)||index<0||index>=d.stages.length)break;d.stages.splice(index,1);d.stageIndex=Math.max(0,index-1);d.review_job_id=null;d.reviewed=null;save();render();root.querySelector(`[data-plan-stage-index="${d.stageIndex}"]`)?.focus({preventScroll:true});break;}
    case 'choose-stage':{const index=Number(target.dataset.planStageIndex);if(Number.isInteger(index)&&index>=0&&index<d.stages.length){d.stageIndex=index;save();render();root.querySelector(`[data-plan-stage-index="${index}"]`)?.focus({preventScroll:true});}break;}
-   case 'back':if(d.step===2&&d.planView==='edit'){d.planView='rationale';save();movePlanView();break;}if(d.step===3){d.step=2;d.planView='edit';save();movePlanView();break;}if(!wizard){cloud.tab='acuerdo';cloud.notify();break;}if(d.step>1){d.step--;save();movePlanView();}else if(wizard)cloud.modal.close();else{cloud.tab='acuerdo';cloud.notify();}break;
+   case 'edit-docs':if(wizard?.route==='ongoing'&&!uploading){wizard.fileErrors=[];goOngoingStep(1);}break;
+   case 'remove-file':{if(!wizard||uploading||wizard.created)break;const id=target.dataset.planFile;wizard.files=wizard.files.filter(item=>item.key!==id);wizard.documents=wizard.documents.filter(doc=>doc.id!==id);for(const [command,value] of wizard.uploadKeys)if(value===id)wizard.uploadKeys.delete(command);wizard.fileErrors=[];if(wizard.route==='ongoing'){renderExistingSetup();root.querySelector('[data-plan-dropzone] input')?.focus({preventScroll:true});}else render();break;}
+   case 'back':if(wizard?.route==='ongoing'){if(uploading)break;if(wizard.ongoingStep===2){wizard.fileErrors=[];goOngoingStep(1);}else cloud.modal.close();break;}if(d.step===2&&d.planView==='edit'){d.planView='rationale';save();movePlanView();break;}if(d.step===3){d.step=2;d.planView='edit';save();movePlanView();break;}if(!wizard){cloud.tab='acuerdo';cloud.notify();break;}if(d.step>1){d.step--;save();movePlanView();}else if(wizard)cloud.modal.close();else{cloud.tab='acuerdo';cloud.notify();}break;
    case 'save':if(save()){const status=root.querySelector('[data-plan-notice]');status.textContent=t('draftSaved');}else render();break;
    case 'upload':if(readingSources||planAI&&['queued','running'].includes(planAI.state.status))break;if(recommendationPanel?.element.open)recommendationPanel.close();if(wizard)root.querySelector('[data-plan-setup-file]').click();else{cloud.planUploadProject=cloud.projectId;cloud.openSource('initial');}break;
    case 'retry-plan':loadSavedPlan();break;

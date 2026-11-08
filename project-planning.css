@@ -172,3 +172,24 @@
 .plan-discard-confirm p{margin:0 0 18px;line-height:1.6;color:var(--muted)}
 .plan-discard-confirm .dialog-actions{justify-content:flex-end;gap:10px}
 .plan-discard-yes{background:#96392f;border-color:#96392f}
+/* Ongoing project setup: typed documents, drag and drop, review step. */
+.plan-editor .plan-dropzone{position:relative;display:flex;flex-direction:column;align-items:center;gap:6px;padding:34px 20px;text-align:center;border:2px dashed var(--line);border-radius:12px;background:var(--surface-soft);cursor:pointer;transition:border-color .15s,background-color .15s}
+.plan-dropzone:hover,.plan-dropzone:focus-within,.plan-dropzone.is-dragging{border-color:var(--purple);background:var(--purple-soft)}
+.plan-dropzone:focus-within{outline:2px solid var(--purple);outline-offset:2px}
+.plan-dropzone>strong{display:block;font-size:15px}.plan-dropzone>span,.plan-dropzone>small{display:block;font-size:12px;color:var(--muted)}
+.plan-dropzone>.plan-dropzone-icon{display:grid;place-items:center;height:44px;width:44px;border-radius:50%;background:var(--surface);color:var(--purple);margin-bottom:4px}
+.plan-dropzone-icon .ui-icon{width:22px;height:22px}
+.plan-dropzone input{position:absolute;inset:0;width:100%;height:100%;opacity:0;cursor:pointer}
+.plan-dropzone input:disabled{cursor:not-allowed}
+.plan-docs-count{margin:4px 0 0;font-size:12px;color:var(--muted)}
+.plan-doc-list{list-style:none;margin:0;padding:0}
+.plan-doc-list .plan-uploaded-source{display:grid;grid-template-columns:auto minmax(0,1fr) auto auto;align-items:center;gap:6px 12px}
+.plan-doc-list .plan-uploaded-source strong,.plan-doc-list .plan-uploaded-source small{display:block}
+.plan-doc-list .plan-role{width:230px;max-width:100%;min-height:36px;padding-block:6px}
+.plan-role-static{font-size:12px;color:var(--muted);grid-column:3 / span 2}
+.plan-uploaded-source .icon-button{min-height:36px;min-width:36px}
+.plan-need-agreement{color:var(--ink)}
+.plan-file-error:empty{display:none}.plan-file-error p{margin:0 0 4px}
+.plan-review-group{display:grid;gap:4px;padding-bottom:10px}.plan-review-group h4{margin:0;font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:.04em}
+.plan-review-group .plan-source-list{list-style:none;margin:0;padding:0}
+@media (max-width:640px){.plan-editor .plan-dropzone{padding:24px 14px}.plan-doc-list .plan-uploaded-source{grid-template-columns:auto minmax(0,1fr) auto}.plan-doc-list .plan-role{grid-column:2;width:100%}.plan-doc-list .plan-uploaded-source .icon-button{grid-column:3;grid-row:2}.plan-role-static{grid-column:2 / span 2}}

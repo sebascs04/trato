@@ -1,6 +1,8 @@
 # IA en cambios, renegociaciones y devoluciones
 
-> Prioridad actual: MVP de agente de cambios únicamente, solicitado el 4 de noviembre. Ver [recorte y plan de dos horas](mvp-agente-cambios.md). Agente de devoluciones: Próximamente, deshabilitado. Las tandas siguientes quedan diferidas.
+> El recorte del 4 de noviembre priorizó el [MVP del agente de cambios](mvp-agente-cambios.md) y dejó el asistente de devoluciones para un lote posterior.
+
+6 de noviembre de 2026. La rama `ia-devoluciones` incorpora TeTrato al recorrido conectado de seis etapas. La [especificación](especificacion-ia-devoluciones.md) recoge el alcance local y las comprobaciones pendientes de la integración.
 
 Fecha: 3 de noviembre de 2026 (America/Lima).
 Base inicial: main da18bc2, que incluye el PR #10. Durante la implementación otro trabajo integró main/PR #11 en el checkout compartido (4574ba4); se conservan esos cambios.

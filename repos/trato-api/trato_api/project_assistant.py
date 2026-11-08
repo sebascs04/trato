@@ -19,6 +19,7 @@ from .vector_contract import digest
 from .assistant_memory import AssistantMemory
 from .plan_context import PLAN_TOOL,plan_source
 from .project_status import STATUS_TOOL,status_source
+from .refund_assistant import REFUND_TOOL, RefundFocus, Guidance, context as refund_context, refund_documents, materialize
 
 MEMORY_TOOL={'name':'search_conversation_history','description':'Retrieves matching messages from the current conversation archive.','when_to_use':'Use when an earlier statement or detail is needed beyond the available conversation context.','parameters':{'type':'object','additionalProperties':False,'required':['query'],'properties':{'query':{'type':'string','minLength':1,'maxLength':4096}}}}
 QUERY={'type':'string','minLength':1,'maxLength':4096}
@@ -45,6 +46,7 @@ class Question(Strict):
  document_ids:list[UUID]|None=Field(default=None,min_length=1,max_length=100)
  change_proposal_job_id:UUID|None=None
  focus_request_id:UUID|None=None
+ refund_focus:RefundFocus|None=None
  
 class MemoryCitation(Strict):
  source_id:str=Field(pattern='^[a-f0-9]{64}$')
@@ -60,9 +62,10 @@ class MemoryAnswer(Strict):
  answer:str=Field(min_length=1,max_length=6000)
  citations:list[MemoryCitation]=Field(max_length=6)
  missing_information:list[str]=Field(max_length=8)
+ refund:Guidance|None=None
 class Call(Strict):
  execution_id:UUID
- tool:Literal['catalog','search_document_summaries','read_document_summary','search_document_text','search_conversation_history','read_project_plan','read_project_status']
+ tool:Literal['catalog','search_document_summaries','read_document_summary','search_document_text','search_conversation_history','read_project_plan','read_project_status','read_refund_status']
  params:dict=Field(default_factory=dict)
 class Query(Strict):
  query:str=Field(min_length=1,max_length=4096)
@@ -99,6 +102,11 @@ class ProjectAssistant:
    from .change_proposal import validate_job_context
    validate_job_context(repo,row['owner'],data)
   return row,data,repo,project
+ def refund_record(self,repo,owner,project,focus):
+  def financial_lookup(name,params):
+   backend=self.server if self.server is not None else ThreadStore(self.settings).repo
+   return backend.rpc(name,params)
+  return refund_context(repo,owner,project,focus,financial_lookup=financial_lookup)
  def catalog_files(self,repo,owner,project):
   result=[]
   for offset in range(0,1001,100):
@@ -116,24 +124,35 @@ class ProjectAssistant:
   return sorted(selected)
  def execute(self,job_id,item):
   row,data,repo,project=self.active_job(job_id,str(item.execution_id));owner=row['owner']
+  refund=data.get('refund_focus')
+  refund_documents_allowed=set(data['refund_document_ids']) if refund else None
+  intake=refund and refund['task']=='intake'
   if item.tool=='catalog':
    if item.params:raise ApiError('AI_TOOL_INVALID',422)
-   documents=self.catalog_files(repo,owner,project)
+   documents=[] if intake else self.catalog_files(repo,owner,project)
+   if refund:documents=[d for d in documents if d['id'] in refund_documents_allowed]
    selected=data.get('source_document_ids')
    if selected is not None:
     if not set(selected).issubset({document['id'] for document in documents}):raise ApiError('DOCUMENT_NOT_FOUND',404)
     documents=[document for document in documents if document['id'] in selected]
-   return {'workflow':'project_assistant','project_id':project['id'],'tools':TOOLS+([MEMORY_TOOL] if data.get('memory') is not None else [])+([PLAN_TOOL,STATUS_TOOL] if data.get('memory') is not None and not data.get('source_document_ids') and not data.get('case_context') else []),'documents':documents,
+   return {'workflow':'project_assistant','project_id':project['id'],'tools':([] if intake else TOOLS)+([REFUND_TOOL] if refund else [])+([MEMORY_TOOL] if data.get('memory') is not None and (not refund or refund['task']=='guide' and not refund.get('conversation_id')) else [])+([PLAN_TOOL,STATUS_TOOL] if data.get('memory') is not None and not data.get('source_document_ids') and not data.get('case_context') and not refund else []),'documents':documents,
     **({'source_scope':{'document_ids':selected,'complete_project':False}} if selected is not None else {}),
     **({'case_context':data['case_context']} if data.get('case_context') else {})}
   if item.tool=='search_conversation_history':
-   if data.get('memory') is None:raise ApiError('AI_TOOL_NOT_ALLOWED',422)
+   if data.get('memory') is None or refund and (refund['task']!='guide' or refund.get('conversation_id')):raise ApiError('AI_TOOL_NOT_ALLOWED',422)
    try:params=Query.model_validate(item.params)
    except ValidationError:raise ApiError('AI_TOOL_INVALID',422) from None
    result=self.memory.call(owner,project['id'],'search',{'query':params.query,'revision':data['memory']['revision']})
    return {'sources':[],'messages':result['messages'],'project_id':project['id']}
   try:
-   if item.tool=='read_project_plan':
+   if intake and item.tool!='read_refund_status':raise ApiError('AI_TOOL_NOT_ALLOWED',422)
+   if refund and item.tool in ('read_project_plan','read_project_status'):raise ApiError('AI_TOOL_NOT_ALLOWED',422)
+   if item.tool=='read_refund_status':
+    if item.params or not refund:raise ApiError('AI_TOOL_NOT_ALLOWED',422)
+    record=data['intake_record'] if intake else self.refund_record(repo,owner,project,refund)[0]
+    if record['generation']!=data['refund_generation']:raise ApiError('REFUND_REVISION_CONFLICT',409)
+    rows=[record]
+   elif item.tool=='read_project_plan':
     if item.params or data.get('memory') is None or data.get('source_document_ids') or data.get('case_context'):raise ApiError('AI_TOOL_NOT_ALLOWED',422)
     record=plan_source(repo,owner,project);rows=[record] if record else []
    elif item.tool=='read_project_status':
@@ -142,6 +161,8 @@ class ProjectAssistant:
    elif item.tool=='read_document_summary':
     params=Document.model_validate(item.params)
     if data.get('source_document_ids') is not None and str(params.document_id) not in data['source_document_ids']:raise ApiError('DOCUMENT_NOT_FOUND',404)
+    if refund and str(params.document_id) not in refund_documents_allowed:
+     raise ApiError('DOCUMENT_NOT_FOUND',404)
     value=source(repo,owner,project,str(params.document_id))
     summary=self.gateway.summary(repo,{'id':str(params.document_id),'generation':value['generation']})
     if summary is None:raise ApiError('FILE_SUMMARY_NOT_READY',409)
@@ -149,14 +170,19 @@ class ProjectAssistant:
        'source_kind':'summary','summary_fingerprint':summary['summary_fingerprint'],'text':summary['summary'],'locator':None}]
    elif item.tool=='search_document_summaries':
     params=Query.model_validate(item.params)
-    rows=self.gateway.search_summaries(repo,owner,project['id'],params.query,5,
-      **({'file_ids':data['source_document_ids']} if data.get('source_document_ids') is not None else {}))['matches']
+    selected=data.get('source_document_ids')
+    if refund:selected=sorted(refund_documents_allowed)
+    rows=[] if selected==[] else self.gateway.search_summaries(repo,owner,project['id'],params.query,5,
+      **({'file_ids':selected} if selected is not None else {}))['matches']
    elif item.tool=='search_document_text':
     params=TextQuery.model_validate(item.params)
     if params.document_ids and len(set(params.document_ids))!=len(params.document_ids):raise ApiError('AI_TOOL_INVALID',422)
     selected=[str(i) for i in params.document_ids] if params.document_ids else data.get('source_document_ids')
     if data.get('source_document_ids') is not None and not set(selected).issubset(data['source_document_ids']):raise ApiError('DOCUMENT_NOT_FOUND',404)
-    result=self.gateway.search(repo,owner,project['id'],params.query,8,selected)
+    if refund:
+     if selected is not None and not set(selected).issubset(refund_documents_allowed):raise ApiError('DOCUMENT_NOT_FOUND',404)
+     if selected is None:selected=sorted(refund_documents_allowed)
+    result={'matches':[]} if selected==[] else self.gateway.search(repo,owner,project['id'],params.query,8,selected)
     rows=[{**r,'source_kind':'original'} for r in result['matches']]
    else:raise ApiError('AI_TOOL_NOT_ALLOWED',422)
   except ValidationError:raise ApiError('AI_TOOL_INVALID',422) from None
@@ -198,12 +224,26 @@ class ProjectAssistant:
   if not isinstance(result,dict) or result.get('kind')!='project_assistant' or result.get('project_id')!=project['id'] or result.get('status') not in ('answered','insufficient_evidence') or not isinstance(result.get('citations'),list):raise ApiError('AI_INVALID_RESPONSE',502)
   if result.get('answer_basis','documents') not in ('documents','conversation'):raise ApiError('AI_INVALID_RESPONSE',502)
   if result['status']=='answered' and result.get('answer_basis','documents')!='conversation' and not result['citations']:raise ApiError('AI_INVALID_CITATION',502)
+  refund=data.get('refund_focus')
+  if bool(refund)!=(result.get('refund') is not None):raise ApiError('AI_INVALID_RESPONSE',502)
+  if refund:
+   if refund['task']=='intake':
+    current=data['intake_record'];allowed=set()
+   else:
+    current,linked=self.refund_record(repo,owner,project,refund)
+    allowed={d['id'] for d in refund_documents(self.catalog_files(repo,owner,project),linked,refund)}
+   if current['generation']!=data['refund_generation']:raise ApiError('REFUND_REVISION_CONFLICT',409)
+   if current['source_id'] not in stored:raise ApiError('AI_INVALID_CITATION',502)
   checked={};canonical=[]
   for citation in result['citations']:
    if not isinstance(citation,dict) or set(citation)!={'source_id','quote'}:raise ApiError('AI_INVALID_CITATION',502)
    record=stored.get(citation['source_id']);quote=citation['quote']
    if record is None or not isinstance(quote,str) or not quote.strip() or quote not in record['text']:raise ApiError('AI_INVALID_CITATION',502)
    file_id=record['file_id']
+   if record['source_kind']=='refund_status':
+    if not refund or current['source_id']!=record['source_id']:raise ApiError('AI_CONTEXT_INVALID',409)
+    canonical.append({k:record[k] for k in ('source_id','file_id','title','source_kind','generation')});continue
+   if refund and file_id not in allowed:raise ApiError('AI_INVALID_CITATION',502)
    if record['source_kind']=='status':
     # Business records can change between the tool call and the answer; cite only the current state.
     current=status_source(repo,owner,project)
@@ -224,7 +264,9 @@ class ProjectAssistant:
   if data.get('action')=='draft_change':
    from .change_proposal import validate_draft_result
    validate_draft_result(data,result,canonical)
-  return {**{k:v for k,v in result.items() if k!='source_scope'},'question':data['question'],'sources':canonical,
+  guidance=materialize(refund,result,canonical,stored,checked,current) if refund else None
+  return {**{k:v for k,v in result.items() if k not in ('source_scope','refund')},'question':data['question'],'sources':canonical,
+   **({'refund':guidance,'refund_focus':refund,'refund_generation':data['refund_generation']} if refund else {}),
    **({'conversation_context':{'document_ids':data.get('source_document_ids'),'change_proposal_job_id':data.get('change_proposal_job_id'),'focus':data.get('focus')}} if data.get('memory') is not None else {}),
     **({'source_scope':{'document_ids':data['source_document_ids'],'complete_project':False}} if data.get('source_document_ids') is not None else {}),
     **({'case_context':data['case_context']} if data.get('case_context') else {})}
@@ -249,22 +291,25 @@ def build_project_assistant_router(settings,require_user,repository_factory=None
  async def question(request:Request,owner=Depends(require_user)):
   try:item=Question.model_validate_json(await read_bytes(request,50000))
   except (ValueError,ValidationError):raise ApiError('AI_INVALID_INPUT',422) from None
-  if not item.question.strip():raise ApiError('AI_INVALID_INPUT',422)
+  if not item.question.strip() or item.refund_focus and (item.focus_request_id or item.change_proposal_job_id or item.document_ids):
+   raise ApiError('AI_INVALID_INPUT',422)
   repo=repository(request);project=await run_in_threadpool(service.scope,repo,owner,str(item.project_id))
   selected=await run_in_threadpool(service.selected_documents,repo,owner,project,item.document_ids)
   focus=await run_in_threadpool(focus_context,repo,owner,project,item.focus_request_id)
   focus_id=focus['request_document_id'] if focus else None
+  refund=item.refund_focus.model_dump(mode='json') if item.refund_focus else None
+  if refund and refund['conversation_id'] is None:refund.pop('conversation_id')
   job_id=uuid(request.headers.get('Idempotency-Key',''))
   saved=await run_in_threadpool(service.memory.call,owner,project['id'],'turn',{'job_id':job_id})
   if saved:
-   if saved['result']['question']!=item.question.strip() or saved['result'].get('output_language')!=item.output_language or saved['result'].get('conversation_context',{}).get('document_ids')!=selected or saved['result'].get('conversation_context',{}).get('change_proposal_job_id')!=(str(item.change_proposal_job_id) if item.change_proposal_job_id else None) or (saved['result'].get('conversation_context',{}).get('focus') or {}).get('request_document_id')!=focus_id:raise ApiError('AI_CONFLICT',409)
+   if saved['result'].get('refund_focus')!=refund or saved['result']['question']!=item.question.strip() or saved['result'].get('output_language')!=item.output_language or saved['result'].get('conversation_context',{}).get('document_ids')!=selected or saved['result'].get('conversation_context',{}).get('change_proposal_job_id')!=(str(item.change_proposal_job_id) if item.change_proposal_job_id else None) or (saved['result'].get('conversation_context',{}).get('focus') or {}).get('request_document_id')!=focus_id:raise ApiError('AI_CONFLICT',409)
    return reply({'id':job_id,'status':'completed','result':saved['result']},202)
   try:
    old=await run_in_threadpool(service.jobs.input,owner,job_id)
   except ApiError as error:
    if error.code!='AI_NOT_FOUND':raise
   else:
-   if old.get('workflow')!='project_assistant' or old.get('project_id')!=project['id'] or old.get('question')!=item.question.strip() or old.get('output_language')!=item.output_language or old.get('source_document_ids')!=selected or old.get('change_proposal_job_id')!=(str(item.change_proposal_job_id) if item.change_proposal_job_id else None) or (old.get('focus') or {}).get('request_document_id')!=focus_id:raise ApiError('AI_CONFLICT',409)
+   if old.get('refund_focus')!=refund or old.get('workflow')!='project_assistant' or old.get('project_id')!=project['id'] or old.get('question')!=item.question.strip() or old.get('output_language')!=item.output_language or old.get('source_document_ids')!=selected or old.get('change_proposal_job_id')!=(str(item.change_proposal_job_id) if item.change_proposal_job_id else None) or (old.get('focus') or {}).get('request_document_id')!=focus_id:raise ApiError('AI_CONFLICT',409)
    existing=await run_in_threadpool(service.jobs.get,owner,job_id)
    if existing['status']=='completed':existing['result']=await run_in_threadpool(service.validate_result,repo,owner,job_id,existing['result'])
    return reply(existing,202)
@@ -279,11 +324,36 @@ def build_project_assistant_router(settings,require_user,repository_factory=None
    data['proposal_discussion']=previous['result']
   if selected is not None:data['source_document_ids']=selected
   if focus:data['focus']=focus
+  if refund:
+   documents=[] if refund['task']=='intake' else await run_in_threadpool(service.catalog_files,repo,owner,project)
+   if refund['task']!='intake' and not set(refund['evidence_ids']).issubset({d['id'] for d in documents}):raise ApiError('DOCUMENT_NOT_FOUND',404)
+   record,linked=await run_in_threadpool(service.refund_record,repo,owner,project,refund)
+   data.update(refund_focus=refund,refund_generation=record['generation'],
+    refund_document_ids=sorted(d['id'] for d in refund_documents(documents,linked,refund)))
+   if refund['task']=='intake':data['intake_record']=record
+   if refund.get('conversation_id') and refund['task'] in ('intake','guide'):
+    page=await run_in_threadpool(service.memory.call,owner,project['id'],'history',{'before':memory['revision']+1})
+    data['refund_history']=[{'question':entry['result']['question'],'answer':entry['result']['answer']}
+      for entry in page['entries'] if (entry['result'].get('refund_focus') or {}).get('conversation_id')==refund['conversation_id']][-8:]
   data['thread']={'type':'thread','schema_version':1,'workflow':'project_assistant','action':'start','thread_id':job_id,
     'event_id':str(uuid5(NAMESPACE_URL,'trato:assistant:'+job_id)),'context':{'owner_id':owner,'project_id':project['id'],'client_id':project['client_id']}}
   job=await run_in_threadpool(service.jobs.enqueue,owner,job_id,data)
   if job['status']=='completed':job['result']=await run_in_threadpool(service.validate_result,repo,owner,job_id,job['result'])
   return reply(job,202)
+ @router.get('/api/v1/projects/{project_id}/assistant/refund-suggestions/{job_id}')
+ def refund_suggestion(project_id:UUID,job_id:UUID,request:Request,owner=Depends(require_user)):
+  repo=repository(request);project=service.scope(repo,owner,str(project_id))
+  saved=service.memory.call(owner,project['id'],'turn',{'job_id':str(job_id)})
+  if not saved or not saved['result'].get('refund_focus'):raise ApiError('AI_NOT_FOUND',404)
+  result=saved['result'];focus=result['refund_focus']
+  record,linked=service.refund_record(repo,owner,project,focus)
+  if record['generation']!=result['refund_generation']:raise ApiError('REFUND_REVISION_CONFLICT',409)
+  allowed=set() if focus['task']=='intake' else {d['id'] for d in refund_documents(service.catalog_files(repo,owner,project),linked,focus)}
+  for ref in result['sources']:
+   if ref['source_kind']=='original':
+    if ref['file_id'] not in allowed:raise ApiError('DOCUMENT_NOT_FOUND',404)
+    if source(repo,owner,project,ref['file_id'])['generation']!=ref['generation']:raise ApiError('VECTOR_SOURCE_CHANGED',409)
+  return reply({'focus':focus,'guidance':result['refund']})
  @router.get('/api/v1/projects/{project_id}/assistant/conversation')
  async def conversation(project_id:UUID,request:Request,before:int|None=QueryParam(default=None,ge=1),owner=Depends(require_user)):
   repo=repository(request);await run_in_threadpool(service.scope,repo,owner,str(project_id))
@@ -302,7 +372,7 @@ def build_project_assistant_router(settings,require_user,repository_factory=None
    if set(params)!={'result','summary','summarized_through'} or not isinstance(params['summary'],str) or len(params['summary'].encode())>60000 or type(params['summarized_through']) is not int:raise ApiError('AI_MEMORY_INVALID',422)
    try:outcome=MemoryAnswer.model_validate(params['result']).model_dump(mode='json')
    except ValidationError:raise ApiError('AI_INVALID_RESPONSE',502) from None
-   if outcome['project_id']!=project['id'] or outcome['output_language']!=data['output_language'] or not outcome['answer'].strip() or any(not item.strip() or len(item)>500 for item in outcome['missing_information']) or any(tool not in {t['name'] for t in TOOLS+[MEMORY_TOOL]} for tool in outcome['tools_used']):raise ApiError('AI_INVALID_RESPONSE',502)
+   if outcome['project_id']!=project['id'] or outcome['output_language']!=data['output_language'] or not outcome['answer'].strip() or any(not item.strip() or len(item)>500 for item in outcome['missing_information']) or any(tool not in {t['name'] for t in TOOLS+[MEMORY_TOOL,PLAN_TOOL,STATUS_TOOL]+([REFUND_TOOL] if data.get('refund_focus') else [])} for tool in outcome['tools_used']):raise ApiError('AI_INVALID_RESPONSE',502)
    result=await run_in_threadpool(service.validate_result,repo,row['owner'],str(job_id),outcome)
    params={'question':data['question'],'answer':result,'revision':data['memory']['revision'],'summary':params['summary'],'summarized_through':params['summarized_through']}
   elif set(params)-{'checkpoint_id','payload','writes'}:raise ApiError('AI_MEMORY_INVALID',422)

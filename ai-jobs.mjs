@@ -1,4 +1,6 @@
-// Durable owner/scope identifiers, explicit retries, no simulated/provider fallback.
+// Durable owner/scope identifiers and explicit retries.
+const rejectedResults=new Set(['AI_NOT_FOUND','AI_CONFLICT','AI_CONTEXT_INVALID','AI_INVALID_CITATION',
+ 'AI_INVALID_RESPONSE','REFUND_REVISION_CONFLICT','VECTOR_SOURCE_CHANGED','FILE_SUMMARY_CHANGED']);
 export class AIJobClient {
  constructor({cloud,scope,onChange=()=>{}}){
   this.cloud=cloud;this.scope=scope;this.onChange=onChange;this.owner=cloud.navigationOwner;this.disposed=false;this.timer=null;
@@ -21,7 +23,11 @@ export class AIJobClient {
    if(job.id!==this.state.id||!['queued','running','completed','failed'].includes(job.status))throw Error('AI_JOB_INVALID');
    this.state.uncertain=false;this.accept(job);
    if(['queued','running'].includes(this.state.status))this.timer=setTimeout(()=>this.check(),500);
-  }catch(error){if(this.active()){this.state.status='unavailable';this.state.error=error.code||'AI_REQUEST_FAILED';this.publish();}}
+  }catch(error){if(this.active()){
+   const rejected=rejectedResults.has(error.code)||Number.isInteger(error.status)&&error.status>=400&&error.status<500&&error.status!==408;
+   this.state.uncertain=!rejected;this.state.status=rejected?'failed':'unavailable';
+   this.state.error=error.code||(error.name==='TimeoutError'?'AI_REQUEST_TIMEOUT':'AI_REQUEST_FAILED');this.publish();
+  }}
   finally{this.submitting=false;}
  }
  accept(job){
@@ -36,6 +42,13 @@ export class AIJobClient {
   if(job.status==='failed')this.state.error=job.error_code||'AI_REQUEST_FAILED';
   this.publish();
  }
+ async retry(updatePayload=payload=>payload){
+  const {path,payload}=this.state;
+  if(!path||!payload||!this.active()||this.submitting||this.polling)return;
+  if(this.state.status==='unavailable'&&!this.state.uncertain)await this.check();
+  if(this.state.status==='failed')return this.start(path,updatePayload(payload));
+  if(this.state.status==='unavailable'&&this.state.uncertain)return this.start(path,payload);
+ }
  async check(){
   if(!this.active()||!this.state.id||this.polling)return;
   this.polling=true;clearTimeout(this.timer);
@@ -45,7 +58,12 @@ export class AIJobClient {
    if(job.id!==this.state.id)throw Error('AI_JOB_INVALID');
    this.state.uncertain=false;this.accept(job);
    if(['queued','running'].includes(this.state.status))this.timer=setTimeout(()=>this.check(),2000);
-  }catch(error){if(this.active()){this.state.status=error.code==='AI_NOT_FOUND'?'failed':'unavailable';this.state.error=error.code||'AI_REQUEST_FAILED';this.publish();}}
+  }catch(error){if(this.active()){
+   const rejected=rejectedResults.has(error.code);
+   if(rejected)this.state.uncertain=false;
+   this.state.status=rejected?'failed':'unavailable';
+   this.state.error=error.code||(error.name==='TimeoutError'?'AI_REQUEST_TIMEOUT':'AI_REQUEST_FAILED');this.publish();
+  }}
   finally{this.polling=false;}
  }
  dispose(){this.disposed=true;clearTimeout(this.timer);}

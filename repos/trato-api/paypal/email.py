@@ -108,7 +108,7 @@ def build_proposal_email(sender,item:ProposalEmail,notification_id):
         '<p>Esta propuesta queda pendiente de aceptación. No incluye una solicitud de pago.</p>'
         f'<p>Referencia: {escape(item.proposal_id)}</p>'
     )
-    _add_branded_html(message, 'Adenda para revisión', item.project_name, html)
+    add_branded_html(message, 'Adenda para revisión', item.project_name, html)
     message.add_attachment(item.agreement.content,maintype='application',subtype='pdf',filename=item.agreement.filename)
     return message
 
@@ -142,7 +142,7 @@ def _email_envelope(sender,recipient,notification_id):
     return message
 
 
-def _add_branded_html(message, title, project, content):
+def add_branded_html(message, title, project, content):
     try:
         mascot = MASCOT_FILE.read_bytes()
     except OSError:
@@ -185,7 +185,7 @@ def build_payment_email(sender,item:PaymentEmail,notification_id):
     if item.agreement is not None:
         text+='\nAdjuntamos la adenda correspondiente a este cobro.\n'
     message.set_content(text)
-    _add_branded_html(message, 'Cobro de prueba', item.project_name,
+    add_branded_html(message, 'Cobro de prueba', item.project_name,
                       payment_email_content(greeting, item.amount, item.approval_url, item.payment_id,
                                             has_agreement=item.agreement is not None))
     if item.agreement is not None:

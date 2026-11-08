@@ -256,6 +256,10 @@ class GmailConnectionService:
         from ..refunds.mail import build_settlement_email
         return self._send_built(user,item,notification_id,build_settlement_email,expected_sender)
 
+    def send_refund_confirmation(self,user,item,notification_id):
+        from ..refunds.mail import build_refund_confirmation_email
+        return self._send_built(user,item,notification_id,build_refund_confirmation_email,None)
+
     def _send_built(self,user,item,notification_id,builder,expected_sender):
         try:
             with self.lock:

@@ -12,7 +12,7 @@ from .financial_domain import FinancialCheckInput,FinancialAuthorizationInput,Fi
 from .repository import RefundRepository
 
 
-def build_refund_financial_router(settings,require_user,repository_factory=None,workflow=None):
+def build_refund_financial_router(settings,require_user,repository_factory=None,workflow=None,confirmation=None):
     router=APIRouter(prefix='/api/v1/refunds')
     def repository(request:Request,owner=Depends(require_user)):
         return (repository_factory or RefundRepository)(settings,request.headers.get('authorization',''))
@@ -24,6 +24,13 @@ def build_refund_financial_router(settings,require_user,repository_factory=None,
     async def read(request,model):
         try:return model.model_validate_json(await read_bytes(request,2_000_000)).model_dump(mode='json')
         except (ValidationError,ValueError):raise ApiError('INVALID_REQUEST',422) from None
+
+    def complete(action,repo,owner,parent,*args):
+        result=action(repo,owner,parent,*args)
+        if confirmation and result.get('settlement',{}).get('status')=='completed':
+            email=confirmation.after_confirmation(owner,settlement=parent)
+            if email is not None:result={**result,'confirmation_email':email}
+        return result
 
     @router.post('/{settlement_id}/financial-checks')
     async def check(settlement_id:str,request:Request,repo=Depends(repository),owner=Depends(require_user)):
@@ -38,24 +45,35 @@ def build_refund_financial_router(settings,require_user,repository_factory=None,
     @router.post('/{settlement_id}/financial-authorizations/{authorization_id}/execute')
     async def execute(settlement_id:str,authorization_id:str,request:Request,repo=Depends(repository),owner=Depends(require_user)):
         operation_key=key(request);await read(request,FinancialExecutionInput)
-        return reply(await run_in_threadpool(workflow.execute,repo,owner,uuid(settlement_id),uuid(authorization_id),operation_key))
+        return reply(await run_in_threadpool(complete,workflow.execute,repo,owner,uuid(settlement_id),uuid(authorization_id),operation_key))
 
     @router.get('/{settlement_id}/financial')
     def financial(settlement_id:str,repo=Depends(repository)):
         return reply(repo.financial(uuid(settlement_id)))
+
+    @router.post('/{settlement_id}/confirmation-email')
+    def retry_confirmation(settlement_id:str,repo=Depends(repository),owner=Depends(require_user)):
+        parent=uuid(settlement_id)
+        settlement=repo.settlement(parent)
+        if settlement['owner_id']!=str(owner) or settlement['status']!='completed':
+            raise ApiError('REFUND_CONFIRMATION_NOT_FOUND',404)
+        if confirmation is None:
+            raise ApiError('REFUND_CONFIRMATION_UNAVAILABLE',503)
+        confirmation.dispatch(owner,settlement=parent,retry=True)
+        return reply(repo.financial(parent))
 
     @router.post('/{settlement_id}/financial-operations/{operation_id}/refresh')
     async def refresh(settlement_id:str,operation_id:str,request:Request,repo=Depends(repository),owner=Depends(require_user)):
         raw=await read_bytes(request,1000)
         try:Contract.model_validate_json(raw or b'{}')
         except (ValidationError,ValueError):raise ApiError('INVALID_REQUEST',422) from None
-        return reply(await run_in_threadpool(workflow.refresh,repo,owner,uuid(settlement_id),uuid(operation_id)))
+        return reply(await run_in_threadpool(complete,workflow.refresh,repo,owner,uuid(settlement_id),uuid(operation_id)))
     @router.post('/{settlement_id}/financial-operations/{operation_id}/reconcile')
     async def reconcile(settlement_id:str,operation_id:str,request:Request,repo=Depends(repository),owner=Depends(require_user)):
         raw=await read_bytes(request,1000)
         try:Contract.model_validate_json(raw or b'{}')
         except (ValidationError,ValueError):raise ApiError('INVALID_REQUEST',422) from None
-        return reply(await run_in_threadpool(workflow.reconcile,repo,owner,uuid(settlement_id),uuid(operation_id)))
+        return reply(await run_in_threadpool(complete,workflow.reconcile,repo,owner,uuid(settlement_id),uuid(operation_id)))
 
     @router.post('/{settlement_id}/financial-operations/{operation_id}/retry-checks')
     async def recovery_check(settlement_id:str,operation_id:str,request:Request,repo=Depends(repository),owner=Depends(require_user)):
@@ -66,7 +84,7 @@ def build_refund_financial_router(settings,require_user,repository_factory=None,
         @router.post('/{settlement_id}/financial-operations/{operation_id}/'+suffix)
         async def action(settlement_id:str,operation_id:str,request:Request,repo=Depends(repository),owner=Depends(require_user)):
             operation_key=key(request);data=await read(request,model)
-            return reply(await run_in_threadpool(getattr(workflow,method),repo,owner,uuid(settlement_id),uuid(operation_id),data,operation_key))
+            return reply(await run_in_threadpool(complete,getattr(workflow,method),repo,owner,uuid(settlement_id),uuid(operation_id),data,operation_key))
     recovery_route('replay',RecoveryConsentInput,'replay')
     recovery_route('external-receipts',ExternalReceiptInput,'external_apply')
     recovery_route('retry-authorizations',RetryAuthorizationInput,'retry_authorize')

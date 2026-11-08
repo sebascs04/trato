@@ -1,10 +1,11 @@
 """Canonical read-only evidence of the project's verified business records (changes and payments)."""
 import json
 from .errors import ApiError
+from .refund_assistant import project_refund_summary
 from .vector_contract import digest
 
-STATUS_TOOL={'name':'read_project_status','description':'Retrieves the recorded business state of the project: each change request with its addendum versions (scope, conditions, additional amount, deadline), when each version was sent and accepted, closures, backend-verified change payments and verified payments of the initial plan deliverables.',
- 'when_to_use':'Use when a question concerns the state of a change request, which addendum version was sent or accepted, agreed amounts or deadlines of changes, or what the client has paid.',
+STATUS_TOOL={'name':'read_project_status','description':'Retrieves the recorded business state of the project: change requests and addenda, verified payments, and recent refund case outcomes.',
+ 'when_to_use':'Use for recorded change requests, their terms, verified payments, and project-level refund status.',
  'parameters':{'type':'object','additionalProperties':False,'required':[],'properties':{}}}
 LIMIT=200000
 
@@ -46,7 +47,9 @@ def status_source(repo,owner,project):
             paid=row.get('status')=='completed' and row.get('paid_at')
             stages.append({'deliverable':row['position'],'title':stage['title'],'amount':money(round(float(stage['amount'])*100),plans[0]['currency']),
                 'payment':'verified' if paid else 'not_paid','paid_at':row['paid_at'] if paid else None})
-    value={'change_requests':changes,'initial_plan_deliverable_payments':stages}
+    received=repo.rows('project_received_payments',{'select':'origin,amount_minor,currency,verified_at',**common,'order':'verified_at.desc,id.asc','limit':100})
+    value={'change_requests':changes,'initial_plan_deliverable_payments':stages,
+           'recent_verified_payments':received,'recent_refunds':project_refund_summary(repo,owner,project)}
     record={'file_id':project['id'],'title':'Project status','source_kind':'status','generation':digest(value),'text':json.dumps(value,ensure_ascii=False,sort_keys=True,separators=(',',':'))}
     if len(record['text'].encode())>LIMIT:raise ApiError('AI_CONTEXT_LIMIT',413)
     record['source_id']=digest(record)

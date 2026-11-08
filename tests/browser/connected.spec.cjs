@@ -28,6 +28,7 @@ async function setup(page,{connected=true,clientData=clients,projectData=project
     else if(path.endsWith('/events')) data=eventData;
     else if(path.endsWith('/activity'))data=activityData??[...(documentData??[]),...extraDocuments].filter(d=>d.kind==='email_request').map(d=>({id:'request-'+d.id,kind:'request_registered',title:'Pedido registrado',request_title:d.title,created_at:d.created_at}));
     else if(path.endsWith('/proposals')) data=[];
+    else if(path.endsWith('/refunds')||path.endsWith('/refund-payments')) data=[];
     else if(path.endsWith('/request-status')){const request=[...(documentData??[]),...extraDocuments].find(d=>d.kind==='email_request');data={can_register:!request,active_request:request?{id:request.id,title:request.title}:null,closures:[]};}
     else if(path.endsWith('/file')) {expect(route.request().headers()['authorization']).toBe('Bearer test-only-access');await route.fulfill({contentType:'application/pdf',body:require('node:fs').readFileSync('data/pdfs/DOC-SP-002.pdf')});return;}
     else if(path.endsWith('/extraction')) {const id=path.includes('doc-a')?'a':'b'; const documentId=path.split('/').at(-2); const record=[...(documentData ?? [doc('a'),doc('b')]),...extraDocuments].find(item=>item.id===documentId) || doc(id);data={document:record,extraction:{status:'ready'},segments:[{locator_kind:'page',locator_number:1,text:`Fuente del proyecto ${id.toUpperCase()} <img src=x onerror=alert(1)>`}]};}
@@ -530,7 +531,7 @@ test('real project map opens on demand and returns to the same project',async({p
   expect(errors).toEqual([]);
 });
 
-test('project sections show refunds coming soon without opening a financial flow',async({page})=>{
+test('project sections open the refund records without starting a financial operation',async({page})=>{
  const errors=await setup(page);await openClient(page);
  await page.getByRole('button',{name:'Abrir proyecto Proyecto privado A',exact:true}).click();
  const nav=page.getByRole('navigation',{name:'Secciones del proyecto'});
@@ -539,11 +540,11 @@ test('project sections show refunds coming soon without opening a financial flow
  await expect(page.getByRole('heading',{name:'Cambios del acuerdo',exact:true})).toBeVisible();
  await expect(nav.locator('[aria-current="page"]')).toContainText('Cambios');
  const financial=[];page.on('request',request=>{if(request.method()==='POST')financial.push(request.url());});
- const refunds=nav.getByRole('button',{name:/Devoluciones.*Próximamente/});
- await expect(refunds).toBeDisabled();
- await expect(refunds).toContainText('¿Cuánto devolver?');
- await expect(page.getByRole('heading',{name:'Cambios del acuerdo',exact:true})).toBeVisible();
- await expect(page.locator('.cloud-refunds')).toHaveCount(0);
+ const refunds=nav.getByRole('button',{name:'Devoluciones: Dinero de un pago recibido',exact:true});
+ await refunds.click();
+ await expect(nav.locator('[aria-current="page"]')).toContainText('Devoluciones');
+ await expect(page.locator('.refund-empty')).toBeVisible();
+ await expect(page.locator('[data-refund-action="new"]')).toBeDisabled();
  await expect(nav.getByRole('button',{name:'Historial del proyecto: Historial y mapa',exact:true})).toBeVisible();
  await expect(page.locator('.cloud-project-resources')).toHaveCount(0);
  await page.screenshot({path:'.local/browser-tests/project-refunds-navigation.png',fullPage:true});

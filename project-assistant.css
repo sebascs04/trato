@@ -100,3 +100,24 @@ body.case-agent-open{overflow:hidden}
   line-height: 1.6;
 }
 .tetrato-fab{position:fixed;right:28px;bottom:24px;z-index:119;display:flex;align-items:center;gap:10px;min-height:56px;padding:6px 18px 6px 8px;border:1px solid #dcd2ef;border-radius:32px;background:var(--surface,#fff);color:var(--purple,#7955d1);font:inherit;font-weight:600;box-shadow:0 10px 30px #4b2f8a26;cursor:pointer}.tetrato-fab[hidden]{display:none}.tetrato-fab:hover{border-color:var(--purple,#7955d1);background:var(--purple-soft,#f2edf9)}.tetrato-fab:focus-visible{outline:2px solid var(--purple,#7955d1);outline-offset:3px}.tetrato-fab img{width:40px;height:40px;object-fit:contain}.tetrato-floating .project-assistant>header{display:none}.tetrato-floating .project-assistant{border:0;padding:0;background:none;box-shadow:none}.tetrato-floating .project-assistant-log{max-height:none}.tetrato-focus{display:flex;align-items:center;gap:8px;margin:0 20px 8px;padding:8px 12px;border-radius:10px;background:var(--purple-soft,#f2edf9);color:var(--purple,#7955d1);font-size:13px}.tetrato-focus .ui-icon{flex:0 0 16px;width:16px;height:16px}@media (max-width:560px){.tetrato-fab{bottom:24px;padding:6px}.tetrato-fab span{display:none}}
+
+.refund-ai-next,.refund-ai-draft{margin:12px 0;padding:12px 14px;border:1px solid var(--line);border-radius:12px;background:var(--surface-soft)}
+.refund-ai-next strong,.refund-ai-draft strong{font-size:12px;color:var(--purple)}
+.refund-ai-next p,.refund-ai-draft p{margin:5px 0 0;font-size:13px;line-height:1.65;white-space:pre-wrap;overflow-wrap:anywhere}
+.refund-ai-draft ul{margin:8px 0;padding-left:19px}
+.refund-ai-draft .refund-ai-review{margin-bottom:9px;color:var(--muted)}
+.refund-ai-draft .button{min-height:36px}
+.tetrato-refund .project-assistant-question{width:fit-content;max-width:90%;margin-left:auto;background:var(--purple-soft);border-radius:14px 3px 14px 14px}
+.tetrato-refund .project-assistant-answer{padding:14px 16px;border:1px solid var(--line);border-radius:3px 14px 14px 14px;background:var(--surface-soft)}
+.tetrato-refund .project-assistant-answer>p{line-height:1.65}
+.tetrato-refund .tetrato-focus{flex-wrap:wrap}
+.tetrato-refund .tetrato-focus .text-button{margin-left:auto;min-height:36px}
+.tetrato-refund :is(.refund-ai-next,.refund-ai-draft){background:var(--surface)}
+.refund-ai-replace{display:flex;align-items:center;gap:8px;min-height:36px;font-size:13px}
+
+.tetrato-refund .case-agent-shell{grid-template-rows:auto auto minmax(0,1fr)}
+.tetrato-refund .tetrato-floating-body{overflow:hidden}
+.tetrato-refund .project-assistant{display:flex;flex:1;flex-direction:column;min-height:0;min-width:0}
+.tetrato-refund .project-assistant-log{flex:1;min-height:0;margin:0 0 12px}
+.tetrato-refund [data-project-question]{flex:none}
+.tetrato-refund [data-project-question] textarea{max-height:24dvh}

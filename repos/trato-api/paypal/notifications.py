@@ -72,7 +72,7 @@ class PaymentNotificationService:
             if (document.owner_id,document.project_id,document.acceptance_id,document.agreement_version_id)!=(user_id,p.acceptance.project_id,p.acceptance.acceptance_id,p.acceptance.agreement_version_id):raise EmailDeliveryError('AGREEMENT_DOCUMENT_MISMATCH')
             validate_pdf_attachment(document.attachment)
         item=PaymentEmail(p.id,context.recipient_email,context.recipient_name,context.project_name,p.acceptance.amount,p.acceptance.currency,p.approval_url,document.attachment if document else None)
-        command={k:v for k,v in item.__dict__.items() if k!='agreement'}
+        command={k:v for k,v in item.__dict__.items() if k not in ('agreement','language')}
         command['agreement']={'document_id':document.document_id,'version_id':document.agreement_version_id,'filename':document.attachment.filename,'sha256':document.attachment.sha256} if document else None
         command=json.dumps(command,sort_keys=True)
         claim=self.repo.reserve_notification(user_id,p.id,key,hashlib.sha256(command.encode()).hexdigest())

@@ -1,0 +1,104 @@
+/* Client portal. Same tokens as the Trato workspace (connected-workspace.css, body.cloud-design). */
+.portal-body,.portal-embedded{--bg:#faf9fc;--surface:#fff;--surface-soft:#f7f5fb;--ink:#272331;--muted:#71677e;--line:#e7e2ee;--purple:#7051c6;--purple-soft:#f0ecf9;--ok:#2f7d55;--ok-soft:#e9f6ef;color:var(--ink)}
+.portal-body{margin:0;min-height:100vh;background:var(--bg);font:400 15px/1.6 var(--font-ui,system-ui,sans-serif)}
+.portal-shell{max-width:720px;margin:0 auto;padding:24px 16px 48px}
+.portal-top{display:flex;align-items:center;justify-content:space-between;margin-bottom:20px}
+.portal-brand{font-size:22px;font-weight:700;letter-spacing:-.5px}.portal-brand span{color:var(--purple)}
+.portal-language{display:flex;gap:2px;padding:3px;border:1px solid var(--line);border-radius:10px;background:var(--surface)}
+.portal-language button{border:0;background:none;color:var(--muted);font:inherit;font-size:12px;font-weight:600;min-width:36px;min-height:30px;border-radius:7px;cursor:pointer}
+.portal-language button[aria-pressed="true"]{background:var(--purple-soft);color:var(--purple)}
+.portal-card{background:var(--surface);border:1px solid var(--line);border-radius:16px;padding:28px 28px 24px;box-shadow:0 1px 2px rgba(39,35,49,.04)}
+.portal-eyebrow{font-size:11px;font-weight:700;letter-spacing:.08em;color:var(--purple)}
+.portal-card h1{font-size:26px;line-height:1.25;margin:6px 0 2px;overflow-wrap:anywhere}
+.portal-for{margin:0 0 14px;color:var(--muted)}
+.portal-state{display:inline-flex;align-items:center;gap:8px;margin:0 0 18px;padding:6px 12px;border-radius:999px;background:var(--purple-soft);color:var(--purple);font-size:13px;font-weight:600}
+.portal-state.accepted{background:var(--ok-soft);color:var(--ok)}
+.portal-state svg,.portal-button svg{width:16px;height:16px}
+.portal-facts{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin:0 0 20px}
+.portal-facts div{padding:12px 14px;border:1px solid var(--line);border-radius:12px;background:var(--surface-soft)}
+.portal-facts dt{font-size:12px;color:var(--muted)}.portal-facts dd{margin:2px 0 0;font-size:16px;font-weight:600}
+.portal-scope h2{font-size:15px;margin:0 0 6px}
+.portal-scope-text{margin:0;white-space:pre-line;max-height:7.2em;overflow:hidden;overflow-wrap:anywhere}
+.portal-scope-text.open{max-height:none}
+.portal-link{border:0;background:none;padding:4px 0;color:var(--purple);font:inherit;font-weight:600;cursor:pointer}
+.portal-conditions{margin-top:10px;font-size:14px}.portal-conditions summary{cursor:pointer;color:var(--purple);font-weight:600}
+/* Two groups: learn about the addendum on the left, decide on the right. */
+.portal-actions{display:flex;flex-wrap:wrap;gap:10px 16px;justify-content:space-between;align-items:center;margin-top:22px}
+.portal-actions-group{display:flex;flex-wrap:wrap;gap:10px}
+.portal-actions-decide{margin-left:auto}
+.portal-button{display:inline-flex;align-items:center;justify-content:center;gap:8px;min-height:44px;padding:0 20px;border:1px solid var(--purple);border-radius:10px;background:var(--purple);color:#fff;font:inherit;font-weight:600;cursor:pointer}
+.portal-button.secondary{background:var(--surface);color:var(--purple);border-color:var(--line)}
+.portal-button:disabled{opacity:.6;cursor:progress}
+.portal-button:focus-visible,.portal-link:focus-visible,.portal-language button:focus-visible{outline:2px solid var(--purple);outline-offset:2px}
+.portal-note,.portal-next{margin:14px 0 0;font-size:13px;color:var(--muted);text-align:right}
+.portal-next{text-align:left;color:var(--ok)}
+.portal-foot{margin:16px 4px 0;font-size:12px;color:var(--muted);text-align:center}
+.portal-loading{margin:0;color:var(--muted)}
+.portal-message{text-align:center;padding:12px 0}.portal-message h1{font-size:22px}.portal-message p{color:var(--muted);max-width:46ch;margin:8px auto 16px}
+.portal-message-icon{display:inline-grid;place-items:center;width:44px;height:44px;border-radius:12px;background:var(--purple-soft);color:var(--purple)}
+.portal-dialog{border:0;border-radius:16px;padding:0;box-shadow:0 20px 60px rgba(39,35,49,.25);color:var(--ink)}
+.portal-dialog::backdrop{background:rgba(39,35,49,.45)}
+.portal-pdf-dialog{width:min(920px,calc(100vw - 32px));height:min(90vh,1100px)}
+.portal-pdf-dialog[open]{display:flex;flex-direction:column}
+.portal-dialog-head{display:flex;align-items:center;justify-content:space-between;padding:10px 12px 10px 18px;border-bottom:1px solid var(--line)}
+.portal-pdf-dialog iframe{flex:1;width:100%;border:0}
+.portal-icon-button{display:grid;place-items:center;width:36px;height:36px;border:0;border-radius:9px;background:none;color:var(--muted);cursor:pointer}.portal-icon-button:hover{background:var(--surface-soft)}
+.portal-confirm-dialog{width:min(460px,calc(100vw - 32px));padding:24px}
+.portal-confirm-dialog h2{font-size:19px;margin:0 0 8px}.portal-confirm-dialog p{margin:0;color:var(--muted)}
+.portal-error{color:#b3261e!important;font-size:13px;margin-top:8px!important}.portal-error:empty{display:none}
+@media(max-width:600px){.portal-card{padding:22px 18px}.portal-facts{grid-template-columns:1fr}.portal-actions{flex-direction:column-reverse;align-items:stretch}.portal-actions-group{flex-direction:column}.portal-actions-decide{margin-left:0}.portal-button{width:100%}.portal-note{text-align:left}}
+.portal-payment{display:flex;align-items:center;gap:16px;justify-content:space-between;margin:22px 0 0;padding:16px 18px;border:1px solid var(--purple);border-radius:14px;background:var(--purple-soft)}
+.portal-payment strong{display:block;font-size:16px}.portal-payment p{margin:2px 0 0;font-size:13px;color:var(--muted)}
+.portal-payment.paid{justify-content:flex-start;border-color:var(--ok);background:var(--ok-soft);color:var(--ok)}.portal-payment.paid svg{flex:none;width:24px;height:24px}.portal-payment.paid p{color:var(--ok)}
+@media(max-width:600px){.portal-payment{flex-direction:column;align-items:stretch}}
+.portal-back{margin-right:auto;margin-left:16px;font-size:13px;font-weight:600;color:var(--purple);text-decoration:none}
+.portal-save{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin:20px 0 0;padding-top:16px;border-top:1px solid var(--line);font-size:13px;color:var(--muted)}
+.portal-save>span{display:grid;place-items:center;color:var(--purple)}.portal-save svg{width:16px;height:16px}.portal-save p{margin:0;flex:1;min-width:200px}
+/* Inside the client's Trato workspace (My projects): same card, workspace width. */
+.portal-embedded{max-width:760px}
+.portal-embedded .portal-card{box-shadow:none}
+.portal-request{display:flex;gap:12px;align-items:flex-start;margin:20px 0 0;padding:14px 16px;border:1px solid var(--line);border-radius:14px;background:var(--surface-soft)}
+.portal-request>svg{flex:none;width:20px;height:20px;color:var(--purple);margin-top:2px}
+.portal-request strong{display:block;font-size:14px}.portal-request p{margin:4px 0;white-space:pre-line;overflow-wrap:anywhere}.portal-request small{color:var(--muted);font-size:12px}
+.portal-textarea{width:100%;box-sizing:border-box;margin:12px 0 0;padding:10px 12px;border:1px solid var(--line);border-radius:10px;font:inherit;resize:vertical;min-height:110px}
+.portal-textarea:focus-visible{outline:2px solid var(--purple);outline-offset:1px}
+.portal-state.waiting{background:#fff4e5;color:#8a5a00}
+.portal-dispute{display:grid;gap:8px;justify-items:start;margin:22px 0 0;padding:16px 18px;border:1px solid var(--line);border-radius:14px}
+.portal-dispute h2{margin:0;font-size:17px}
+.portal-dispute-status{margin:0;font-size:13px;color:var(--muted)}
+.portal-dispute-messages{list-style:none;margin:6px 0 0;padding:0;display:grid;gap:8px;width:100%}
+.portal-dispute-messages li{width:fit-content;max-width:88%;box-sizing:border-box;padding:10px 12px;border-radius:12px}
+.portal-dispute-messages li.is-mine{justify-self:end;background:var(--purple-soft,#f2edf9)}
+.portal-dispute-messages li.is-theirs{justify-self:start;background:var(--surface,#fff);border:1px solid var(--line)}
+.portal-dispute-messages small{display:flex;align-items:center;gap:4px;font-size:12px;color:var(--muted)}
+.portal-dispute-messages small svg{width:14px;height:14px}
+.portal-dispute-messages p{margin:4px 0 0;font-size:14px;line-height:1.6;white-space:pre-wrap;overflow-wrap:anywhere}
+.portal-dispute-docs{display:inline-flex;align-items:center;gap:4px;min-height:36px;margin-top:4px;font-size:13px}
+.portal-dispute-docs svg{flex:none;width:14px;height:14px}
+.portal-dispute-doc-list{display:grid;gap:8px;margin-top:12px;max-height:50vh;overflow-y:auto}
+.portal-dispute-doc-list .portal-button{justify-content:flex-start;overflow-wrap:anywhere;text-align:left}
+.portal-payment.paid.in-dispute{border-color:var(--line);background:var(--surface,#fff);color:inherit}
+.portal-payment.paid.in-dispute strong,.portal-payment.paid.in-dispute svg{color:#a1322b}
+.portal-payment.paid.in-dispute p{color:var(--muted)}
+.portal-side-dialog{position:fixed;inset:0 0 0 auto;width:min(460px,100vw);height:100dvh;max-height:none;margin:0;border-radius:0;padding:20px;overflow-y:auto}
+.portal-conditions-text{margin:14px 0 0;font-size:14px;line-height:1.7;white-space:pre-wrap;overflow-wrap:anywhere}
+.portal-dispute-conversation{display:inline-flex;align-items:center;gap:6px;min-height:36px}
+.portal-dispute-conversation svg{flex:none;width:16px;height:16px}
+/* TeTrato for the client: a side panel with the conversation; the form stays at the bottom. */
+.portal-assistant[open]{display:flex;flex-direction:column;padding:0}
+.portal-assistant .portal-dialog-head{flex:none}
+.portal-assistant-log{flex:1;overflow-y:auto;padding:16px 18px;display:grid;gap:10px;align-content:start}
+.portal-assistant-intro{display:flex;gap:12px;align-items:center;font-size:14px;color:var(--muted)}
+.portal-assistant-intro img{flex:none;border-radius:50%;background:var(--purple-soft)}.portal-assistant-intro p{margin:0}
+.portal-assistant-suggestions{display:flex;flex-wrap:wrap;gap:4px 16px}
+.portal-assistant-bubble{max-width:90%;box-sizing:border-box;padding:10px 12px;border:1px solid var(--line);border-radius:12px;background:var(--surface-soft);font-size:14px;line-height:1.6}
+.portal-assistant-bubble p{margin:0;white-space:pre-wrap;overflow-wrap:anywhere}
+.portal-assistant-bubble.mine{justify-self:end;border-color:transparent;background:var(--purple-soft)}
+.portal-assistant-bubble small{display:block;margin-top:6px;font-size:12px;color:var(--muted)}
+.portal-assistant-draft{margin-top:10px;padding:10px 12px;border:1px dashed var(--purple);border-radius:10px;background:var(--surface)}
+.portal-assistant-draft strong{display:block;margin-bottom:4px;font-size:13px}
+.portal-assistant-draft .portal-button{width:100%;margin-top:10px}
+.portal-assistant-form{flex:none;display:grid;gap:8px;padding:12px 18px 16px;border-top:1px solid var(--line)}
+.portal-assistant-form .portal-textarea{margin:0;min-height:56px}
+.portal-assistant-form .portal-button{justify-self:end}
+.portal-assistant .ai-activity{justify-self:start}

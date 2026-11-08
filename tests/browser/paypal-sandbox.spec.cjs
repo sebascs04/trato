@@ -6,7 +6,7 @@ test('profile test opens PayPal and confirms only through authenticated backend'
   await page.route('**/api/v1/**',async route=>{
     const path=new URL(route.request().url()).pathname;let data;
     if(path==='/api/v1/config')data={supabase_url:'https://tests.supabase.invalid',publishable_key:'sb_publishable_test'};
-    else if(path==='/api/v1/session')data={user_id:'owner'};
+    else if(path==='/api/v1/session')data={user_id:'owner',role:'freelancer'};
     else if(['/api/v1/projects','/api/v1/clients'].includes(path))data=[];
     else if(path==='/api/v1/integrations/gmail')data={configured:false,connected:false};
     else if(path==='/api/v1/sandbox/paypal-test'){

@@ -170,3 +170,31 @@
 .practice-comparison-help dt{font-size:16px;font-weight:700;color:var(--ink,#40324d);margin:0 0 8px}
 .practice-comparison-help dd{font-size:15px;line-height:1.8;color:var(--muted,#756a80);margin:0}
 .practice-comparison-help .practice-comparison-help-example{margin:26px 0 0;padding-top:20px;border-top:1px solid var(--line)}
+/* Rehearsal variety: case picked before starting, hidden client intent and its reveal in the evaluation. */
+.practice-variety{display:flex;align-items:flex-start;gap:8px;margin:10px 0 0;padding:10px 14px;border-radius:12px;background:var(--purple-soft);color:var(--ink);font-size:14px;line-height:1.5}
+.practice-variety .ui-icon{flex:0 0 18px;width:18px;height:18px;margin-top:2px;color:var(--purple)}
+.practice-case-pick{display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap;margin:12px 0 4px;padding:14px 16px;border:1px solid var(--line);border-radius:12px;background:var(--surface)}
+.practice-case-pick>div{display:grid;gap:2px;min-width:0;flex:1 1 260px}
+.practice-case-pick small{font-size:12px;color:var(--muted)}
+.practice-case-pick strong{font-size:15px;color:var(--ink)}
+.practice-case-pick p{margin:2px 0 0;font-size:14px;line-height:1.5;color:var(--muted);overflow-wrap:anywhere}
+.practice-case-pick .button{display:inline-flex;align-items:center;gap:8px;min-height:36px}
+.practice-intent-toggle{display:flex;align-items:flex-start;gap:6px;margin:12px 0 4px;padding:12px 8px 12px 14px;border:1px solid var(--line);border-radius:12px}
+.practice-intent-check{display:flex;align-items:flex-start;gap:10px;flex:1;min-width:0;cursor:pointer}
+.practice-intent-toggle .practice-comparison-info{margin-top:-6px}
+.practice-intent-toggle input{margin-top:3px;accent-color:var(--purple)}
+.practice-intent-toggle span{display:grid;gap:2px}
+.practice-intent-toggle small{font-size:13px;line-height:1.5;color:var(--muted)}
+.practice-intent-reveal{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:6px 12px;align-items:center;margin:0 0 16px;padding:14px 16px;border:1px solid var(--line);border-radius:12px;background:var(--surface-soft,#f7f5fb)}
+.practice-intent-reveal.is-found{border-color:#b7dfc3;background:#eef8f1}
+.practice-intent-reveal div{display:grid;gap:2px}
+.practice-intent-reveal small{font-size:12px;color:var(--muted)}
+.practice-intent-reveal strong{font-size:15px;color:var(--ink)}
+.practice-intent-reveal .badge{display:inline-flex;align-items:center;gap:6px}
+.practice-intent-reveal .badge .ui-icon{width:14px;height:14px}
+.practice-intent-reveal p{grid-column:1/-1;margin:0;font-size:14px;line-height:1.6;color:var(--ink)}
+.practice-next-actions{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.practice-next-actions .button{display:inline-flex;align-items:center;gap:8px}
+
+.practice-intro-title{display:flex;align-items:center;gap:6px}.practice-intro-title h2{margin:0}
+.practice-comparison-help .practice-variety{margin:24px 0 0}

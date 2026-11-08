@@ -123,7 +123,7 @@ test('connected refund tab shows project records without the simulation',async({
  const requests=[];page.on('request',r=>requests.push(new URL(r.url()).pathname));
  await page.route('**/api/v1/**',route=>{
   const path=new URL(route.request().url()).pathname;
-  const data=path.endsWith('/config')?{supabase_url:'https://tests.supabase.invalid',publishable_key:'sb_publishable_test'}:path==='/api/v1/session'?{user_id:'owner'}:path==='/api/v1/clients'?[{id:'client',name:'Cliente privado'}]:path==='/api/v1/projects'?[{id:'project',client_id:'client',name:'Proyecto privado'}]:path.endsWith('/request-status')?{can_register:true,closures:[],active_request:null}:[];
+  const data=path.endsWith('/config')?{supabase_url:'https://tests.supabase.invalid',publishable_key:'sb_publishable_test'}:path==='/api/v1/session'?{user_id:'owner',role:'freelancer'}:path==='/api/v1/clients'?[{id:'client',name:'Cliente privado'}]:path==='/api/v1/projects'?[{id:'project',client_id:'client',name:'Proyecto privado'}]:path.endsWith('/request-status')?{can_register:true,closures:[],active_request:null}:[];
   return route.fulfill({json:{data}});
  });
  await page.addInitScript(()=>sessionStorage.setItem('trato:tests.supabase.invalid:session',JSON.stringify({access_token:'test',refresh_token:'test',expires_at:9999999999,user:{id:'owner',email:'sender@example.invalid'}})));

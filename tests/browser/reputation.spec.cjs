@@ -14,7 +14,7 @@ async function setup(page,{language='es',failure=false,seed=false,mine=true,save
  await page.route('**/api/v1/**',async route=>{
   const r=route.request(),path=new URL(r.url()).pathname;let data;
   if(path==='/api/v1/config')data={supabase_url:'https://tests.supabase.invalid',publishable_key:'sb_publishable_test'};
-  else if(path==='/api/v1/session')data={user_id:'owner-a'};
+  else if(path==='/api/v1/session')data={user_id:'owner-a',role:'freelancer'};
   else if(path==='/api/v1/clients')data=[{id:'private-client',name:'Nombre privado',contact_email:'private@example.invalid'}];
   else if(path==='/api/v1/reputation'){
    if(fail){await route.fulfill({status:503,json:{error:{code:'PERSISTENCE_UNAVAILABLE'}}});return;}

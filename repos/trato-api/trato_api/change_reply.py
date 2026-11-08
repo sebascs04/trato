@@ -41,7 +41,7 @@ class ReplyAnalysis(BaseModel):
     draft: RevisionDraft | None
 
 
-def reply_context(repo, workflow, owner, proposal_id, revision_id, message_id):
+def reply_context(repo, workflow, owner, proposal_id, revision_id, message_id, source='gmail'):
     snapshot = repo.get_revision(proposal_id, revision_id, collections=('deliveries', 'line_items'))
     proposal, revision = snapshot['proposal'], snapshot['revision']
     if (proposal['owner_id'] != owner or proposal['current_revision_id'] != revision_id
@@ -52,6 +52,17 @@ def reply_context(repo, workflow, owner, proposal_id, revision_id, message_id):
                     if row['kind'] == 'adenda' and row['status'] == 'accepted_by_gmail'}
     if not delivery_ids:
         raise ApiError('CHANGE_REPLY_UNAVAILABLE', 409)
+    if source == 'portal':
+        # A client portal request is the client's own words for this revision (RLS: owner only, unused).
+        rows = repo.rows('client_portal_change_requests', {'select': 'id,revision_id,notes,used_at', 'id': 'eq.' + str(message_id),
+                                                           'proposal_id': 'eq.' + str(proposal_id)})
+        if len(rows) != 1 or rows[0]['revision_id'] != revision_id or rows[0]['used_at'] or not rows[0]['notes'].strip():
+            raise ApiError('CHANGE_REPLY_UNAVAILABLE', 409)
+        text = rows[0]['notes']
+        return {'reply_text': text, 'original_reply': text,
+                'sent_terms': {**{key: revision[key] for key in ('scope_summary', 'conditions', 'additional_minor',
+                                                                'currency', 'deadline')},
+                               'line_items': snapshot['line_items']}}
     messages = workflow.gmail_replies(owner, proposal['project_id'], proposal_id)
     message = next((row for row in messages if row['id'] == message_id and row['revision_id'] == revision_id
                     and row['delivery_id'] in delivery_ids and not row['used_at']), None)
@@ -75,7 +86,7 @@ def mount_change_reply(router, repository, require_user, workflow, *, jobs=None,
         if job['status'] != 'completed':
             return job
         data = jobs.input(owner, job_id)
-        current = reply_context(repo, workflow, owner, data['proposal_id'], data['revision_id'], data['message_id'])
+        current = reply_context(repo, workflow, owner, data['proposal_id'], data['revision_id'], data['message_id'], data.get('source', 'gmail'))
         if current['reply_text'] != data['reply_text'] or current['sent_terms'] != data['sent_terms']:
             raise ApiError('AI_CONTEXT_CHANGED', 409)
         raw = job['result']
@@ -111,23 +122,32 @@ def mount_change_reply(router, repository, require_user, workflow, *, jobs=None,
         return {**job, 'result': {**output, **{key: data[key] for key in
                 ('proposal_id', 'revision_id', 'message_id')}}}
 
-    @router.post('/proposals/{proposal_id}/gmail-replies/{message_id}/analysis')
-    async def start(proposal_id: UUID, message_id: UUID, request: Request,
-                    owner=Depends(require_user), repo=Depends(repository)):
+    async def start_analysis(proposal_id, message_id, request, owner, repo, source):
         try:
             item = ReplyRequest.model_validate_json(await read_bytes(request, 4000))
         except ValidationError:
             raise ApiError('AI_INVALID_INPUT', 422) from None
         ids = {'proposal_id': str(proposal_id), 'revision_id': str(item.revision_id), 'message_id': str(message_id)}
-        context = await run_in_threadpool(reply_context, repo, workflow, owner, *ids.values())
+        context = await run_in_threadpool(reply_context, repo, workflow, owner, *ids.values(), source)
         model = await run_in_threadpool(preferences.for_request, request, owner)
         job_id = uuid(request.headers.get('Idempotency-Key', ''))
-        data = {'workflow': 'change_reply', **ids, 'output_language': item.output_language, 'model_id': model,
+        data = {'workflow': 'change_reply', **ids, 'source': source, 'output_language': item.output_language, 'model_id': model,
                 'reply_text': context['reply_text'], 'sent_terms': context['sent_terms']}
         job = await run_in_threadpool(jobs.enqueue, owner, job_id, data)
         if job['status'] == 'completed':
             job = await run_in_threadpool(result, repo, owner, job_id)
         return JSONResponse({'data': job}, status_code=202, headers={'Cache-Control': 'no-store'})
+
+    @router.post('/proposals/{proposal_id}/gmail-replies/{message_id}/analysis')
+    async def start(proposal_id: UUID, message_id: UUID, request: Request,
+                    owner=Depends(require_user), repo=Depends(repository)):
+        return await start_analysis(proposal_id, message_id, request, owner, repo, 'gmail')
+
+    @router.post('/proposals/{proposal_id}/portal-requests/{request_id}/analysis')
+    async def start_portal(proposal_id: UUID, request_id: UUID, request: Request,
+                           owner=Depends(require_user), repo=Depends(repository)):
+        # Same TeTrato analysis as a Gmail reply; the worker only receives the client's text and the sent terms.
+        return await start_analysis(proposal_id, request_id, request, owner, repo, 'portal')
 
     @router.get('/ai/change-replies/{job_id}')
     def poll(job_id: UUID, owner=Depends(require_user), repo=Depends(repository)):

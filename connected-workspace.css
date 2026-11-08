@@ -772,7 +772,7 @@ body.cloud-design{--bg:#faf9fc;--paper:#fff;--surface:#fff;--surface-soft:#f7f5f
 .proposal-compare-head span:last-child{background:var(--purple-soft);border-color:var(--purple)}
 .change-revision-comparison .proposal-compare-head{position:static;background:transparent;border-bottom:0;padding:0 0 4px}
 /* Decision actions right under the replies heading, separated from the messages below. */
-.cloud-design .cloud-reply-decision.is-top{justify-content:flex-start;margin:12px 0 16px;padding:0 0 16px;border-top:0;border-bottom:1px solid var(--line)}
+.cloud-design .cloud-reply-decision.is-top{justify-content:flex-start;margin:12px 0 16px;padding:0;border-top:0}
 /* «Scope of the change» is itself the way into the full detail (replaces a separate «See detail» button). */
 .proposal-summary-open{display:block;width:100%;padding:16px 18px;border:1px solid var(--line);border-radius:12px;background:var(--surface);color:var(--ink);font:inherit;text-align:left;cursor:pointer}
 .proposal-summary-open:hover{border-color:var(--purple);background:var(--purple-soft)}
@@ -789,3 +789,115 @@ body.cloud-design{--bg:#faf9fc;--paper:#fff;--surface:#fff;--surface-soft:#f7f5f
 .client-accepted header strong{display:block;font-size:15px;color:var(--ink)}
 .client-accepted header time{display:block;margin-top:2px;font-size:12.5px;color:var(--muted)}
 .client-accepted blockquote{margin:0;padding-left:12px;border-left:2px solid var(--line);font-size:14px;line-height:1.6;color:var(--ink);white-space:pre-wrap;overflow-wrap:anywhere}
+/* Spam hint while waiting for the client's answer or payment. */
+.mail-spam-hint{display:flex;align-items:flex-start;gap:8px;margin:12px 0 0;font-size:13px;line-height:1.5;color:var(--muted)}
+.mail-spam-hint .ui-icon{flex:0 0 16px;width:16px;height:16px;margin-top:2px}
+/* Reply removed from Trato's central mailbox: kept as evidence, visibly set apart. */
+.cloud-email-reply.is-removed{opacity:.65}
+.cloud-email-reply.is-removed .cloud-email-reply-body{text-decoration:line-through;text-decoration-color:var(--line)}
+.cloud-reply-removed{display:inline-flex;align-items:center;gap:6px;margin-left:auto;padding:3px 10px;border-radius:999px;background:var(--surface-soft,#f4f2f7);color:var(--muted);font-size:12px;white-space:nowrap}
+.cloud-reply-removed .ui-icon{width:14px;height:14px}
+
+/* Signup role choice and client account home (block 1: registration with role). */
+.cloud-field-why{margin:-4px 0 14px;font-size:12px;color:var(--muted)}
+.cloud-field-why summary{display:inline-flex;align-items:center;gap:6px;cursor:pointer;color:var(--purple);font-weight:600;min-height:32px;list-style:none}
+.cloud-field-why summary::-webkit-details-marker{display:none}
+.cloud-field-why summary svg{width:14px;height:14px}
+.cloud-field-why p{margin:4px 0 0;line-height:1.6;max-width:60ch}
+/* A client account only sees its own space: freelancer sections are hidden. */
+body.cloud-client-account .sidebar nav a[data-view="clientes"],body.cloud-client-account .sidebar nav a[data-view="reputacion"]{display:none}
+/* Role choice: stacked one-line cards inside a wider signup dialog, so the form stays short. */
+.cloud-auth-dialog.cloud-signup-dialog{max-width:640px}
+.cloud-role-choice{border:0;margin:0 0 14px;padding:0}
+.cloud-role-choice legend{margin-bottom:6px}
+.cloud-role-cards{display:grid;gap:10px}
+.cloud-role-option{display:flex;align-items:center;gap:10px;padding:10px 16px;border:1px solid var(--line);border-radius:12px;background:var(--surface);cursor:pointer;transition:border-color .15s,background .15s}
+.cloud-role-option:hover{background:var(--surface-soft)}
+.cloud-role-option:has(input:checked){border-color:var(--purple);background:var(--purple-soft)}
+.cloud-role-option:has(input:focus-visible){outline:2px solid var(--purple);outline-offset:2px}
+.cloud-role-option input{position:absolute;opacity:0;pointer-events:none}
+.cloud-role-icon{flex:none;display:grid;place-items:center;width:28px;height:28px;border-radius:8px;background:var(--surface-soft);color:var(--purple)}
+.cloud-role-icon svg{width:16px;height:16px}
+.cloud-role-option:has(input:checked) .cloud-role-icon{background:var(--surface)}
+.cloud-role-text{display:grid;gap:0;min-width:0}
+.cloud-role-option strong{display:block;margin:0;font-size:14px;line-height:1.25;color:var(--ink)}
+.cloud-role-option small{display:block;margin:0;font-size:12px;line-height:1.35;color:var(--muted)}
+.cloud-role-hint{font-size:12px;line-height:1.5;color:var(--muted);margin:6px 2px 0}
+/* Dialog labels are block with large margins (.cloud-dialog label, .cloud-auth-dialog label); role cards opt out. */
+.cloud-design .cloud-dialog.cloud-auth-dialog .cloud-role-cards label.cloud-role-option,.cloud-dialog .cloud-role-cards label.cloud-role-option{display:flex;align-items:center;margin:0;font-size:inherit;font-weight:inherit}
+/* After signup: a clear "check your email" state instead of a small line under the form. */
+.cloud-auth-sent{text-align:center;padding:8px 4px 0}
+.cloud-auth-sent-icon{display:inline-grid;place-items:center;width:48px;height:48px;border-radius:14px;background:var(--purple-soft);color:var(--purple);margin-bottom:8px}
+.cloud-auth-sent-icon svg{width:22px;height:22px}
+.cloud-auth-sent p{margin:6px auto;max-width:44ch;line-height:1.6;overflow-wrap:anywhere}
+.cloud-auth-sent-close{color:var(--ink);font-weight:500}
+.cloud-auth-sent-tip{font-size:12px;color:var(--muted)}
+.cloud-auth-sent .dialog-actions{justify-content:center;margin-top:18px}
+/* Client account: "How it works" as a vertical timeline. */
+.cloud-client-steps h3{font-size:16px;margin:0 0 14px}
+.cloud-client-steps ol{list-style:none;margin:0;padding:0;display:grid;gap:0}
+.cloud-client-steps li{position:relative;display:flex;gap:14px;align-items:flex-start;padding:0 0 18px}
+.cloud-client-steps li:last-child{padding-bottom:0}
+.cloud-client-steps li:not(:last-child)::before{content:"";position:absolute;left:13px;top:30px;bottom:2px;width:2px;background:var(--line)}
+.cloud-client-step-number{position:relative;flex:none;display:grid;place-items:center;width:28px;height:28px;border-radius:50%;background:var(--purple-soft);color:var(--purple);font-weight:700;font-size:13px}
+.cloud-client-steps strong{display:block;font-size:14px;line-height:1.4;color:var(--ink);padding-top:3px}
+.cloud-client-steps small{display:block;font-size:12.5px;line-height:1.5;color:var(--muted);margin:2px 0 0}
+/* Client account: saved agreements list. */
+.cloud-client-agreements h3{font-size:16px;margin:0 0 12px}
+.cloud-client-agreements ul{list-style:none;margin:0;padding:0;display:grid;gap:8px}
+.cloud-client-agreements a{display:flex;align-items:center;gap:12px;padding:12px 14px;border:1px solid var(--line);border-radius:12px;background:var(--surface);color:inherit;text-decoration:none}
+.cloud-client-agreements a:hover{background:var(--surface-soft)}
+.cloud-client-agreements a:focus-visible{outline:2px solid var(--purple);outline-offset:2px}
+.cloud-client-agreements a>svg{flex:none;width:16px;height:16px;color:var(--muted)}
+.cloud-client-agreement-text{flex:1;min-width:0}
+.cloud-client-agreement-text strong{display:block;font-size:14px;overflow-wrap:anywhere}
+.cloud-client-agreement-text small{display:block;margin:2px 0 0;font-size:12px;color:var(--muted)}
+.cloud-client-agreement-state{flex:none;font-size:12px;font-weight:600;padding:4px 10px;border-radius:999px;background:var(--surface-soft);color:var(--muted)}
+.cloud-client-agreement-state.open,.cloud-client-agreement-state.pay{background:var(--purple-soft);color:var(--purple)}
+.cloud-client-agreement-state.paid,.cloud-client-agreement-state.done{background:#e9f6ef;color:#2f7d55}
+/* Client account: overview summary and projects grouped by freelancer. */
+body:not(.cloud-client-account) .sidebar nav a.nav-client-only{display:none}
+.cloud-client-tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px}
+.cloud-client-tile{padding:14px 16px;border:1px solid var(--line);border-radius:12px;background:var(--surface-soft)}
+.cloud-client-tile strong{display:block;font-size:28px;line-height:1.1}
+.cloud-client-tile span{font-size:13px;color:var(--muted)}
+.cloud-client-tile.open strong,.cloud-client-tile.pay strong{color:var(--purple)}
+.cloud-client-tile.done strong{color:#2f7d55}
+.cloud-client-summary-foot{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin:12px 0 0;font-size:13px;color:var(--muted)}
+.cloud-client-summary-foot .text-button svg{width:14px;height:14px}
+.cloud-client-empty{margin:0;color:var(--muted)}
+.cloud-client-projects{display:grid;gap:16px}
+.cloud-client-freelancer header{display:flex;align-items:center;gap:12px;margin-bottom:12px}
+.cloud-client-freelancer header strong{display:block;overflow-wrap:anywhere}
+.cloud-client-project{border-top:1px solid var(--line);padding:10px 0 4px}
+.cloud-client-project summary{display:flex;justify-content:space-between;gap:12px;cursor:pointer;padding:4px 0 10px}
+.cloud-client-project summary span{font-size:12px;color:var(--muted)}
+.cloud-client-agreements-list{list-style:none;margin:0;padding:0;display:grid;gap:8px}
+.cloud-client-agreements-list a{display:flex;align-items:center;gap:12px;padding:10px 14px;border:1px solid var(--line);border-radius:12px;background:var(--surface);color:inherit;text-decoration:none}
+.cloud-client-agreements-list a:hover{background:var(--surface-soft)}
+.cloud-client-agreements-list a>svg{flex:none;width:16px;height:16px;color:var(--muted)}
+@media(max-width:600px){.cloud-client-tiles{grid-template-columns:1fr}}
+.cloud-client-agreement-row{display:flex;align-items:center;gap:12px;width:100%;padding:12px 14px;border:1px solid var(--line);border-radius:12px;background:var(--surface);color:inherit;font:inherit;text-align:left;cursor:pointer}
+.cloud-client-agreement-row:hover{background:var(--surface-soft)}
+.cloud-client-agreement-row:focus-visible{outline:2px solid var(--purple);outline-offset:2px}
+.cloud-client-agreement-row>svg{flex:none;width:16px;height:16px;color:var(--muted)}
+.cloud-client-agreement-state.waiting{background:#fff4e5;color:#8a5a00}
+.cloud-client-tile.waiting strong{color:#8a5a00}
+/* "Did the client answer another way?": a real dropdown menu, items stacked. */
+.cloud-reply-other{position:relative;display:inline-block;margin:0}
+.cloud-reply-other>summary{list-style:none;display:inline-flex;align-items:center;gap:6px;cursor:pointer}
+.cloud-reply-other>summary::-webkit-details-marker{display:none}
+.cloud-reply-other>summary svg{width:16px;height:16px;transition:transform .15s}
+.cloud-reply-other[open]>summary svg{transform:rotate(180deg)}
+.cloud-reply-menu{position:absolute;z-index:30;top:calc(100% + 6px);right:0;min-width:280px;display:grid;gap:2px;padding:6px;border:1px solid var(--line);border-radius:12px;background:var(--surface);box-shadow:0 12px 32px rgba(39,35,49,.14)}
+.cloud-reply-menu-item{display:block;width:100%;padding:10px 12px;border:0;border-radius:8px;background:none;color:var(--ink);font:inherit;font-size:14px;text-align:left;cursor:pointer}
+.cloud-reply-menu-item:hover{background:var(--surface-soft)}
+.cloud-reply-menu-item:focus-visible{outline:2px solid var(--purple);outline-offset:-2px}
+.cloud-auth-opening{display:grid;place-items:center;min-height:180px;padding:12px 4px}
+.cloud-auth-dialog .cloud-auth-intro[hidden],.cloud-auth-dialog form[hidden],.cloud-auth-dialog .cloud-auth-switch[hidden]{display:none}
+.cloud-client-tile.dispute strong{color:#a1322b}
+.cloud-client-agreement-state.dispute{background:#fbeceb;color:#a1322b}
+.cloud-client-account-home{display:grid;grid-template-columns:minmax(0,1fr);gap:16px}
+.cloud-client-tiles{grid-template-columns:repeat(4,minmax(0,1fr))}
+.cloud-client-summary-disputes{margin-top:16px;padding-top:16px;border-top:1px solid var(--line)}
+@media(max-width:640px){.cloud-client-tiles{grid-template-columns:repeat(2,minmax(0,1fr))}}

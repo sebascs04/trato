@@ -6,7 +6,7 @@ from starlette.concurrency import run_in_threadpool
 from .errors import ApiError
 from .business_routes import read_bytes
 from .rehearsal import LocalRehearsal
-from .rehearsal import case_sources
+from .rehearsal import case_sources,bank_case,hidden_intent,CLIENT_SCENARIOS
 from .rehearsal_jobs import RehearsalJobs
 from .persistence import uuid
 from .model_preferences import ModelPreferences
@@ -23,10 +23,29 @@ class Message(BaseModel):
 class RehearsalInput(BaseModel):
     model_config=ConfigDict(extra='forbid',strict=True)
     action:Literal['reply','evaluate']
-    scenario:Literal['scope','payment','refund']
+    scenario:Literal['scope','payment','refund','change','deadline','delivery']
     output_language:Literal['es','en']
     persona:Persona
     messages:list[Message]
+    # Optional: a case from data/rehearsal-cases.json and the rehearsal id that keeps its hidden client intent stable.
+    case_id:str|None=Field(default=None,pattern=r'^[a-z]+-[a-z]+$',max_length=60)
+    rehearsal_id:str|None=Field(default=None,pattern=r'^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$')
+    hidden_intent:bool=False
+
+def rehearsal_case(data):
+    """The case the fictional client and the evaluator work from; the hidden intent never reaches the browser
+    until the evaluation reveals it."""
+    case_id,rehearsal_id,hidden=data.pop('case_id'),data.pop('rehearsal_id'),data.pop('hidden_intent')
+    if hidden and (not case_id or not rehearsal_id):raise ApiError('INVALID_REHEARSAL',422)
+    # Client-side scenarios only exist in the case bank; the AI then plays the freelancer.
+    if data['scenario'] in CLIENT_SCENARIOS and not case_id:raise ApiError('INVALID_REHEARSAL',422)
+    data['counterpart']='freelancer' if data['scenario'] in CLIENT_SCENARIOS else 'client'
+    data['case']=bank_case(data['scenario'],case_id,data['output_language']) if case_id else case_sources(data['scenario'])
+    if hidden:
+        intent=hidden_intent(data['scenario'],rehearsal_id)
+        data['case']['client_intent']=intent['brief']
+        if data['action']=='evaluate':data['client_intent_reveal']={'id':intent['id'],'label':intent['label'][data['output_language']]}
+    return data
 
 def build_rehearsal_router(require_user,service=None,jobs=None):
     router=APIRouter(prefix='/api/v1/rehearsals');service=service or LocalRehearsal()
@@ -39,7 +58,7 @@ def build_rehearsal_router(require_user,service=None,jobs=None):
         if data['action']!='evaluate' or not any(m['role']=='user' for m in data['messages']):raise ApiError('REHEARSAL_EMPTY',422)
         if any(m['role']!=('client' if i%2==0 else 'user') for i,m in enumerate(data['messages'])):raise ApiError('INVALID_REHEARSAL',422)
         job_id=uuid(request.headers.get('Idempotency-Key',''))
-        data['case']=case_sources(data['scenario'])
+        rehearsal_case(data)
         if __import__('os').getenv('TRATO_DEFAULT_MODEL'):
             data['model_id']=await run_in_threadpool(ModelPreferences().for_request,request,owner_id)
         result=await run_in_threadpool(jobs.enqueue,owner_id,job_id,data)
@@ -52,7 +71,7 @@ def build_rehearsal_router(require_user,service=None,jobs=None):
         messages=data['messages']
         if data['action']!='reply' or any(m['role']!=('client' if i%2==0 else 'user') for i,m in enumerate(messages)) or (messages and messages[-1]['role']!='user'):
             raise ApiError('INVALID_REHEARSAL',422)
-        data['case']=case_sources(data['scenario'])
+        rehearsal_case(data)
         if __import__('os').getenv('TRATO_DEFAULT_MODEL'):
             data['model_id']=await run_in_threadpool(ModelPreferences().for_request,request,owner_id)
         job_id=uuid(request.headers.get('Idempotency-Key',''))
@@ -73,6 +92,7 @@ def build_rehearsal_router(require_user,service=None,jobs=None):
         try:data=RehearsalInput.model_validate_json(raw).model_dump()
         except (ValidationError,ValueError):raise ApiError('INVALID_REHEARSAL',422)
         if data['action']=='evaluate':raise ApiError('REHEARSAL_EVALUATION_REQUIRES_JOB',409)
+        if data['scenario'] in CLIENT_SCENARIOS:raise ApiError('INVALID_REHEARSAL',422)
         messages=data['messages']
         if any(m['role']!=('client' if i%2==0 else 'user') for i,m in enumerate(messages)):raise ApiError('INVALID_REHEARSAL',422)
         if data['action']=='reply' and messages and messages[-1]['role']!='user':raise ApiError('INVALID_REHEARSAL',422)

@@ -8,7 +8,7 @@ async function setup(page,{paid=false,draft=false,emailFailure=false,versionCoun
   const req=route.request(),path=new URL(req.url()).pathname;let data;
   if(req.method()==='POST')writes.push({path,body:path.endsWith('/returned-pdf')?req.postDataBuffer():req.postDataJSON(),headers:req.headers()});
   if(path.endsWith('/config'))data={supabase_url:'https://tests.supabase.invalid',publishable_key:'sb_publishable_test'};
-  else if(path.endsWith('/session'))data={user_id:'owner'};
+  else if(path.endsWith('/session'))data={user_id:'owner',role:'freelancer'};
   else if(path.endsWith('/clients'))data=[{id:'client',name:'Cliente prueba',contact_email:'recipient@example.com'}];
   else if(path.endsWith('/projects'))data=[{id:'project',client_id:'client',name:'Proyecto prueba'}];
   else if(path.endsWith('/documents'))data=docs;

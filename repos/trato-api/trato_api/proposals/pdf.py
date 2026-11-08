@@ -23,7 +23,7 @@ def money(minor):
         raise ApiError('INVALID_PROPOSAL_AMOUNT', 409)
     return f'USD {minor // 100:,}.{minor % 100:02d}'
 
-def render_pdf(snapshot, project_name, client_name):
+def render_pdf(snapshot, project_name, client_name, *, language='es'):
     revision = snapshot['revision']
     items = snapshot['line_items']
     if sum(item['quantity'] * item['unit_amount_minor'] for item in items) != revision['additional_minor']:
@@ -42,33 +42,37 @@ def render_pdf(snapshot, project_name, client_name):
             if any(ord(c) not in font.face.charToGlyph for c in text if c not in '\n\t'):
                 raise ApiError('PDF_UNSUPPORTED_CHARACTER', 422)
             story.append(Paragraph(escape(text).replace('\n', '<br/>'), selected))
-        add(f'Adenda · versión {revision["revision_no"]}', title)
-        add(f'Proyecto: {project_name}')
-        add(f'Cliente: {client_name}')
-        add(f'Identificador de revisión: {revision["id"]}')
-        add(f'Fecha límite propuesta: {revision["deadline"]}')
-        add('Alcance del cambio', label)
+        english = language == 'en'
+        name = 'Addendum' if english else 'Adenda'
+        version = 'version' if english else 'versión'
+        add(f'{name} · {version} {revision["revision_no"]}', title)
+        add(f'{"Project" if english else "Proyecto"}: {project_name}')
+        add(f'{"Client" if english else "Cliente"}: {client_name}')
+        add(f'{"Revision ID" if english else "Identificador de revisión"}: {revision["id"]}')
+        add(f'{"Proposed due date" if english else "Fecha límite propuesta"}: {revision["deadline"]}')
+        add('Scope of change' if english else 'Alcance del cambio', label)
         add(revision['scope_summary'])
-        add('Detalle del adicional', label)
+        add('Additional charges' if english else 'Detalle del adicional', label)
         for item in items:
-            add(f'{item["quantity"]} × {item["description"]} · {money(item["unit_amount_minor"])} por unidad · {money(item["quantity"] * item["unit_amount_minor"])}')
-        add(f'Adicional total: {money(revision["additional_minor"])}', label)
-        add('Condiciones', label)
+            add(f'{item["quantity"]} × {item["description"]} · {money(item["unit_amount_minor"])} {"per unit" if english else "por unidad"} · {money(item["quantity"] * item["unit_amount_minor"])}')
+        add(f'{"Total additional charge" if english else "Adicional total"}: {money(revision["additional_minor"])}', label)
+        add('Terms' if english else 'Condiciones', label)
         add(revision['conditions'])
-        add('Fuentes de esta versión', label)
+        add('Sources for this version' if english else 'Fuentes de esta versión', label)
         for source in sorted(snapshot['sources'], key=lambda x: x['document_id']):
-            add(f'Documento {source["document_id"]}\nSHA-256: {source["document_sha256"]}')
+            add(f'{"Document" if english else "Documento"} {source["document_id"]}\nSHA-256: {source["document_sha256"]}')
         if revision.get('base_acceptance_id'):
-            add(f'Aceptación anterior de referencia: {revision["base_acceptance_id"]}')
-        add('Aceptación del cliente', label)
-        add('Nombre: ____________________\nFirma: ____________________\nFecha: ____________________')
-        doc = SimpleDocTemplate(output, pagesize=(210*mm,297*mm), leftMargin=22*mm, rightMargin=22*mm, topMargin=20*mm, bottomMargin=20*mm, invariant=1, title=f'Adenda v{revision["revision_no"]}', author='Trato')
+            add(f'{"Previous acceptance reference" if english else "Aceptación anterior de referencia"}: {revision["base_acceptance_id"]}')
+        add('Client acceptance' if english else 'Aceptación del cliente', label)
+        fields = ('Name', 'Signature', 'Date') if english else ('Nombre', 'Firma', 'Fecha')
+        add('\n'.join(f'{field}: ____________________' for field in fields))
+        doc = SimpleDocTemplate(output, pagesize=(210*mm,297*mm), leftMargin=22*mm, rightMargin=22*mm, topMargin=20*mm, bottomMargin=20*mm, invariant=1, title=f'{name} v{revision["revision_no"]}', author='Trato')
         doc.build(story)
         return output.getvalue()
 
 
 class ProposalPdfService:
-    def save(self, repo, proposal_id, revision_id):
+    def save(self, repo, proposal_id, revision_id, *, language='es'):
         snapshot = repo.get_revision(proposal_id, revision_id, collections=('line_items','sources','artifacts'))
         existing = snapshot['artifacts']
         if existing:
@@ -86,8 +90,9 @@ class ProposalPdfService:
         clients = repo.rows('clients', {'select':'id,name', 'id':'eq.' + project['client_id']})
         if not clients:
             raise ApiError('CLIENT_NOT_FOUND', 404)
-        content = render_pdf(snapshot, project['name'], clients[0]['name'])
-        reservation = repo.reserve(project['id'], f'Adenda v{revision["revision_no"]}', 'addendum', f'adenda-v{revision["revision_no"]}.pdf', 'application/pdf', content, 'proposal-pdf-' + revision_id,
+        content = render_pdf(snapshot, project['name'], clients[0]['name'], language=language)
+        name = 'Addendum' if language == 'en' else 'Adenda'
+        reservation = repo.reserve(project['id'], f'{name} v{revision["revision_no"]}', 'addendum', f'{name.lower()}-v{revision["revision_no"]}.pdf', 'application/pdf', content, 'proposal-pdf-' + revision_id,
             context={'purpose':'generated_addendum','revision_id':revision_id})
         document = reservation['document']
         if document['sha256'] != sha256(content).hexdigest():

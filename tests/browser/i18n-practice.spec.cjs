@@ -10,7 +10,7 @@ async function setup(page,{lang='es',paid=false,user='owner-a',evaluationError='
   const r=route.request(),path=new URL(r.url()).pathname;if(r.method()==='POST')writes.push(path);else reads.push(path);
   let data;
   if(path.endsWith('/config'))data={supabase_url:'https://tests.supabase.invalid',publishable_key:'sb_publishable_test'};
-  else if(path.endsWith('/session'))data={user_id:user};
+  else if(path.endsWith('/session'))data={user_id:user,role:'freelancer'};
   else if(path==='/api/v1/rehearsals/replies'&&r.method()==='POST'){
    const body=r.postDataJSON(),id='d1111111-1111-4111-8111-'+String(replyInputs.length+1).padStart(12,'0');replyInputs.push(body);replyJobs.set(id,body);data={id,status:'queued'};
   }

@@ -14,6 +14,34 @@ GOALS={'scope':'Discuss a new request outside an existing freelance agreement.',
 _lock=BoundedSemaphore(1)
 
 
+# The user rehearses as a freelancer (the AI plays the client) or as a client (the AI plays the freelancer).
+FREELANCER_SCENARIOS=('scope','payment','refund')
+CLIENT_SCENARIOS=('change','deadline','delivery')
+
+
+def rehearsal_bank():
+    """Fictional cases and client intents per scenario (data/rehearsal-cases.json), shared with the interface."""
+    bank=json.loads((ROOT/'data/rehearsal-cases.json').read_text(encoding='utf-8'))
+    if bank.get('version')!=1 or set(bank.get('scenarios',{}))!=set(FREELANCER_SCENARIOS+CLIENT_SCENARIOS):raise ApiError('REHEARSAL_CASES_INVALID',500)
+    return bank['scenarios']
+
+
+def bank_case(scenario,case_id,language):
+    case=next((c for c in rehearsal_bank()[scenario]['cases'] if c['id']==case_id),None)
+    if case is None:raise ApiError('INVALID_REHEARSAL',422)
+    return {'theme':case['theme'][language],'request':case['request'][language],'agreement':case['agreement'][language]}
+
+
+def hidden_intent(scenario,rehearsal_id):
+    """Chosen by the server from the rehearsal id and a server secret: stable for the whole rehearsal and
+    unknown to the browser until the final evaluation reveals it."""
+    from hashlib import sha256
+    secret=os.getenv('TRATO_WORKER_TOKEN') or os.getenv('SUPABASE_SERVER_KEY') or ''
+    if not secret:raise ApiError('REHEARSAL_NOT_CONFIGURED',503)
+    intents=rehearsal_bank()[scenario]['intents']
+    return intents[int(sha256(f'{secret}:{scenario}:{rehearsal_id}'.encode()).hexdigest(),16)%len(intents)]
+
+
 def case_sources(scenario):
     data=json.loads((ROOT/'data/demo.json').read_text())
     request=next(r for r in data['requests'] if r['id']=={'scope':'REQ-SP-001','payment':'REQ-SP-002','refund':'REQ-SP-003'}[scenario])

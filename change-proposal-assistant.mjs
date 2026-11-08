@@ -127,7 +127,7 @@ export function installChangeProposalAssistant(cloud){
  async function poll(s){if(!current(s)||!s.pending)return;try{const job=await cloud.request(s.pending.poll);if(current(s)){s.pending.uncertain=false;accept(s,job);}}catch(error){if(current(s)){s.error=error.code||'AI_REQUEST_FAILED';render(s);}}}
  // Like the initial plan: reopening with the same inputs reuses TeTrato's validated proposal instead of asking again.
  const draftKey=s=>`${cloud.session.key}:change-draft:${s.owner}:${s.project}:${s.request}:${s.revision||'new'}`;
- const draftFingerprint=s=>JSON.stringify([s.request,s.revision||null,s.formState.mode==='revise'?[s.formState.feedbackId||null,s.feedbackNotes]:null,uiLanguage(),s.selected||null,
+ const draftFingerprint=s=>JSON.stringify([s.request,s.revision||null,s.formState.mode==='revise'?[s.formState.feedbackId||null,s.formState.portalRequestId||null,s.feedbackNotes]:null,uiLanguage(),s.selected||null,
   s.files.filter(file=>file.summary_status==='ready').map(file=>file.id+':'+(file.generation||'')).sort()]);
  function rememberDraft(s,jobId){try{cloud.storage.setItem(draftKey(s),JSON.stringify({version:1,job:jobId,fingerprint:s.draftFingerprint||draftFingerprint(s)}));}catch{}}
  async function reuseDraft(s){
@@ -152,7 +152,7 @@ export function installChangeProposalAssistant(cloud){
   }finally{s.reusing=false;}
  }
  async function start(s,mode,{repeat=false}={}){if(!current(s)||s.pending||s.pricing)return;if(mode==='draft')s.draftFingerprint=draftFingerprint(s);const question=s.question.trim();if(mode==='question'&&!question)return;s.error='';s.failedMode=null;const readyIds=s.files.filter(file=>file.summary_status==='ready').map(file=>file.id),hasPending=s.files.some(file=>file.summary_status!=='ready');const id=crypto.randomUUID(),selected=s.selected?{document_ids:s.selected}:hasPending&&readyIds.length?{document_ids:readyIds}:{};
-  const body=mode==='draft'?{project_id:s.project,request_document_id:s.request,output_language:uiLanguage(),question,history_ids:s.history.slice(-6),...selected,...(s.proposal?{proposal_id:s.proposal,revision_id:s.revision}:{}),...(s.formState.mode==='revise'?{feedback_document_id:s.formState.feedbackId,feedback_notes:s.feedbackNotes}:{})}:{project_id:s.project,question:`${t('context',{title:s.requestTitle})}\n${question}`,output_language:uiLanguage(),...(s.resultJob?{change_proposal_job_id:s.resultJob}:{}),...selected};
+  const body=mode==='draft'?{project_id:s.project,request_document_id:s.request,output_language:uiLanguage(),question,history_ids:s.history.slice(-6),...selected,...(s.proposal?{proposal_id:s.proposal,revision_id:s.revision}:{}),...(s.formState.mode==='revise'?(s.formState.portalRequestId?{feedback_portal_request_id:s.formState.portalRequestId}:{feedback_document_id:s.formState.feedbackId,feedback_notes:s.feedbackNotes}):{})}:{project_id:s.project,question:`${t('context',{title:s.requestTitle})}\n${question}`,output_language:uiLanguage(),...(s.resultJob?{change_proposal_job_id:s.resultJob}:{}),...selected};
   s.pending={id,mode,userQuestion:question,body,path:mode==='draft'?'/api/v1/ai/change-proposals':'/api/v1/ai/project-questions',poll:mode==='draft'?`/api/v1/ai/change-proposals/${id}`:`/api/v1/ai/jobs/${id}`,uncertain:true};if(question&&!repeat)s.messages.push({user:true,text:question});s.question='';if(mode==='draft')rememberDraft(s,id);render(s);await submit(s);
  }
  async function submit(s){if(!current(s)||!s.pending||s.submitting)return;s.submitting=true;s.error='';try{const job=await cloud.request(s.pending.path,{method:'POST',headers:{'Content-Type':'application/json','Idempotency-Key':s.pending.id},body:JSON.stringify(s.pending.body)});if(current(s)){s.pending.uncertain=false;accept(s,job);}}catch(error){
@@ -169,7 +169,7 @@ export function installChangeProposalAssistant(cloud){
  cloud.openChangeProposalAssistant=function(button){const form=cloud.modal.querySelector('[data-cloud-form="proposal-terms"]');if(!form||!cloud.proposalForm)return;const previous=state;if(!previous||previous.formState!==cloud.proposalForm){clear();state=newState(form,true);}state.open=true;render(state);panel.open(button);load(state);};
  // A new proposal starts drafted by Trato; every field stays editable and the amount needs the user's rate.
  // TeTrato must read the client's request itself: wait until it is processed instead of drafting without it.
- const requiredIds=s=>[s.request,...(s.formState.mode==='revise'?[s.formState.feedbackId]:[])];
+ const requiredIds=s=>[s.request,...(s.formState.mode==='revise'&&!s.formState.portalRequestId?[s.formState.feedbackId]:[])];
  const requestReady=s=>requiredIds(s).every(id=>{const file=s.files.find(f=>f.id===id);return file?.status==='ready'&&file.summary_status==='ready';});
  // A failed reading stops the wait at once and keeps its real error code for the message.
  // extract: the text extraction failed; process: extraction is ready but TeTrato's reading/indexing failed.

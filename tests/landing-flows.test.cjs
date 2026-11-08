@@ -14,7 +14,7 @@ test('all three problem journeys have four complete ES/EN steps and approved ico
   icons.forEach(name=>assert.ok(icon(name)));
  }
 });
-test('timeline advances on its timer and supports pause and manual navigation',async()=>{
+test('timeline stays still until the visitor moves it',async()=>{
  const {installVisitorLanding}=await import('../visitor-landing.mjs');
  const previousWindow=global.window,previousObserver=global.IntersectionObserver,previousTimeout=global.setTimeout,previousClear=global.clearTimeout;
  const observers=[],timers=new Map();let timerId=0;global.setTimeout=(fn,delay)=>{fn.delay=delay;timers.set(++timerId,fn);return timerId;};global.clearTimeout=id=>timers.delete(id);
@@ -46,17 +46,13 @@ test('timeline advances on its timer and supports pause and manual navigation',a
   assert.ok(frame);
   assert.doesNotMatch(root.innerHTML,/land-mascot-welcome|land-hero-actions|land-practice-details|land-practice-cta|class="land-cta"/);
   assert.doesNotMatch(root.innerHTML,/class="land-visual"/);
-  const timeline=observers.find(observer=>observer.target===node('.land-stories'));
-  timeline.callback([{isIntersecting:true}]);
-  advance(3000);assert.match(node('#land-story-panel').innerHTML,/data-narrative-stage="-1"/);
-  doc.hidden=true;timeline.callback([{isIntersecting:true}]);advance(10000);
-  doc.hidden=false;timeline.callback([{isIntersecting:true}]);advance(2499);
-  assert.match(node('#land-story-panel').innerHTML,/data-narrative-stage="-1"/);
-  advance(1);assert.match(node('#land-story-panel').innerHTML,/data-narrative-stage="0"/);
-  for(const stage of [1,2,3,-1]){advance(5500);assert.match(node('#land-story-panel').innerHTML,new RegExp('data-narrative-stage="'+stage+'"'));}
+  assert.equal(observers.some(observer=>observer.target===node('.land-stories')),false);
+  assert.equal(timers.size,0);
+  advance(60000);assert.match(node('#land-story-panel').innerHTML,/data-narrative-stage="-1"/);
+  handlers.click(event('[data-land-story-next]',{}));assert.match(node('#land-story-panel').innerHTML,/data-narrative-stage="0"/);
+  advance(60000);assert.match(node('#land-story-panel').innerHTML,/data-narrative-stage="0"/);
+  handlers.click(event('[data-land-story-prev]',{}));assert.match(node('#land-story-panel').innerHTML,/data-narrative-stage="-1"/);
   assert.doesNotMatch(root.innerHTML,/land-practice-motion/);
-  handlers.click(event('[data-land-motion]',{}));advance(6000);
-  assert.match(node('#land-story-panel').innerHTML,/data-narrative-stage="-1"/);
   assert.match(node('#land-story-panel').innerHTML,/land-story-mascot/);
 
  }finally{global.window=previousWindow;global.IntersectionObserver=previousObserver;global.requestAnimationFrame=oldRaf;global.cancelAnimationFrame=oldCancel;global.performance=oldPerformance;global.setTimeout=previousTimeout;global.clearTimeout=previousClear;}

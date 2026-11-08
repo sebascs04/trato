@@ -147,7 +147,8 @@ export function installChangeReplyAssistant(cloud, {apply, reviewAcceptance}){
  return (button,message)=>{
   const {proposal,revision}=cloud.proposalDetails;
   clear();
-  const path=`/api/v1/proposals/${proposal.id}/gmail-replies/${message.id}/analysis`;
+  // Same analysis for a Gmail reply or a client portal request; only the source of the client text differs.
+  const path=`/api/v1/proposals/${proposal.id}/${message.kind==='portal'?'portal-requests':'gmail-replies'}/${message.id}/analysis`;
   state={id:crypto.randomUUID(),owner:cloud.navigationOwner,project:cloud.projectId,proposal:proposal.id,
    revision:revision.id,message,path,language:uiLanguage()};
   render(state);panel.open(button);void fetchJob(state,true);

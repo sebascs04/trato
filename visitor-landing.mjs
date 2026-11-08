@@ -11,12 +11,12 @@ export const landingFlows=Object.freeze({change:['messages-square','sparkles','p
 export function installVisitorLanding(cloud){
  const doc=cloud.document,root=doc.querySelector('#visitor-landing');
  let mounted=false,shown=false,frame=0,paused=window.matchMedia('(prefers-reduced-motion: reduce)').matches,phase=-1,pointerX=0,pointerY=0;
- let story='change',storyStep=-1,storyTimer=0,storyVisible=false;
+ let story='change',storyStep=-1;
  const storyKeys=['change','start','refund'];
  const motion=window.matchMedia('(prefers-reduced-motion: reduce)');
  const percent=value=>new Intl.NumberFormat(uiLocale(),{style:'percent',maximumFractionDigits:1}).format(value);
  const revealObserver=new IntersectionObserver(entries=>{for(const entry of entries)if(entry.isIntersecting){entry.target.classList.add('land-revealed');revealObserver.unobserve(entry.target);}},{threshold:.14});
- let practiceMood='calm',practiceTimer=0,practiceVisible=false;
+ let practiceMood='calm';
  const moods=['calm','unsure','upset'];
  const practiceText=key=>t('practiceDemo'+key[0].toUpperCase()+key.slice(1));
  // Original character illustration; decorative artwork, not an action icon.
@@ -29,33 +29,11 @@ export function installVisitorLanding(cloud){
   for(const [name,key] of [['name',mood],['message',mood+'Message'],['reply',mood+'Reply']])root.querySelector(`[data-practice-${name}]`).textContent=practiceText(key);
   for(const button of root.querySelectorAll('[data-land-mood]'))button.setAttribute('aria-pressed',String(button.dataset.landMood===mood));
  }
- const storyDuration=5500;
- let storyElapsed=0,storyStarted=0;
- function stopStory(){
-  if(storyTimer){storyElapsed+=performance.now()-storyStarted;cancelAnimationFrame(storyTimer);storyTimer=0;}
- }
- function startStory(){
-  if(!shown||!storyVisible||paused||doc.hidden){stopStory();return;}
-  if(storyTimer)return;
-  storyStarted=performance.now();
-  function tick(now){
-   const elapsed=storyElapsed+now-storyStarted;
-   root.style.setProperty('--story-progress',String(Math.min(1,elapsed/storyDuration)));
-   if(elapsed>=storyDuration){
-    storyTimer=0;storyElapsed=0;
-    selectStory(storyStep===3?storyKeys[(storyKeys.indexOf(story)+1)%storyKeys.length]:story,storyStep===3?-1:storyStep+1);
-   }else storyTimer=requestAnimationFrame(tick);
-  }
-  storyTimer=requestAnimationFrame(tick);
- }
- const storyObserver=new IntersectionObserver(entries=>{storyVisible=entries[0].isIntersecting;startStory();},{threshold:.2});
- function stopPractice(){clearTimeout(practiceTimer);practiceTimer=0;}
- function startPractice(){stopPractice();if(!practiceVisible||!shown||motion.matches||doc.hidden)return;practiceTimer=setTimeout(()=>{selectMood(moods[(moods.indexOf(practiceMood)+1)%moods.length]);startPractice();},7500);}
- const practiceObserver=new IntersectionObserver(entries=>{practiceVisible=entries[0].isIntersecting;startPractice();},{threshold:.3});
+ // Nothing advances on its own: the visitor moves through the story and the practice examples.
  function syncMotion(){
   root.classList.toggle('land-paused',motion.matches);root.classList.toggle('land-story-paused',paused);root.classList.toggle('land-motion-enabled',!motion.matches);
   for(const button of root.querySelectorAll('[data-land-motion]')){button.setAttribute('aria-label',t(paused?'resume':'pause'));button.title=t(paused?'resume':'pause');button.setAttribute('aria-pressed',String(paused));button.querySelector('span').innerHTML=icon(paused?'play':'pause');}
-  startPractice();startStory();schedule();
+  schedule();
  }
  const brand=`<span class="land-brand-mark" aria-hidden="true">t<span>↗</span></span><span>trato<span class="land-brand-dot">.</span></span>`;
  function storyContent(){
@@ -66,28 +44,37 @@ export function installVisitorLanding(cloud){
   const text=(field,n)=>t(['flow',story,n===undefined?field:n+'.'+field].join('.'));
   const narration=field=>t(['narration',story,field].join('.'));
   const glyph=intro?'messages-square':landingFlows[story][storyStep];
-  return `<div class="land-narrative" data-narrative-stage="${storyStep}"><div class="land-narrator"><div class="land-narrator-cloud"><span>${t(intro?'narration.questionLabel':'narration.solutionLabel')}</span><p>${narration(intro?'question':storyStep)}</p></div><img class="land-story-mascot" src="/assets/mascot/trato-guide.png" alt="TeTrato" width="240" height="240"></div><div class="land-narrative-scene" data-narrative-case="${story}"><div class="land-scene-symbol">${icon(glyph)}</div>${intro?`<div class="land-example-message">${icon('messages-square')}<p>${narration('example')}</p></div>`:`<article class="land-example-document"><span class="land-example-step">0${storyStep+1} / 04</span><h3>${text('title',storyStep)}</h3><span class="land-example-tag">${icon((story==='change'||story==='refund')&&storyStep===3?'credit-card':storyStep===2&&story!=='refund'?'sparkles':'check')}${(story==='change'||story==='refund')&&storyStep===3?'PayPal Sandbox':t(storyStep===2&&story!=='refund'?'flowAi':'flowHuman')}</span></article>`}${intro?'<span class="land-question-progress" aria-hidden="true"></span>':''}<div class="land-narrative-trail" role="group" aria-label="${t('flowSteps')}">${landingFlows[story].map((_,n)=>`<button type="button" data-land-story-step="${n}" aria-label="${text('title',n)}" aria-pressed="${n===storyStep}" class="${n===storyStep?'is-selected':n<storyStep?'is-past':''}"><span>0${n+1}</span></button>`).join('')}</div><div class="land-story-controls"><button type="button" data-land-motion aria-label="${t(paused?'resume':'pause')}" title="${t(paused?'resume':'pause')}" aria-pressed="${paused}"><span>${icon(paused?'play':'pause')}</span></button><button type="button" data-land-story-prev aria-label="${t('flowPrevious')}" title="${t('flowPrevious')}" ${intro?'disabled':''}>${icon('arrow-left')}</button><button type="button" data-land-story-next aria-label="${t('flowNext')}" title="${t('flowNext')}" ${storyStep===3?'disabled':''}>${icon('arrow-right')}</button></div></div></div>`;
+  return `<div class="land-narrative" data-narrative-stage="${storyStep}"><div class="land-narrator"><div class="land-narrator-cloud"><span>${t(intro?'narration.questionLabel':'narration.solutionLabel')}</span><p>${narration(intro?'question':storyStep)}</p></div><img class="land-story-mascot" src="/assets/mascot/trato-guide.png" alt="TeTrato" width="240" height="240"></div><div class="land-narrative-scene" data-narrative-case="${story}"><div class="land-scene-symbol">${icon(glyph)}</div>${intro?`<div class="land-example-message">${icon('messages-square')}<p>${narration('example')}</p></div>`:`<article class="land-example-document"><span class="land-example-step">0${storyStep+1} / 04</span><h3>${text('title',storyStep)}</h3><span class="land-example-tag">${icon((story==='change'||story==='refund')&&storyStep===3?'credit-card':storyStep===2&&story!=='refund'?'sparkles':'check')}${(story==='change'||story==='refund')&&storyStep===3?'PayPal Sandbox':t(storyStep===2&&story!=='refund'?'flowAi':'flowHuman')}</span></article>`}<div class="land-narrative-trail" role="group" aria-label="${t('flowSteps')}">${landingFlows[story].map((_,n)=>`<button type="button" data-land-story-step="${n}" aria-label="${text('title',n)}" aria-pressed="${n===storyStep}" class="${n===storyStep?'is-selected':n<storyStep?'is-past':''}"><span>0${n+1}</span></button>`).join('')}</div><div class="land-story-controls"><button type="button" data-land-motion aria-label="${t(paused?'resume':'pause')}" title="${t(paused?'resume':'pause')}" aria-pressed="${paused}"><span>${icon(paused?'play':'pause')}</span></button><button type="button" data-land-story-prev aria-label="${t('flowPrevious')}" title="${t('flowPrevious')}" ${intro?'disabled':''}>${icon('arrow-left')}</button><button type="button" data-land-story-next aria-label="${t('flowNext')}" title="${t('flowNext')}" ${storyStep===3?'disabled':''}>${icon('arrow-right')}</button></div></div></div>`;
  }
  function selectStory(key,stage=-1){
   if(!storyKeys.includes(key)||!Number.isInteger(stage)||stage< -1||stage>3)return;
-  stopStory();storyElapsed=0;root.style.setProperty('--story-progress','0');
   story=key;storyStep=stage;
   for(const tab of root.querySelectorAll('[data-land-story]')){const selected=tab.dataset.landStory===key;tab.setAttribute('aria-selected',String(selected));tab.tabIndex=selected?0:-1;}
-  const panel=root.querySelector('#land-story-panel');panel.setAttribute('aria-labelledby','story-tab-'+key);panel.innerHTML=storyPanel();startStory();schedule();
+  const panel=root.querySelector('#land-story-panel');panel.setAttribute('aria-labelledby','story-tab-'+key);panel.innerHTML=storyPanel();schedule();
+ }
+ // The problem comes first. Each figure states its population and links its primary source; none is presented as global.
+ function problemContent(){
+  const leapers='https://www.leapers.co/research/2025/report/',nyc='https://www.nyc.gov/assets/dca/downloads/pdf/workers/DCWP-Freelance-Isnt-Free-Act-Five-YearReport-2023.pdf';
+  const stats=[[.416,'Contract'],[.49,'Claim']];
+  const source=(url,key)=>`<a href="${url}" target="_blank" rel="noopener noreferrer">${t(key)}${icon('arrow-up-right')}</a>`;
+  return `<section class="land-tools land-problem" id="land-problem"><div class="land-section-heading"><span class="land-eyebrow">${t('problemEyebrow')}</span><h2>${t('problemTitle')}</h2></div><div class="land-stat-band">${stats.map(([value,name])=>`<div><strong>${percent(value)}</strong><p>${t('problem'+name)}</p></div>`).join('')}</div><p class="land-stat-sources">${source(leapers,'sourceLeapers')}${source(nyc,'sourceNyc')}</p></section>`;
+ }
+ // One agreement, two sides: a single timeline instead of another row of cards. Who acts is shown on each step.
+ function lanesContent(){
+  const steps=[['Agreement','file-text','you'],['Addendum','pencil','you'],['Acceptance','check-check','client'],['Payment','credit-card','client']];
+  return `<section class="land-tools land-lanes-section" id="land-lanes"><div class="land-section-heading"><span class="land-eyebrow">${t('lanesEyebrow')}</span><h2>${t('lanesTitle')}</h2></div><ol class="land-lanes">${steps.map(([name,glyph,who])=>`<li data-who="${who}"><span class="land-lane-who">${t(who==='you'?'lanesYou':'lanesClient')}</span><span class="land-tool-icon">${icon(glyph)}</span><strong>${t('lanes'+name)}</strong></li>`).join('')}</ol><ul class="land-lanes-foot"><li>${t('lanesFootClient')}</li><li>${t('lanesFootDispute')}</li></ul></section>`;
  }
  function mount(){
-  root.innerHTML=`<a class="land-skip" href="#land-content">${t('skip')}</a><header class="land-nav"><button class="land-brand" data-land-scroll="top" aria-label="${t('backTop')}">${brand}</button><div class="land-nav-actions"><label class="land-language"><span class="sr-only">${t('language')}</span><select data-land-language aria-label="${t('language')}"><option value="es" ${uiLanguage()==='es'?'selected':''}>ES</option><option value="en" ${uiLanguage()==='en'?'selected':''}>EN</option></select></label><button class="land-login" data-land-auth="login">${t('login')}</button><button class="land-button land-button-small" data-land-auth="signup">${t('signup')}${icon('arrow-up-right')}</button></div></header><p class="land-connection-error" role="alert" hidden data-land-error><span data-land-error-message>${t('connectError')}</span> <button data-land-retry>${t('retry')}</button></p><main id="land-content" tabindex="-1"><section class="land-journey" data-land-journey><div class="land-hero-copy"><span class="land-eyebrow"><span></span>${t('eyebrow')}</span><h1>${t('headline')}<br><em>${t('headlineAccent')}</em></h1><p>${t('intro')}</p><div class="land-integration-line"><span>${t('ai')}</span><i></i><strong class="land-paypal">Pay<span>Pal</span></strong><small>${t('integrationLine')}</small></div><section class="land-research" aria-label="${t('researchContext')}"><span>${t('researchContext')}</span><div><article><strong>${percent(.675)}</strong><p>${t('lateStat')}</p></article><article><strong>${percent(.264)}</strong><p>${t('unpaidStat')}</p></article></div><p>${uiText('landing.researchSource',{count:new Intl.NumberFormat(uiLocale()).format(1013)})} <a href="https://www.leapers.co/research/2025/report/" target="_blank" rel="noopener noreferrer">${t('researchLink')}${icon('arrow-up-right')}</a></p></section></div></section>${storyContent()}${practiceContent()}<section class="land-tools" id="land-tools"><div class="land-section-heading"><span class="land-eyebrow">${t('toolsEyebrow')}</span><h2>${t('toolsTitle')}</h2><p>${t('toolsCopy')}</p></div><div class="land-tool-grid">${[['map','git-compare-arrows'],['practice','messages-square'],['reputation','star']].map(([name,glyph],index)=>`<article><span class="land-tool-number">0${index+1}</span><span class="land-tool-icon">${icon(glyph)}</span><h3>${t(name+'Title')}</h3><p>${t(name+'Copy')}</p></article>`).join('')}</div></section></main><footer class="land-footer"><button class="land-brand" data-land-scroll="top" aria-label="${t('backTop')}">${brand}</button><p>${t('footer')}</p><a class="land-privacy-link" href="/privacidad?lang=${uiLanguage()}">${uiText('privacy.title')}</a><button data-land-scroll="top">${t('backTop')}${icon('arrow-up-right')}</button></footer>`;
+  root.innerHTML=`<a class="land-skip" href="#land-content">${t('skip')}</a><header class="land-nav"><button class="land-brand" data-land-scroll="top" aria-label="${t('backTop')}">${brand}</button><div class="land-nav-actions"><label class="land-language"><span class="sr-only">${t('language')}</span><select data-land-language aria-label="${t('language')}"><option value="es" ${uiLanguage()==='es'?'selected':''}>ES</option><option value="en" ${uiLanguage()==='en'?'selected':''}>EN</option></select></label><button class="land-login" data-land-auth="login">${t('login')}</button><button class="land-button land-button-small" data-land-auth="signup">${t('signup')}${icon('arrow-up-right')}</button></div></header><p class="land-connection-error" role="alert" hidden data-land-error><span data-land-error-message>${t('connectError')}</span> <button data-land-retry>${t('retry')}</button></p><main id="land-content" tabindex="-1"><section class="land-journey" data-land-journey><div class="land-hero-copy"><span class="land-eyebrow"><span></span>${t('eyebrow')}</span><h1>${t('headline')}<br><em>${t('headlineAccent')}</em></h1><p>${t('intro')}</p><div class="land-integration-line"><span>${t('ai')}</span><i></i><strong class="land-paypal">Pay<span>Pal</span></strong><small>${t('integrationLine')}</small></div><section class="land-research" aria-label="${t('researchContext')}"><span>${t('researchContext')}</span><div><article><strong>${percent(.675)}</strong><p>${t('lateStat')}</p></article><article><strong>${percent(.264)}</strong><p>${t('unpaidStat')}</p></article></div><p>${uiText('landing.researchSource',{count:new Intl.NumberFormat(uiLocale()).format(1013)})} <a href="https://www.leapers.co/research/2025/report/" target="_blank" rel="noopener noreferrer">${t('researchLink')}${icon('arrow-up-right')}</a></p></section></div></section>${problemContent()}${storyContent()}${lanesContent()}${practiceContent()}<section class="land-tools" id="land-tools"><div class="land-section-heading"><span class="land-eyebrow">${t('toolsEyebrow')}</span><h2>${t('toolsTitle')}</h2></div><div class="land-tool-grid land-tool-grid-two">${[['map','git-compare-arrows'],['reputation','star']].map(([name,glyph])=>`<article><span class="land-tool-icon">${icon(glyph)}</span><h3>${t(name+'Title')}</h3><p>${t(name+'Copy')}</p></article>`).join('')}</div></section></main><footer class="land-footer"><button class="land-brand" data-land-scroll="top" aria-label="${t('backTop')}">${brand}</button><p>${t('footer')}</p><a class="land-privacy-link" href="/privacidad?lang=${uiLanguage()}">${uiText('privacy.title')}</a><button data-land-scroll="top">${t('backTop')}${icon('arrow-up-right')}</button></footer>`;
   mounted=true;root.classList.toggle('land-paused',motion.matches);root.classList.toggle('land-story-paused',paused);
   for(const element of root.querySelectorAll('.land-chapter,.land-section-heading,.land-stack-grid>article,.land-tool-grid>article,.land-impact,.land-cta,.land-practice')){element.classList.add('land-reveal');revealObserver.observe(element);}
-  practiceObserver.observe(root.querySelector('#land-practice'));
-  storyObserver.observe(root.querySelector('.land-stories'));
 
  }
  function update(){
   const presentation=entryPresentation(cloud),shouldShow=presentation==='visitor';
   if(shouldShow&&!mounted)mount();
   doc.body.classList.toggle('trato-visitor',shouldShow);root.hidden=!shouldShow;
-  const opening=shouldShow&&!shown;shown=shouldShow;if(!shown){stopPractice();stopStory();}else if(opening)startStory();
+  const opening=shouldShow&&!shown;shown=shouldShow;
   if(shouldShow){root.querySelector('[data-land-error]').hidden=cloud.state!=='error';if(opening){window.scrollTo(0,0);schedule();}}
   if(shouldShow&&cloud.state==='anonymous'&&cloud.location.hash&&cloud.location.hash!=='#inicio'){
    const url=new URL(cloud.location.href);url.hash='inicio';doc.defaultView.history.replaceState(null,'',url.href);
@@ -104,7 +91,6 @@ export function installVisitorLanding(cloud){
  function schedule(){if(!frame&&shown)frame=requestAnimationFrame(draw);}
  root.addEventListener('pointermove',event=>{if(paused||event.pointerType!=='mouse'||!event.target.closest('.land-journey'))return;pointerX=event.clientX/window.innerWidth*2-1;pointerY=event.clientY/window.innerHeight*2-1;schedule();},{passive:true});
  root.addEventListener('pointerleave',()=>{pointerX=pointerY=0;schedule();});
- window.addEventListener('visibilitychange',()=>{startStory();if(doc.hidden)stopPractice();else startPractice();},true);
  window.addEventListener('scroll',schedule,{passive:true});window.addEventListener('resize',schedule,{passive:true});
  motion.addEventListener('change',event=>{paused=event.matches;syncMotion();});
  root.addEventListener('click',event=>{
@@ -114,7 +100,7 @@ export function installVisitorLanding(cloud){
   if(event.target.closest('[data-land-story-next]')){selectStory(story,storyStep+1);(root.querySelector('[data-land-story-next]:not(:disabled)')||root.querySelector(`[data-land-story-step="${Math.max(0,storyStep)}"]`)).focus({preventScroll:true});return;}
 
   if(event.target.closest('.land-skip')){event.preventDefault();root.querySelector('main').focus();root.querySelector('main').scrollIntoView();return;}
-  const mood=event.target.closest('[data-land-mood]');if(mood){selectMood(mood.dataset.landMood);startPractice();return;}
+  const mood=event.target.closest('[data-land-mood]');if(mood){selectMood(mood.dataset.landMood);return;}
   const auth=event.target.closest('[data-land-auth]');
   if(auth){
    cloud.openAccount(auth.dataset.landAuth);const form=cloud.modal.querySelector('[data-cloud-form="auth"]');

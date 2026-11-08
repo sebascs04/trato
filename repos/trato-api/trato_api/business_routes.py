@@ -15,7 +15,8 @@ Name = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max
 class ClientInput(BaseModel):
     model_config = ConfigDict(extra='forbid')
     name: Name
-    contact_email: str | None = Field(default=None, min_length=3, max_length=254)
+    # Required: it carries the addendum, the client portal link and the dispute evidence.
+    contact_email: Annotated[str, StringConstraints(strip_whitespace=True, min_length=3, max_length=254, pattern=r'^[^@\s]+@[^@\s]+\.[^@\s]+$')]
 
 
 class CloseRequestInput(BaseModel):
@@ -82,8 +83,9 @@ def build_business_router(settings, services, require_user, repository_factory=N
         return reply({'supabase_url': settings.supabase_url, 'publishable_key': settings.supabase_key})
 
     @router.get('/session')
-    def session(user=Depends(require_user)):
-        return reply({'user_id': user})
+    def session(user=Depends(require_user), repo=Depends(repository)):
+        # The role comes from account_roles (set once at signup), never from editable user metadata.
+        return reply({'user_id': user, 'role': repo.account_role()})
 
     @router.get('/clients')
     def clients(repo=Depends(repository)):
@@ -119,9 +121,14 @@ def build_business_router(settings, services, require_user, repository_factory=N
     @router.get('/projects/{project_id}/activity/groups')
     def activity_groups(project_id:str,repo=Depends(repository)):
         project=uuid(project_id);repo.project(project)
-        return reply(repo.with_plan_placements(project,repo.rpc('project_activity_groups',{'p_project_id':project})))
+        from .dispute_history import with_dispute_groups
+        return reply(with_dispute_groups(repo,project,repo.with_plan_placements(project,repo.rpc('project_activity_groups',{'p_project_id':project}))))
     @router.get('/projects/{project_id}/activity/groups/{group_kind}/{group_id}')
     def activity_group(project_id:str,group_kind:str,group_id:str,repo=Depends(repository)):
+        if group_kind=='dispute':
+            from .dispute_history import dispute_activity
+            project=uuid(project_id);repo.project(project)
+            return reply(dispute_activity(repo,project,group_id))
         if group_kind not in ('project','change','refund'):raise ApiError('ACTIVITY_GROUP_INVALID',422)
         return reply(repo.activity(uuid(project_id),group_kind=group_kind,group_id=group_id))
 

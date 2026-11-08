@@ -17,11 +17,17 @@ local status=redis.call('HGET',KEYS[1],'status')
 if status=='queued' then
  redis.call('HSET',KEYS[1],'status','running','started_at',ARGV[1]) return 1
 end
-if status=='running' and tonumber(ARGV[1])-tonumber(redis.call('HGET',KEYS[1],'started_at') or ARGV[1])>600 then
- redis.call('HSET',KEYS[1],'status','failed','error_code','AI_INTERRUPTED')
+if status=='running' then
+ if tonumber(ARGV[1])-tonumber(redis.call('HGET',KEYS[1],'started_at') or ARGV[1])>600 then
+  redis.call('HSET',KEYS[1],'status','failed','error_code','AI_INTERRUPTED')
+  return 0
+ end
+ return 2
 end
 return 0
 '''
+# CLAIM result 2: the job has a recent heartbeat. Keep its stream entry pending: the owner acknowledges it when it finishes,
+# and if the owner died, the next recovery sees a stale heartbeat and marks the job failed. Acknowledging here would orphan it.
 FINISH = '''
 if redis.call('HGET',KEYS[1],'status')~='running' or redis.call('HGET',KEYS[1],'execution_id')~=ARGV[1] then return 0 end
 redis.call('HSET',KEYS[1],'status',ARGV[2],ARGV[3],ARGV[4])
@@ -57,7 +63,9 @@ class AIConsumer:
         except (ValueError, TypeError):
             self.redis.xack(STREAM, GROUP, entry_id); return True
         key = PREFIX + job_id
-        if self.redis.eval(CLAIM, 1, key, time.time()) != 1:
+        claim = self.redis.eval(CLAIM, 1, key, time.time())
+        if claim == 2: return True
+        if claim != 1:
             self.redis.xack(STREAM, GROUP, entry_id); return True
         execution_id = str(uuid4())
         self.redis.hset(key, 'execution_id', execution_id)
@@ -110,6 +118,16 @@ class AIConsumer:
                         from .change_proposal import run_change_proposal
                         result=run_change_proposal(data,selected_model,client,job_id,execution_id)
                     else:result=run_project_assistant(data,selected_model,client,job_id,execution_id)
+                elif data.get('workflow')=='dispute_defense':
+                    from .dispute_defense import run_dispute_defense
+                    client=self.client if self.client is not None else BackendToolClient.from_env()
+                    result=run_dispute_defense(data,selected_model,client,job_id,execution_id)
+                elif data.get('workflow')=='section_help':
+                    from .section_help import run_section_help
+                    result=run_section_help(data,selected_model)
+                elif data.get('workflow')=='portal_assistant':
+                    from .portal_assistant import run_portal_assistant
+                    result=run_portal_assistant(data,selected_model)
                 elif data.get('workflow')=='change_reply':
                     from .change_reply import run_change_reply
                     result=run_change_reply(data,selected_model)

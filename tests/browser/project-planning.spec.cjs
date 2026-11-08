@@ -5,7 +5,7 @@ async function setup(page,{language='es',lookupError=false,deleteError=false,def
  await page.route('**/api/v1/**',async route=>{
   const req=route.request(),url=new URL(req.url()),path=url.pathname;let data=[];
   if(path.endsWith('/config'))data={supabase_url:'https://planning.supabase.invalid',publishable_key:'sb_publishable_test'};
-  else if(path.endsWith('/session'))data={user_id:'user-a'};
+  else if(path.endsWith('/session'))data={user_id:'user-a',role:'freelancer'};
   else if(path==='/api/v1/clients')data=[{id:'client-a',name:'Cliente real de prueba',contact_email:'client@example.invalid'}];
   else if(path==='/api/v1/projects'){
    if(req.method()==='POST'){writes.push(req.postDataJSON());data={id:'project-a',client_id:'client-a',name:req.postDataJSON().name,status:'draft'};projects.push(data);}else data=projects;

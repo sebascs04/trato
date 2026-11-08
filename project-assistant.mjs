@@ -98,7 +98,7 @@ export function installProjectAssistant(cloud){
   cloud.document.body.append(fab);}
  const floatingOpen=()=>!!floatingPanel?.element.open;
  function updateFab(){
-  if(!fab)return;fab.hidden=!(cloud.active&&cloud.projectId&&!['asistente','devoluciones'].includes(cloud.tab)&&!floatingOpen());
+  if(!fab)return;fab.hidden=!(cloud.active&&cloud.projectId&&!['#ensayos','#reputacion'].includes(cloud.location.hash)&&!['asistente','devoluciones'].includes(cloud.tab)&&!floatingOpen());
   // Same bottom line as the section guide launcher, placed to its left so neither covers the other.
   const launcher=cloud.document.querySelector?.('.guide-launcher'),width=launcher&&!launcher.hidden?launcher.getBoundingClientRect?.().width:0;
   fab.style.right=width?`${Math.round(28+width+12)}px`:'';
@@ -135,7 +135,7 @@ export function installProjectAssistant(cloud){
   const next=refund?.task==='guide'&&!state.loading&&!state.historyError&&!state.job.state.uncertain&&!['queued','running'].includes(state.job.state.status)
    ?`<button type="button" class="text-button" data-assistant-action="refund-next">${uiText('refundAI.nextQuestion')}</button>`:'';
   const clear=refund?`<button type="button" class="text-button" data-assistant-action="clear-refund" ${state.loading||state.applyingRefund||['queued','running','unavailable'].includes(state.job.state.status)?'disabled':''}>${uiText('refundAI.clearConversation')}</button>`:'';
-  const focus=ready&&state.focus?`<div class="tetrato-focus"><span class="tetrato-focus-icon" aria-hidden="true">${icon(refund?'file-text':'git-compare-arrows')}</span><div><small>${text('focusLabel')}</small><strong title="${esc(state.focus.title)}">${esc(state.focus.title)}</strong></div>${next}${clear}</div>`:'';
+  const focus=ready&&state.focus?`<div class="tetrato-focus" role="note"><span class="tetrato-focus-icon" aria-hidden="true">${icon(refund?'file-text':'git-compare-arrows')}</span><div><small>${text('focusLabel')}</small><strong title="${esc(state.focus.title)}">${esc(state.focus.title)}</strong></div>${next}${clear}</div>`:'';
   floatingPanel.render(`<div class="case-agent-shell"><header class="case-agent-header"><div class="case-agent-heading"><img class="case-agent-mascot" src="/assets/mascot/trato-guide.png" alt="" width="44" height="44"><div><span>Trato</span><h2 id="tetrato-floating-title">TeTrato</h2></div></div><button type="button" class="case-agent-close" data-agent-close aria-label="${uiText('Cerrar')}" title="${uiText('Cerrar')}">${icon('x')}</button></header>${refund?focus:''}<div class="case-agent-chat tetrato-floating-body" data-agent-chat>${refund?'':focus}${ready?body.innerHTML:renderAIActivity({label:text('loadingHistory'),compact:true})}</div></div>`);
   restoreChatScroll(floatingPanel.element.querySelector('.project-assistant-log'),state.chatScroll);
  }
@@ -299,6 +299,10 @@ export function installProjectAssistant(cloud){
   const keys={FILE_SUMMARY_CHANGED:'sourcesChanged',VECTOR_SOURCE_CHANGED:'sourcesChanged',AI_NOT_FOUND:'historyUnavailable',AI_INVALID_CITATION:'invalidEvidence',AI_CONTEXT_INVALID:'historyUnavailable',REFUND_REVISION_CONFLICT:'sourcesChanged',AI_JOB_INVALID:'historyUnavailable',AI_EVALUATOR_NOT_CONFIGURED:'notConfigured',AI_MEMORY_CONFLICT:'memoryConflict',AI_MEMORY_INVALID:'memoryError',AI_MEMORY_CONTEXT_LIMIT:'memoryError'};
   return projectDocumentError(code)||text(keys[code]||'error');
  }
+ function citations(value){return value.citations.map(citation=>{
+  const source=value.sources.find(s=>s.source_id===citation.source_id);
+  return `<article class="project-assistant-source"><span>${text(source.source_kind==='plan'?'planLabel':source.source_kind==='status'?'statusLabel':source.source_kind==='summary'?'referenceLabel':'documentLabel')}</span><button type="button" data-assistant-action="${source.source_kind==='plan'?'plan':source.source_kind==='status'?'status':'source'}" data-document-id="${esc(source.file_id)}">${icon('file-text')}${esc(source.source_kind==='plan'?text('planLabel'):source.source_kind==='status'?text('statusLabel'):source.title||text('documentLabel'))}${icon('arrow-up-right')}</button><blockquote>${esc(citation.quote)}</blockquote>${source.locator?`<small>${text(source.locator.kind==='page'?'page':'sectionLabel')} ${esc(source.locator.page??source.locator.paragraph??source.locator.section??'')}</small>`:''}</article>`;
+ }).join('');}
  function refundDetails(entry,state){
   const result=entry.result,guidance=result.refund;
   if(!guidance)return '';

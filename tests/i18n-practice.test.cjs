@@ -23,6 +23,22 @@ test('rehearsal configuration validates temperament and uses normalized project 
  const bad=structuredClone(data);bad.conversations.find(c=>c.id===bad.messages.find(m=>m.id===en.source_context.message_id).conversationId).projectId='other';
  assert.throws(()=>buildPracticeContext(config,bad,'es'));
 });
+test('rehearsal cases come from the shared bank in the chosen language; settings without a case keep the fixture',async()=>{
+ const {buildPracticeContext,practiceCases,validatePracticeSettings}=await import('../practice-workspace.mjs');
+ const data=JSON.parse(readFileSync(new URL('../data/demo.json',`file://${__filename}`),'utf8'));
+ const bank=JSON.parse(readFileSync(new URL('../data/rehearsal-cases.json',`file://${__filename}`),'utf8'));
+ for(const scenario of ['scope','payment','refund'])assert.equal(practiceCases(scenario,bank).length,5);
+ const config={version:1,scenario:'scope',persona:{patience:3,flexibility:3,price:3},caseId:'scope-web',hiddenIntent:true};
+ const en=buildPracticeContext(config,data,'en',bank),es=buildPracticeContext(config,data,'es',bank);
+ assert.deepEqual(en.source_context,{kind:'rehearsal_case',case_id:'scope-web'});
+ assert.equal(en.sources.request,bank.scenarios.scope.cases.find(c=>c.id==='scope-web').request.en);
+ assert.equal(es.sources.request,bank.scenarios.scope.cases.find(c=>c.id==='scope-web').request.es);
+ assert.equal(en.hidden_intent,true);assert.equal(en.case_theme,'Café website');
+ assert.throws(()=>buildPracticeContext({...config,caseId:'payment-web'},data,'en',bank));
+ assert.throws(()=>validatePracticeSettings({...config,hiddenIntent:'yes'}));
+ const {caseId,hiddenIntent,...legacy}=config;
+ assert.equal(buildPracticeContext(legacy,data,'es',bank).source_context.kind,'fixture');
+});
 test('runtime dialogue instructions stay in the worker with explicit output language',()=>{
  const prompt=readFileSync(new URL('../repos/trato-worker/trato_worker/rehearsal_dialogue.py',`file://${__filename}`),'utf8');
  const frontend=readFileSync(new URL('../practice-workspace.mjs',`file://${__filename}`),'utf8');
@@ -58,4 +74,22 @@ test('rehearsal prompt follows its explicit language independently of the UI loc
   if(previous.window===undefined)delete global.window;else global.window=previous.window;
   if(previous.document===undefined)delete global.document;else global.document=previous.document;
  }
+});
+
+test('client accounts rehearse client-side situations from the bank, with role-specific texts',async()=>{
+ const {buildPracticeContext,practiceCases,setPracticeRole,practiceInfoContent}=await import('../practice-workspace.mjs');
+ const data=JSON.parse(readFileSync(new URL('../data/demo.json',`file://${__filename}`),'utf8'));
+ const bank=JSON.parse(readFileSync(new URL('../data/rehearsal-cases.json',`file://${__filename}`),'utf8'));
+ for(const scenario of ['change','deadline','delivery'])assert.equal(practiceCases(scenario,bank).length,3);
+ const config={version:1,scenario:'change',persona:{patience:3,flexibility:3,price:3},caseId:'change-website',hiddenIntent:true};
+ const en=buildPracticeContext(config,data,'en',bank);
+ assert.deepEqual(en.source_context,{kind:'rehearsal_case',case_id:'change-website'});
+ assert.equal(en.case_theme,'Shop website');
+ const {caseId,...noCase}=config;
+ assert.throws(()=>buildPracticeContext(noCase,data,'en',bank));
+ try{
+  setPracticeRole('client');
+  assert.match(practiceInfoContent('intent').html,/freelancer/);
+ }finally{setPracticeRole('freelancer');}
+ assert.doesNotMatch(practiceInfoContent('intent').html,/freelancer del ensayo/);
 });

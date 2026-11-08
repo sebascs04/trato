@@ -4,8 +4,8 @@ from .errors import ApiError
 from .refund_assistant import project_refund_summary
 from .vector_contract import digest
 
-STATUS_TOOL={'name':'read_project_status','description':'Retrieves the recorded business state of the project: change requests and addenda, verified payments, and recent refund case outcomes.',
- 'when_to_use':'Use for recorded change requests, their terms, verified payments, and project-level refund status.',
+STATUS_TOOL={'name':'read_project_status','description':'Retrieves the recorded business state of the project: each change request with its addendum versions (scope, conditions, additional amount, deadline), when each version was sent and accepted, closures, backend-verified change payments and verified payments of the initial plan deliverables, plus recent verified payments and recent refund case outcomes.',
+ 'when_to_use':'Use when a question concerns the state of a change request, which addendum version was sent or accepted, agreed amounts or deadlines of changes, what the client has paid, or project-level refund status.',
  'parameters':{'type':'object','additionalProperties':False,'required':[],'properties':{}}}
 LIMIT=200000
 

@@ -1,6 +1,6 @@
 """Verify durable case outcome delivery before stream acknowledgment without a model call."""
 import json, unittest
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 from uuid import uuid4
 from trato_worker.ai_jobs import AIConsumer
 from trato_worker.source_tools import ToolError
@@ -18,6 +18,16 @@ class Redis:
  def xack(self,*a):self.events.append('ack')
  def xdel(self,*a):pass
 JOB=str(uuid4())
+class RecoveryTests(unittest.TestCase):
+ def consumer(self,claim):
+  redis=MagicMock();redis.xautoclaim.return_value=('0',[('1',{'job_id':JOB})]);redis.eval.return_value=claim
+  return redis,AIConsumer(redis,object(),object())
+ def test_entry_of_a_job_with_a_recent_heartbeat_stays_pending(self):
+  redis,consumer=self.consumer(2)
+  self.assertTrue(consumer.process_once());redis.xack.assert_not_called();redis.hset.assert_not_called()
+ def test_entry_of_a_finished_or_interrupted_job_is_acknowledged(self):
+  redis,consumer=self.consumer(0)
+  self.assertTrue(consumer.process_once());redis.xack.assert_called_once();redis.hset.assert_not_called()
 class ArchiveTests(unittest.TestCase):
  def run_case(self,fail_archive=False,fail_model=False):
   redis=Redis({'workflow':'project_assistant','case_context':{'session_id':str(uuid4())}})

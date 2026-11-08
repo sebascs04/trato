@@ -284,3 +284,22 @@
 .land-story-paused .land-narrator-cloud,.land-story-paused .land-example-document,.land-story-paused .land-example-message{animation:none;opacity:1;transform:none}
 
 .land-privacy-link{font-size:.8125rem;color:#5b448d;text-underline-offset:.2em}
+
+/* Problem and two sides: each section has its own shape, so the page is not three identical rows of cards. */
+.land-tools.land-problem{padding-top:45px}
+.land-stat-band{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:36px;margin-top:26px;padding-top:24px;border-top:1px solid var(--land-line)}
+.land-stat-band strong{display:block;font-size:56px;line-height:1.05;font-weight:600;color:var(--land-violet)}
+.land-stat-band p{margin:8px 0 0;font-size:15px;line-height:1.5;color:#776b80}
+.land-stat-sources{display:flex;flex-wrap:wrap;gap:6px 22px;margin:20px 0 0}
+.land-stat-sources a{display:inline-flex;align-items:center;gap:5px;font-size:12px;line-height:1.5;color:#5b448d;text-underline-offset:.2em}
+.land-stat-sources svg{width:12px;height:12px;flex:none}
+.land-lanes{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));list-style:none;margin:30px 0 0;padding:0}
+.land-lanes li{display:flex;flex-direction:column;align-items:flex-start;gap:10px;padding:18px 18px 0 0;border-top:2px solid #cbbad9}
+.land-lanes li[data-who="client"]{border-top-color:var(--land-violet)}
+.land-lanes strong{font-size:17px;font-weight:600;color:var(--land-ink)}
+.land-lane-who{font-size:12px;font-weight:600;color:#776b80}
+.land-lanes li[data-who="client"] .land-lane-who{color:#5b448d}
+.land-lanes-foot{max-width:680px;margin:24px 0 0;padding-left:18px;font-size:15px;line-height:1.7;color:#776b80}.land-lanes-foot li+li{margin-top:6px}
+.land-tool-grid.land-tool-grid-two{grid-template-columns:repeat(2,minmax(0,1fr))}
+@media(max-width:760px){.land-stat-band,.land-tool-grid.land-tool-grid-two{grid-template-columns:1fr;gap:22px}.land-lanes{grid-template-columns:repeat(2,minmax(0,1fr));row-gap:22px}}
+.land-narrative-trail>button.is-selected:after{transform:scaleX(1)}

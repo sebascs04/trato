@@ -1,4 +1,5 @@
 """User-scoped PostgREST/Storage repository. No service-role credential required."""
+from concurrent.futures import ThreadPoolExecutor
 from hashlib import sha256
 import re
 from urllib.parse import quote, urlparse
@@ -76,6 +77,13 @@ class Repository:
     def rpc(self, name, data):
         return self.call('POST', '/rest/v1/rpc/' + name, json=data)
 
+    def account_role(self):
+        # RLS returns only the caller's own row; every account gets one at signup.
+        rows = self.rows('account_roles', {'select': 'role', 'limit': 1})
+        if not rows or rows[0].get('role') not in ('freelancer', 'client'):
+            raise ApiError('ACCOUNT_ROLE_MISSING', 409)
+        return rows[0]['role']
+
     def list_clients(self):
         return self.rows('clients', {'select': 'id,name,contact_email,created_at', 'order': 'created_at.desc', 'limit': 100})
 
@@ -137,33 +145,46 @@ class Repository:
                                        'project_id': 'eq.' + project['id'], 'deleted_at':'is.null', 'order': 'created_at.desc', 'limit': 100})
         ids='in.('+','.join(row['id'] for row in rows)+')' if rows else None
         refund_links={}
-        contexts=self.rows('document_upload_contexts',{'select':'*','document_id':ids,
-            'project_id':'eq.'+project['id'],'owner_id':'eq.'+project['owner_id']}) if ids else []
+        dispute_links={}
+        contexts=[]
         latest_outcomes={}
-        if ids:
+        def processing_outcomes():
+            latest={}
             offset=0
             while True:
                 outcomes=self.rows('file_processing_artifacts',{'select':'document_id,status:artifact->>status,error_code:artifact->>error_code,reason:artifact->treatment->>reason',
                     'document_id':ids,'project_id':'eq.'+project['id'],'owner_id':'eq.'+project['owner_id'],
                     'stage':'eq.outcome','order':'created_at.desc,document_id.asc,cache_key.desc','limit':100,'offset':offset})
                 for outcome in outcomes:
-                    latest_outcomes.setdefault(outcome['document_id'],outcome)
-                if len(outcomes)<100 or len(latest_outcomes)==len(rows):break
+                    latest.setdefault(outcome['document_id'],outcome)
+                if len(outcomes)<100 or len(latest)==len(rows):return latest
                 offset+=len(outcomes)
+        if ids:
+            # These reads depend only on the documents above, so they do not wait for each other.
+            with ThreadPoolExecutor(max_workers=7) as pool:
+                outcomes_read=pool.submit(processing_outcomes)
+                reads={name:pool.submit(self.rows,table,params) for name,(table,params) in {
+                    'contexts':('document_upload_contexts',{'select':'*','document_id':ids,'project_id':'eq.'+project['id'],'owner_id':'eq.'+project['owner_id']}),
+                    'dispute_links':('project_dispute_documents',{'select':'document_id,dispute_id,role,created_at','document_id':ids,'project_id':'eq.'+project['id'],'owner_id':'eq.'+project['owner_id'],'order':'created_at.asc'}),
+                    'artifacts':('refund_artifacts',{'select':'document_id,snapshot_id,settlement_id','document_id':ids}),
+                    'acceptances':('refund_acceptances',{'select':'snapshot_id,settlement_id,evidence','evidence->>document_id':ids}),
+                    'feedback':('refund_feedback',{'select':'snapshot_id,settlement_id,evidence','evidence->>document_id':ids}),
+                    'cases':('refund_settlements',{'select':'id,request_evidence,created_at','project_id':'eq.'+project['id'],'owner_id':'eq.'+project['owner_id']})}.items()}
+                latest_outcomes=outcomes_read.result()
+                data={name:read.result() for name,read in reads.items()}
+            contexts=data['contexts']
+            for link in data['dispute_links']:
+                dispute_links.setdefault(link['document_id'],[]).append({k:link[k] for k in ('dispute_id','role','created_at')})
         by_context={row['document_id']:row for row in contexts}
         context_revisions={row['revision_id'] for row in contexts if row.get('revision_id')}
         revision_numbers=self.rows('proposal_revisions',{'select':'id,revision_no','id':'in.('+','.join(sorted(context_revisions))+')',
             'project_id':'eq.'+project['id'],'owner_id':'eq.'+project['owner_id']}) if context_revisions else []
         revision_numbers={row['id']:row['revision_no'] for row in revision_numbers}
         if ids:
-            artifacts=self.rows('refund_artifacts',{'select':'document_id,snapshot_id,settlement_id','document_id':ids})
-            acceptances=self.rows('refund_acceptances',{'select':'snapshot_id,settlement_id,evidence','evidence->>document_id':ids})
-            feedback=self.rows('refund_feedback',{'select':'snapshot_id,settlement_id,evidence','evidence->>document_id':ids})
-            references=[(a['document_id'],a,'proposal') for a in artifacts]
-            references += [(a['evidence']['document_id'],a,'acceptance') for a in acceptances]
-            references += [(a['evidence']['document_id'],a,'feedback') for a in feedback]
-            cases=self.rows('refund_settlements',{'select':'id,request_evidence,created_at','project_id':'eq.'+project['id'],
-                'owner_id':'eq.'+project['owner_id']})
+            cases=data['cases']
+            references=[(a['document_id'],a,'proposal') for a in data['artifacts']]
+            references += [(a['evidence']['document_id'],a,'acceptance') for a in data['acceptances']]
+            references += [(a['evidence']['document_id'],a,'feedback') for a in data['feedback']]
             references += [(e['document_id'],{'settlement_id':case['id'],'snapshot_id':None},'request')
                 for case in cases for e in case.get('request_evidence',[]) if isinstance(e,dict) and e.get('document_id') in {r['id'] for r in rows}]
             references += [(row['document_id'],{'settlement_id':row['refund_case_id'],'snapshot_id':row['snapshot_id']},'reference')
@@ -180,6 +201,7 @@ class Repository:
             row['processing_outcome']=({'status':outcome.get('status'),'error_code':outcome.get('error_code'),
                 'reason':outcome.get('reason')} if outcome else None)
             row['refund_links']=refund_links.get(row['id'],[])
+            row['dispute_links']=dispute_links.get(row['id'],[])
             links = []
             def add_link(revision, role):
                 if revision and revision.get('proposal'):
@@ -291,7 +313,8 @@ class Repository:
             'proposals':('change_proposals',{'select':'id,request_document_id'}),
             'revisions':('proposal_revisions',{'select':'id,proposal_id,revision_no,additional_minor'}),
             'deliveries':('proposal_deliveries',{'select':'id,proposal_id,revision_id,kind,updated_at','status':'eq.accepted_by_gmail'}),
-            'acceptances':('proposal_acceptances',{'select':'id,proposal_id,revision_id,created_at'}),
+            'acceptances':('proposal_acceptances',{'select':'id,proposal_id,revision_id,method,created_at'}),
+            'portal_requests':('client_portal_change_requests',{'select':'id,proposal_id,revision_id,created_at'}),
             'payments':('proposal_payments',{'select':'id,proposal_id,revision_id,amount_minor,currency,updated_at','status':'eq.completed'}),
             'closures':('request_closures',{'select':'request_document_id,reason,closed_at','order':'request_document_id.asc'})}
         from .refunds.activity import QUERIES,milestones
@@ -331,7 +354,11 @@ class Repository:
             add('email-'+row['id'],kind,title,row['updated_at'],request_id,revision_no=version)
         for row in data['acceptances']:
             request_id,version=context(row)
-            add('acceptance-'+row['id'],'acceptance_recorded',f'Aceptación de adenda v{version} registrada',row['created_at'],request_id,revision_no=version)
+            portal=row.get('method')=='client_portal'
+            add('acceptance-'+row['id'],'acceptance_recorded',f'Adenda v{version} aceptada por el cliente en el portal' if portal else f'Aceptación de adenda v{version} registrada',row['created_at'],request_id,revision_no=version,**({'source':'client_portal'} if portal else {}))
+        for row in data['portal_requests']:
+            request_id,version=context(row)
+            add('portal-request-'+row['id'],'client_changes_requested',f'Ajustes pedidos por el cliente en el portal · v{version}',row['created_at'],request_id,revision_no=version,source='client_portal')
         for row in data['payments']:
             request_id,version=context(row);minor=row['amount_minor']
             add('payment-'+row['id'],'payment_completed',f'Pago confirmado · {row["currency"]} {minor//100}.{minor%100:02d}',row['updated_at'],request_id,revision_no=version,amount_minor=minor,currency=row['currency'])

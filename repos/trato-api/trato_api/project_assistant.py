@@ -93,7 +93,8 @@ class ProjectAssistant:
   if not row or row.get('status')!='running' or row.get('execution_id')!=uuid(execution_id):raise ApiError('AI_JOB_NOT_ACTIVE',409)
   try:data=json.loads(row['input'])
   except (KeyError,ValueError):raise ApiError('AI_JOB_INVALID',502) from None
-  if data.get('workflow')!='project_assistant' or data.get('owner_id')!=row.get('owner'):raise ApiError('AI_JOB_INVALID',502)
+  # A dispute response reads the project's documents through these same authorized tools.
+  if data.get('workflow') not in ('project_assistant','dispute_defense') or data.get('owner_id')!=row.get('owner'):raise ApiError('AI_JOB_INVALID',502)
   repo=self.server if self.server is not None else ThreadStore(self.settings).repo
   project=self.scope(repo,row['owner'],data['project_id'],data['client_id'])
   from .case_assistant import validate_case_job

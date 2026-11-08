@@ -44,6 +44,22 @@ class Model:
 
 
 class EvaluatorTests(unittest.TestCase):
+    def test_hidden_intent_review_is_required_and_its_label_comes_from_the_backend(self):
+        hidden=data('en');hidden['case']['client_intent']='You have a launch soon; push for an early date.'
+        hidden['client_intent_reveal']={'id':'deadline','label':'Was in a hurry for a deadline'}
+        class WithIntent(Model):
+            def generate(self,messages,schema):
+                result=super().generate(messages,schema)
+                if 'type' in result:return result
+                assert 'intent_review' in schema['required'] and 'HIDDEN CLIENT INTENT' in messages[0]['content']
+                return {**result,'intent_review':{'discovered':True,'comment':'You asked which outcome mattered most.'}}
+        with patch('trato_worker.rehearsal_evaluation.audit'):result=evaluate_rehearsal(hidden,Client(),WithIntent())
+        self.assertEqual(result['client_intent'],{'id':'deadline','label':'Was in a hurry for a deadline','discovered':True,'comment':'You asked which outcome mattered most.'})
+        # Without the review the evaluation is rejected; without an intent nothing extra is asked or returned.
+        with patch('trato_worker.rehearsal_evaluation.audit'),self.assertRaises(ToolError):evaluate_rehearsal(hidden,Client(),Model())
+        with patch('trato_worker.rehearsal_evaluation.audit'):plain=evaluate_rehearsal(data(),Client(),Model())
+        self.assertNotIn('client_intent',plain)
+
     def test_multiple_relevant_guides_are_allowed_and_logs_exclude_conversation(self):
         class Multiple(Model):
             def generate(self,messages,schema):
@@ -220,3 +236,20 @@ class UnboundedVerifiedCitationTests(unittest.TestCase):
             'citations':[{'file_id':'f','segment_id':'p','quote':'A fabricated sentence.'}]}]}
         with self.assertRaisesRegex(ToolError,'REHEARSAL_INVALID_CITATION'):
             validate_feedback(output,{1:'My reply'},{'f':f})
+
+
+class ClientSideEvaluationTests(unittest.TestCase):
+    def test_client_rehearsals_are_coached_in_the_client_role(self):
+        from trato_worker.rehearsal_evaluation import validate_rehearsal_input, PROMPT
+        seen = {}
+        class Capture(Model):
+            def generate(self, messages, schema):
+                result = super().generate(messages, schema)
+                if 'type' not in result and 'summary' in schema['properties']: seen['payload'] = json.loads(messages[1]['content'])
+                return result
+        client_side = {**data('en'), 'scenario': 'delivery', 'counterpart': 'freelancer'}
+        with patch('trato_worker.rehearsal_evaluation.audit'): evaluate_rehearsal(client_side, Client(), Capture())
+        self.assertEqual(seen['payload']['counterpart'], 'freelancer')
+        self.assertIn('coach the user in their own role', PROMPT)
+        for bad in ({'scenario': 'delivery'}, {'scenario': 'scope', 'counterpart': 'freelancer'}):
+            with self.assertRaises(ToolError, msg=bad): validate_rehearsal_input({**data(), **bad})

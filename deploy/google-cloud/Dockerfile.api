@@ -3,10 +3,14 @@ ENV PYTHONUNBUFFERED=1 PYTHONDONTWRITEBYTECODE=1
 WORKDIR /app/repos/trato-api
 COPY repos/trato-api/requirements.lock.txt ./
 RUN pip install --no-cache-dir -r requirements.lock.txt
+# PayPal Agent Toolkit: only its shared tools are used, so its langchain/crewai/openai-agents extras are not installed.
+RUN pip install --no-cache-dir --no-deps paypal-agent-toolkit==1.11.0
 COPY repos/trato-api/trato_api ./trato_api
 COPY repos/trato-api/paypal ./paypal
 COPY repos/trato-api/resources /app/resources
 COPY data/demo.json /app/data/demo.json
+COPY data/rehearsal-cases.json /app/data/rehearsal-cases.json
+COPY data/section-guides.json /app/data/section-guides.json
 COPY local-ports.json /app/local-ports.json
 RUN useradd --uid 10001 --create-home api && mkdir -p /var/lib/trato/gmail /var/lib/trato/paypal && chown api:api /var/lib/trato/gmail /var/lib/trato/paypal
 USER api

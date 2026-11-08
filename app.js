@@ -2,7 +2,7 @@
 const {uiText}=window.TratoI18n;
 const cloud=window.TratoCloud;
 if(!cloud)throw new Error(uiText("No pudimos recuperar tu espacio. Vuelve a intentar."));
-const labels={inicio:uiText("Vista general"),clientes:uiText("Clientes"),ensayos:uiText('practice.title'),reputacion:uiText('reputation.title')};
+const labels={inicio:uiText("Vista general"),clientes:uiText("Clientes"),ensayos:uiText('practice.title'),reputacion:uiText('reputation.title'),acuerdos:uiText("Mis proyectos")};
 function renderView(){
   let view=location.hash.slice(1)||'inicio';
   if(view==='kb'||view==='conversaciones')view='clientes';

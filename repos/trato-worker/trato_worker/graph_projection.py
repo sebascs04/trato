@@ -9,12 +9,12 @@ from .connected import JobError
 GRAPH_PROJECTION_VERSIONS=(2,3)
 
 KINDS={'Project','Document','Extraction','Proposal','Revision','Review','Acceptance','Delivery','Payment','Plan','PlanStage',
-       'Refund','RefundVersion','RefundReceipt'}
+       'Refund','RefundVersion','RefundReceipt','ClientChangeRequest','Dispute'}
 REFUND_DOCUMENT_LINKS={'source':'REFUND_EVIDENCE','pdf':'REFUND_PDF','acceptance':'REFUND_ACCEPTANCE_EVIDENCE','feedback':'REFUND_FEEDBACK_EVIDENCE'}
 RELATIONS={'HAS_DOCUMENT','HAS_EXTRACTION','HAS_PROPOSAL','RESPONDS_TO','HAS_REVISION','CURRENT_REVISION',
  'SUPPORTED_BY','HAS_PDF','HAS_REVIEW','REVIEWED_PDF','ACCEPTS_REVISION','EVIDENCED_BY','FOR_REVISION',
  'FOLLOWS_ACCEPTANCE','REPLACES_DRAFT','REQUESTED_CHANGES_FROM','BASED_ON_ACCEPTANCE','CURRENT_ACCEPTANCE','HAS_PLAN','HAS_STAGE','DELIVERY_EVIDENCE','STAGE_PAYMENT','PAYMENT_EVIDENCE',
- 'HAS_CHANGE_REQUEST','HAS_NEW_WORK',
+ 'HAS_CHANGE_REQUEST','HAS_NEW_WORK','ASKS_TO_CHANGE','ACCEPTED_PDF','HAS_DISPUTE',
 
  'HAS_REFUND','HAS_REFUND_VERSION','REFUND_ORIGINAL_PAYMENT','REFUND_CONFIRMED_RECEIPT','REFUND_APPLIES_TO_PAYMENT',*REFUND_DOCUMENT_LINKS.values()}
 
@@ -58,10 +58,14 @@ def build_projection(snapshot,context):
         for row in snapshot[table]:node(table,row['id'],kind,row)
     for row in snapshot['change_proposals']:
         if row['current_revision_id']:edge(key('change_proposals',row['id']),'CURRENT_REVISION',key('proposal_revisions',row['current_revision_id']))
+    # Client portal change requests: the version the client asked to change, and the version that answered it.
+    portal_requests=snapshot.get('client_portal_change_requests',[])
+    for row in portal_requests:node('client_portal_change_requests',row['id'],'ClientChangeRequest',row)
     for row in snapshot['proposal_revisions']:
         rk=key('proposal_revisions',row['id']);edge(key('change_proposals',row['proposal_id']),'HAS_REVISION',rk)
-        for field,rel,table in [('replaces_draft_id','REPLACES_DRAFT','proposal_revisions'),('feedback_document_id','REQUESTED_CHANGES_FROM','documents'),('base_acceptance_id','BASED_ON_ACCEPTANCE','proposal_acceptances')]:
-            if row[field]:edge(rk,rel,key(table,row[field]))
+        for field,rel,table in [('replaces_draft_id','REPLACES_DRAFT','proposal_revisions'),('feedback_document_id','REQUESTED_CHANGES_FROM','documents'),('feedback_portal_request_id','REQUESTED_CHANGES_FROM','client_portal_change_requests'),('base_acceptance_id','BASED_ON_ACCEPTANCE','proposal_acceptances')]:
+            if row.get(field):edge(rk,rel,key(table,row[field]))
+    for row in portal_requests:edge(key('client_portal_change_requests',row['id']),'ASKS_TO_CHANGE',key('proposal_revisions',row['revision_id']))
     for row in snapshot['proposal_revision_sources']:
         edge(key('proposal_revisions',row['revision_id']),'SUPPORTED_BY',key('document_extractions',row['extraction_id']),document_sha256=row['document_sha256'],extraction_result_hash=row['extraction_result_hash'])
     for row in snapshot['proposal_artifacts']:edge(key('proposal_revisions',row['revision_id']),'HAS_PDF',key('documents',row['document_id']),sha256=row['sha256'])
@@ -70,7 +74,12 @@ def build_projection(snapshot,context):
         edge(k,'REVIEWED_PDF',key('documents',row['addendum_document_id']),sha256=row['addendum_sha256'])
     for row in snapshot['proposal_acceptances']:
         k=key('proposal_acceptances',row['id']);edge(k,'ACCEPTS_REVISION',key('proposal_revisions',row['revision_id']))
-        edge(k,'EVIDENCED_BY',key('documents',row['returned_document_id']),sha256=row['returned_sha256'])
+        if row.get('method')=='client_portal':
+            # Accepted with one click in the client portal: the evidence is the reviewed PDF the client saw.
+            review=next((r for r in snapshot['proposal_reviews'] if r['revision_id']==row['revision_id']),None)
+            if review is None or row['returned_document_id']:raise JobError('INVALID_GRAPH_SOURCE')
+            edge(k,'ACCEPTED_PDF',key('documents',review['addendum_document_id']),sha256=review['addendum_sha256'],method='client_portal')
+        else:edge(k,'EVIDENCED_BY',key('documents',row['returned_document_id']),sha256=row['returned_sha256'])
     for table in ('proposal_deliveries','proposal_payments'):
         for row in snapshot[table]:
             k=key(table,row['id']);edge(k,'FOR_REVISION',key('proposal_revisions',row['revision_id']))
@@ -167,6 +176,12 @@ def build_projection(snapshot,context):
             })
             edge(key('refund_settlements',row['settlement_id']),'REFUND_CONFIRMED_RECEIPT',receipt)
             edge(receipt,'REFUND_APPLIES_TO_PAYMENT',payment_keys[(row['settlement_id'],row['payment_id'])])
+    # One node per PayPal dispute, under the payment it contests. A dispute must never stop the map: it hangs from the project
+    # when that payment is not in the graph. Its messages and documents live in the project history and Documents.
+    for row in snapshot.get('project_disputes',[]):
+        dispute=node('project_dispute_events',row['id'],'Dispute',row)
+        payments=[key(table,row[field]) for field,table in (('proposal_payment_id','proposal_payments'),('received_payment_id','project_initial_checkouts')) if row.get(field)]
+        edge(next((k for k in payments if k in nodes),pk),'HAS_DISPUTE',dispute)
     return {'nodes':list(nodes.values()),'edges':edges}
 
 

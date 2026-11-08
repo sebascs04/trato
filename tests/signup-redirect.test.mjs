@@ -29,3 +29,13 @@ test('new pending accounts continue to require email confirmation',async()=>{
  const session=new SessionClient({supabase_url:'https://example.supabase.co',publishable_key:'sb_publishable_test'},{storage:{getItem:()=>null},fetchFn:async()=>({ok:true,json:async()=>({id:'new-pending-account',identities:[{provider:'email'}]})})});
  assert.equal(await session.signup('new@example.com','synthetic-password'),false);assert.equal(session.session,null);
 });
+
+test('signup sends the chosen account role once and rejects unknown roles before calling Auth',async()=>{
+ const calls=[];
+ const session=new SessionClient({supabase_url:'https://example.supabase.co',publishable_key:'sb_publishable_test'},{storage:{getItem:()=>null},fetchFn:async(url,options)=>{calls.push(JSON.parse(options.body));return {ok:true,json:async()=>({id:'pending-confirmation'})};}});
+ await session.signup('client@example.com','synthetic-password','',"client");
+ await session.signup('free@example.com','synthetic-password');
+ assert.deepEqual(calls.map(body=>body.data.account_role),['client','freelancer']);
+ await assert.rejects(session.signup('x@example.com','synthetic-password','','admin'));
+ assert.equal(calls.length,2);
+});

@@ -12,7 +12,7 @@ async function setup(page,{connected=true,clientData=clients,projectData=project
     const path=new URL(route.request().url()).pathname;
     let data;
     if(path==='/api/v1/config') data=config;
-    else if(path==='/api/v1/session') data={user_id:'test-user'};
+    else if(path==='/api/v1/session') data={user_id:'test-user',role:'freelancer'};
     else if(/^\/api\/v1\/clients\/client-[ab]\/delete$/.test(path)){const id=path.split('/').at(-2);expect(route.request().method()).toBe('POST');expect(route.request().headers()['authorization']).toBe('Bearer test-only-access');clientData=clientData.filter(c=>c.id!==id);projectData=projectData.filter(p=>p.client_id!==id);data={id,deleted_at:'2026-10-26T00:00:00Z'};}
     else if(path==='/api/v1/clients') data=clientData;
     else if(path==='/api/v1/projects') data=projectData;
@@ -651,7 +651,7 @@ test('navigation is scoped to the verified user and logout removes its saved loc
 });
 test('another verified account does not inherit the previous account navigation',async({page})=>{
  const errors=await setup(page);await openWorkspace(page);
- await page.route('**/api/v1/session',route=>route.fulfill({json:{data:{user_id:'another-user'}}}));
+ await page.route('**/api/v1/session',route=>route.fulfill({json:{data:{user_id:'another-user',role:'freelancer'}}}));
  const projectReads=[];page.on('request',r=>{if(new URL(r.url()).pathname==='/api/v1/projects')projectReads.push(r.url());});
  await page.reload();
  await expect(page.locator('.cloud-client-directory')).toBeVisible();

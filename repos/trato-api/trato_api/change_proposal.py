@@ -35,6 +35,7 @@ class Prepare(BaseModel):
     output_language: Literal['es','en']
     question: str = Field(default='',max_length=4000)
     feedback_document_id: UUID | None = None
+    feedback_portal_request_id: UUID | None = None
     feedback_notes: str = Field(default='',max_length=4000)
     document_ids: list[UUID] | None = Field(default=None,min_length=1,max_length=100)
     history_ids: list[UUID] = Field(default_factory=list,max_length=6)
@@ -51,7 +52,7 @@ def calculate_price(rate_minor, confirmed_hours):
     if total>99999999999: raise ApiError('INVALID_AMOUNT',422)
     return {'additional_minor':total,'currency':'USD','rate_minor':item.rate_minor,'confirmed_hours':item.confirmed_hours}
 
-def context(repo, owner, project_id, request_document_id, proposal_id=None, revision_id=None, feedback_document_id=None, feedback_notes=''):
+def context(repo, owner, project_id, request_document_id, proposal_id=None, revision_id=None, feedback_document_id=None, feedback_notes='', feedback_portal_request_id=None):
     project=repo.project(uuid(project_id))
     if project['owner_id']!=owner: raise ApiError('PROJECT_NOT_FOUND',404)
     value=source(repo,owner,project,uuid(request_document_id));doc=value['document']
@@ -62,7 +63,8 @@ def context(repo, owner, project_id, request_document_id, proposal_id=None, revi
     proposal=rows[0] if rows else None
     if proposal_id and (not proposal or proposal['id']!=uuid(proposal_id)): raise ApiError('PROPOSAL_REVISION_CONFLICT',409)
     if revision_id and (not proposal or proposal['current_revision_id']!=uuid(revision_id)): raise ApiError('PROPOSAL_REVISION_CONFLICT',409)
-    revising=feedback_document_id is not None
+    if feedback_document_id is not None and feedback_portal_request_id is not None: raise ApiError('AI_CONTEXT_INVALID',409)
+    revising=feedback_document_id is not None or feedback_portal_request_id is not None
     if revising and (not proposal_id or not revision_id or not proposal):raise ApiError('AI_CONTEXT_INVALID',409)
     if proposal:
         if proposal.get('locked_at') or proposal['status']!=('ready_for_review' if revising else 'draft'): raise ApiError('CHANGE_READ_ONLY',409)
@@ -86,7 +88,14 @@ def context(repo, owner, project_id, request_document_id, proposal_id=None, revi
     result={'project_id':project['id'],'request_document_id':doc['id'],'request_generation':value['generation'],
         'baseline_document_ids':[row['id'] for row in agreements], 'proposal_id':proposal['id'] if proposal else None,
         'revision_id':proposal['current_revision_id'] if proposal else None}
-    if revising:
+    if revising and feedback_portal_request_id is not None:
+        # The client's own words from the portal are the feedback; there is no adjustments PDF to cite.
+        rows=repo.rows('client_portal_change_requests',{'select':'id,revision_id,notes,updated_at,used_at','id':'eq.'+uuid(feedback_portal_request_id),'proposal_id':'eq.'+proposal['id'],**common})
+        if len(rows)!=1 or rows[0]['revision_id']!=proposal['current_revision_id'] or rows[0]['used_at'] or not rows[0]['notes'].strip():
+            raise ApiError('AI_CONTEXT_INVALID',409)
+        result.update(feedback_portal_request_id=rows[0]['id'],feedback_notes=rows[0]['notes'].strip(),feedback_updated_at=rows[0]['updated_at'],
+            sent_terms={key:revisions[0].get(key) for key in ('scope_summary','conditions','additional_minor','currency','deadline','revision_no')})
+    elif revising:
         feedback=source(repo,owner,project,uuid(feedback_document_id))
         bindings=repo.rows('document_upload_contexts',{'select':'purpose,revision_id','document_id':'eq.'+uuid(feedback_document_id),**common})
         if feedback['document']['kind']!='reference' or len(bindings)!=1 or bindings[0]['purpose']!='addendum_adjustments' or bindings[0]['revision_id']!=proposal['current_revision_id']:
@@ -100,7 +109,7 @@ def validate_job_context(repo,owner,data):
     bound=data.get('change_proposal_context')
     if bound is None:return
     if not isinstance(bound,dict): raise ApiError('AI_CONTEXT_INVALID',409)
-    fresh=context(repo,owner,bound['project_id'],bound['request_document_id'],bound.get('proposal_id'),bound.get('revision_id'),bound.get('feedback_document_id'),bound.get('feedback_notes',''))
+    fresh=context(repo,owner,bound['project_id'],bound['request_document_id'],bound.get('proposal_id'),bound.get('revision_id'),bound.get('feedback_document_id'),'' if bound.get('feedback_portal_request_id') else bound.get('feedback_notes',''),bound.get('feedback_portal_request_id'))
     if fresh!=bound: raise ApiError('AI_CONTEXT_CHANGED',409)
 
 def validate_draft_result(data,result,canonical):
@@ -138,7 +147,7 @@ class ChangeProposalService:
         job['result']={'kind':'change_proposal','project_id':data['project_id'],'request_document_id':bound['request_document_id'],
             'proposal_id':bound['proposal_id'],'revision_id':bound['revision_id'],'status':'ready' if ready else 'insufficient_evidence',
             **draft.model_dump(),'citations':result['citations'],'sources':result['sources'],
-            **({'feedback_notes':revision_feedback_notes(bound,result['answer'])} if bound.get('feedback_document_id') else {}),
+            **({'feedback_notes':revision_feedback_notes(bound,result['answer'])} if bound.get('feedback_document_id') or bound.get('feedback_portal_request_id') else {}),
             'missing_information':result['missing_information'],'reasoning':result['answer'],
             **({'source_scope':result['source_scope']} if 'source_scope' in result else {})}
         return job
@@ -155,7 +164,8 @@ def build_change_proposal_router(settings,require_user,repository_factory=None,s
         project=await run_in_threadpool(service.assistant.scope,repo,owner,str(item.project_id))
         bound=await run_in_threadpool(context,repo,owner,str(item.project_id),str(item.request_document_id),
             str(item.proposal_id) if item.proposal_id else None,str(item.revision_id) if item.revision_id else None,
-            str(item.feedback_document_id) if item.feedback_document_id else None,item.feedback_notes)
+            str(item.feedback_document_id) if item.feedback_document_id else None,item.feedback_notes,
+            str(item.feedback_portal_request_id) if item.feedback_portal_request_id else None)
         selected=await run_in_threadpool(service.assistant.selected_documents,repo,owner,project,item.document_ids)
         if bound.get('feedback_document_id') and selected is not None and bound['feedback_document_id'] not in selected:raise ApiError('AI_CONTEXT_INVALID',409)
         if len(set(item.history_ids))!=len(item.history_ids):raise ApiError('AI_CONTEXT_INVALID',409)

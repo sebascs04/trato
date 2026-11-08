@@ -19,7 +19,7 @@ async function setup(page,{lang='es',saved=false,multipay=false}={}){
   const req=route.request(),path=new URL(req.url()).pathname,method=req.method();let data;
   const fail=async(code,status=503)=>route.fulfill({status,json:{error:{code}}});
   if(path.endsWith('/config'))data={supabase_url:'https://refund-ui.supabase.invalid',publishable_key:'sb_publishable_test'};
-  else if(path.endsWith('/session'))data={user_id:OWNER};
+  else if(path.endsWith('/session'))data={user_id:OWNER,role:'freelancer'};
   else if(path.endsWith('/clients'))data=[{id:id(10),name:'Refund Client'}];
   else if(path==='/api/v1/projects')data=[{id:P,client_id:id(10),name:'Refund Project',status:'draft'},{id:id(20),client_id:id(10),name:'Other Project',status:'draft'}];
   else if(path.endsWith('/documents'))data=model.documents;

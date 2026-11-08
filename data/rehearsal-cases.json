@@ -1,0 +1,642 @@
+{
+  "version": 1,
+  "note": "Fictional rehearsal cases. Case 1 of each scenario is the original fixture. Intent briefs are private instructions for the fictional client; labels are shown only in the final evaluation.",
+  "scenarios": {
+    "scope": {
+      "cases": [
+        {
+          "id": "scope-video",
+          "theme": {
+            "es": "Video de lanzamiento",
+            "en": "Launch video"
+          },
+          "agreement": {
+            "es": "Video de lanzamiento de 60 segundos en formato horizontal. Incluye dos revisiones. No incluye adaptaciones a otros formatos ni subtítulos.",
+            "en": "60-second launch video in landscape format. Includes two rounds of revisions. Does not include adaptations to other formats or subtitles."
+          },
+          "request": {
+            "es": "¿Podrías agregar tres versiones verticales para redes y subtítulos en inglés?",
+            "en": "Could you add three vertical versions for social media and English subtitles?"
+          }
+        },
+        {
+          "id": "scope-web",
+          "theme": {
+            "es": "Web de una cafetería",
+            "en": "Café website"
+          },
+          "agreement": {
+            "es": "Web de cinco secciones informativas para una cafetería. Incluye dos rondas de cambios. No incluye tienda, carrito ni pagos en línea.",
+            "en": "Five-section informational website for a café. Includes two rounds of changes. Does not include a store, cart or online payments."
+          },
+          "request": {
+            "es": "Queremos vender café en bolsas desde la web, con carrito y pago con PayPal.",
+            "en": "We want to sell bagged coffee from the website, with a cart and PayPal payments."
+          }
+        },
+        {
+          "id": "scope-logo",
+          "theme": {
+            "es": "Logotipo",
+            "en": "Logo"
+          },
+          "agreement": {
+            "es": "Diseño de logotipo con tres propuestas iniciales y una ronda de ajustes. Entrega en PNG y SVG.",
+            "en": "Logo design with three initial concepts and one round of adjustments. Delivered as PNG and SVG."
+          },
+          "request": {
+            "es": "¿Puedes hacerme también las tarjetas de presentación y una plantilla para Instagram?",
+            "en": "Could you also design my business cards and an Instagram template?"
+          }
+        },
+        {
+          "id": "scope-app",
+          "theme": {
+            "es": "App de reservas",
+            "en": "Booking app"
+          },
+          "agreement": {
+            "es": "App de reservas para una peluquería: agenda de citas y recordatorio por correo electrónico.",
+            "en": "Booking app for a hair salon: appointment calendar and email reminders."
+          },
+          "request": {
+            "es": "Mis clientas piden pagar la cita por adelantado dentro de la app.",
+            "en": "My clients are asking to pay for the appointment in advance inside the app."
+          }
+        },
+        {
+          "id": "scope-photo",
+          "theme": {
+            "es": "Sesión de fotos",
+            "en": "Photo session"
+          },
+          "agreement": {
+            "es": "Sesión de fotos de dos horas en el local y veinte fotos editadas.",
+            "en": "Two-hour photo session at the shop and twenty edited photos."
+          },
+          "request": {
+            "es": "¿Podemos sumar diez fotos de producto en fondo blanco para la tienda en línea?",
+            "en": "Can we add ten product photos on a white background for the online store?"
+          }
+        }
+      ],
+      "intents": [
+        {
+          "id": "deadline",
+          "label": {
+            "es": "Tenía prisa por una fecha",
+            "en": "Was in a hurry for a deadline"
+          },
+          "brief": "You have a launch or event soon, so timing matters more than anything. Push for an early delivery and accept paying somewhat more if the freelancer offers a faster or phased delivery. Mention the date only when asked about timing or priorities."
+        },
+        {
+          "id": "budget_cap",
+          "label": {
+            "es": "Tenía un tope de presupuesto",
+            "en": "Had a budget cap"
+          },
+          "brief": "You have a firm budget limit about 30 percent below what extra work usually costs. Ask about price early and resist big amounts. Reveal the exact limit only if the freelancer asks about your budget directly or proposes options."
+        },
+        {
+          "id": "thought_included",
+          "label": {
+            "es": "Creía que ya estaba incluido",
+            "en": "Thought it was already included"
+          },
+          "brief": "You genuinely believe this request was already part of the agreement. Express mild surprise if an extra charge appears. Accept it gracefully only if the freelancer calmly points to what the agreement says."
+        },
+        {
+          "id": "competitor",
+          "label": {
+            "es": "Te comparaba con otro freelancer",
+            "en": "Was comparing you with another freelancer"
+          },
+          "brief": "You received a cheaper quote from another freelancer. Mention it as pressure when price comes up. You still prefer this freelancer if they explain the value and scope clearly."
+        },
+        {
+          "id": "unclear",
+          "label": {
+            "es": "No tenía claro lo que quería",
+            "en": "Wasn't sure what they wanted"
+          },
+          "brief": "You are not sure what you need. Give vague answers and change small details. You appreciate it when the freelancer asks concrete questions and proposes a defined scope."
+        }
+      ]
+    },
+    "payment": {
+      "cases": [
+        {
+          "id": "payment-brand",
+          "theme": {
+            "es": "Identidad de marca",
+            "en": "Brand identity"
+          },
+          "agreement": {
+            "es": "Identidad de marca entregada. Importe pendiente US$450. Fecha límite de pago 15 de octubre de 2026. Fecha de referencia de la demo 21 de octubre de 2026.",
+            "en": "Brand identity delivered. Outstanding amount US$450. Payment due date October 15, 2026. Demo reference date October 21, 2026."
+          },
+          "request": {
+            "es": "Gracias por la entrega. No encuentro el enlace de la factura, ¿me lo reenvías?",
+            "en": "Thanks for the delivery. I can't find the invoice link, could you send it again?"
+          }
+        },
+        {
+          "id": "payment-web",
+          "theme": {
+            "es": "Web publicada",
+            "en": "Published website"
+          },
+          "agreement": {
+            "es": "Web publicada. Segundo pago de US$300 vencido hace diez días.",
+            "en": "Website published. Second payment of US$300 overdue by ten days."
+          },
+          "request": {
+            "es": "Todo quedó genial, pero este mes vamos justos. ¿Podemos pagar más adelante?",
+            "en": "Everything looks great, but money is tight this month. Can we pay later?"
+          }
+        },
+        {
+          "id": "payment-translation",
+          "theme": {
+            "es": "Traducción",
+            "en": "Translation"
+          },
+          "agreement": {
+            "es": "Traducción de cuarenta páginas entregada. US$600 a pagar contra entrega.",
+            "en": "Forty-page translation delivered. US$600 payable on delivery."
+          },
+          "request": {
+            "es": "Antes de pagar quiero que revisen otra vez el capítulo 3.",
+            "en": "Before paying, I'd like you to review chapter 3 again."
+          }
+        },
+        {
+          "id": "payment-social",
+          "theme": {
+            "es": "Gestión de redes",
+            "en": "Social media management"
+          },
+          "agreement": {
+            "es": "Gestión mensual de redes sociales por US$250. Octubre sin pagar.",
+            "en": "Monthly social media management for US$250. October unpaid."
+          },
+          "request": {
+            "es": "En octubre no ganamos más seguidores. ¿Nos haces un descuento?",
+            "en": "We didn't gain more followers in October. Could you give us a discount?"
+          }
+        },
+        {
+          "id": "payment-illustration",
+          "theme": {
+            "es": "Ilustraciones",
+            "en": "Illustrations"
+          },
+          "agreement": {
+            "es": "Diez ilustraciones entregadas. Pendiente el 50 % final: US$400.",
+            "en": "Ten illustrations delivered. Final 50% pending: US$400."
+          },
+          "request": {
+            "es": "¿Puedo pagarte la mitad ahora y la otra mitad en dos meses?",
+            "en": "Can I pay you half now and the other half in two months?"
+          }
+        }
+      ],
+      "intents": [
+        {
+          "id": "cash_flow",
+          "label": {
+            "es": "Tenía un problema real de caja",
+            "en": "Had a real cash-flow problem"
+          },
+          "brief": "You truly lack the money this month but intend to pay. You feel embarrassed. Open up about it if the freelancer is understanding, and accept a clear installment plan with dates."
+        },
+        {
+          "id": "wants_discount",
+          "label": {
+            "es": "Esperaba un descuento",
+            "en": "Was hoping for a discount"
+          },
+          "brief": "You can pay but hope to negotiate a lower amount. Look for reasons to ask for a reduction. Pay in full if the freelancer stays firm and polite while reminding you of what was agreed."
+        },
+        {
+          "id": "hidden_complaint",
+          "label": {
+            "es": "No estaba satisfecho con algo y no lo decía",
+            "en": "Was unhappy about something but didn't say it"
+          },
+          "brief": "You are quietly unhappy with one detail of the delivered work and are delaying payment because of it. Mention the issue only if the freelancer asks how the work turned out or whether something is wrong."
+        },
+        {
+          "id": "testing_flexibility",
+          "label": {
+            "es": "Ponía a prueba tu flexibilidad",
+            "en": "Was testing your flexibility"
+          },
+          "brief": "You want to see how flexible the freelancer is before hiring them again. Push gently on dates and terms. Respond well to clear limits combined with a reasonable option."
+        },
+        {
+          "id": "forgot",
+          "label": {
+            "es": "Olvidó pagar y le daba vergüenza",
+            "en": "Forgot to pay and felt embarrassed"
+          },
+          "brief": "You simply forgot the due date and feel embarrassed, so you deflect a little. Pay promptly once the freelancer gives you a clear reminder with the amount and a payment link."
+        }
+      ]
+    },
+    "refund": {
+      "cases": [
+        {
+          "id": "refund-consulting",
+          "theme": {
+            "es": "Sesión de consultoría",
+            "en": "Consulting session"
+          },
+          "agreement": {
+            "es": "Reserva de consultoría por US$90. Cancelación con más de 48 horas de anticipación permite reembolso completo. Con menos de 48 horas, se ofrece reprogramar. Sesión reservada para el 25 de octubre de 2026.",
+            "en": "Consulting booking for US$90. Cancelling more than 48 hours in advance allows a full refund. With less than 48 hours, rescheduling is offered. Session booked for October 25, 2026."
+          },
+          "request": {
+            "es": "Hoy, 21 de octubre, necesito cancelar la sesión del 25. ¿Pueden devolverme la reserva?",
+            "en": "Today, October 21, I need to cancel the session on the 25th. Can I get my booking refunded?"
+          }
+        },
+        {
+          "id": "refund-course",
+          "theme": {
+            "es": "Curso en línea",
+            "en": "Online course"
+          },
+          "agreement": {
+            "es": "Curso en línea de US$120. Reembolso en los primeros 7 días si no se vio más del 20 % del contenido.",
+            "en": "Online course for US$120. Refund within the first 7 days if no more than 20% of the content was watched."
+          },
+          "request": {
+            "es": "Lo compré hace diez días y no me sirvió. Quiero mi dinero.",
+            "en": "I bought it ten days ago and it wasn't useful. I want my money back."
+          }
+        },
+        {
+          "id": "refund-design",
+          "theme": {
+            "es": "Rediseño cancelado",
+            "en": "Cancelled redesign"
+          },
+          "agreement": {
+            "es": "Anticipo de US$200 por un rediseño. Primera propuesta ya entregada.",
+            "en": "US$200 deposit for a redesign. First proposal already delivered."
+          },
+          "request": {
+            "es": "Cambiamos de idea y cancelamos el proyecto. ¿Nos devuelves el anticipo?",
+            "en": "We changed our minds and are cancelling the project. Can you refund the deposit?"
+          }
+        },
+        {
+          "id": "refund-wedding",
+          "theme": {
+            "es": "Fotografía de boda",
+            "en": "Wedding photography"
+          },
+          "agreement": {
+            "es": "Fotografía de una boda. Anticipo de US$300 no reembolsable si se cancela con menos de 30 días.",
+            "en": "Wedding photography. US$300 deposit, non-refundable if cancelled less than 30 days before."
+          },
+          "request": {
+            "es": "Se suspendió la boda y faltan 20 días. ¿Podemos recuperar el anticipo?",
+            "en": "The wedding was called off and it's 20 days away. Can we get the deposit back?"
+          }
+        },
+        {
+          "id": "refund-software",
+          "theme": {
+            "es": "Licencia de software",
+            "en": "Software license"
+          },
+          "agreement": {
+            "es": "Licencia anual de US$180 con 14 días de prueba gratuita. Ya pasaron 20 días.",
+            "en": "Annual license for US$180 with a 14-day free trial. 20 days have already passed."
+          },
+          "request": {
+            "es": "Olvidé cancelar la prueba y se cobró. ¿Me lo devuelven?",
+            "en": "I forgot to cancel the trial and was charged. Can I get a refund?"
+          }
+        }
+      ],
+      "intents": [
+        {
+          "id": "would_reschedule",
+          "label": {
+            "es": "Aceptaría reprogramar o un crédito",
+            "en": "Would accept rescheduling or a credit"
+          },
+          "brief": "You ask for money back, but you would happily accept rescheduling or a credit for later. Say so only if the freelancer offers or asks about alternatives."
+        },
+        {
+          "id": "review_threat",
+          "label": {
+            "es": "Amenazaba con una mala reseña",
+            "en": "Threatened a bad review"
+          },
+          "brief": "You feel frustrated and hint that you could leave a negative review. Calm down if the freelancer stays respectful, explains the policy and offers a fair option."
+        },
+        {
+          "id": "knows_policy",
+          "label": {
+            "es": "Conocía la política y la ponía a prueba",
+            "en": "Knew the policy and was testing it"
+          },
+          "brief": "You know the cancellation policy perfectly and are checking whether the freelancer applies it consistently. Accept a clear answer grounded in the agreement."
+        },
+        {
+          "id": "personal_reason",
+          "label": {
+            "es": "Tenía un motivo personal fuerte",
+            "en": "Had a strong personal reason"
+          },
+          "brief": "You have a serious personal reason, such as illness or a family emergency. Share it if the freelancer asks why with empathy. You appreciate flexibility but understand the rules."
+        },
+        {
+          "id": "partial",
+          "label": {
+            "es": "Quería solo una devolución parcial",
+            "en": "Only wanted a partial refund"
+          },
+          "brief": "You open by asking for everything, but you would be satisfied with a partial refund. Accept a reasonable partial amount if the freelancer proposes one."
+        }
+      ]
+    },
+    "change": {
+      "cases": [
+        {
+          "id": "change-website",
+          "theme": {
+            "es": "Web de una tienda",
+            "en": "Shop website"
+          },
+          "agreement": {
+            "es": "Diseño y desarrollo de una web de 5 páginas con formulario de contacto. Precio cerrado: 1200 USD. Entrega en 4 semanas. Incluye dos rondas de cambios.",
+            "en": "Design and build of a 5-page website with a contact form. Fixed price: USD 1,200. Delivery in 4 weeks. Includes two rounds of changes."
+          },
+          "request": {
+            "es": "Ya se usaron las dos rondas de cambios. Ahora quieres añadir un blog y una sección de preguntas frecuentes antes del lanzamiento.",
+            "en": "Both rounds of changes have been used. Now you want to add a blog and an FAQ section before the launch."
+          }
+        },
+        {
+          "id": "change-logo",
+          "theme": {
+            "es": "Identidad de una cafetería",
+            "en": "Café brand identity"
+          },
+          "agreement": {
+            "es": "Logotipo, paleta de colores y tarjeta de presentación. 450 USD. Tres propuestas iniciales y una ronda de ajustes.",
+            "en": "Logo, color palette and business card. USD 450. Three initial concepts and one round of adjustments."
+          },
+          "request": {
+            "es": "Ya elegiste una propuesta y usaste la ronda de ajustes. Ahora quieres también el diseño del menú y de los vasos.",
+            "en": "You already chose a concept and used the adjustment round. Now you also want the menu and cup designs."
+          }
+        },
+        {
+          "id": "change-video",
+          "theme": {
+            "es": "Video de presentación",
+            "en": "Promo video"
+          },
+          "agreement": {
+            "es": "Video de 60 segundos con guion, edición y música con licencia. 800 USD. Una ronda de ajustes.",
+            "en": "60-second video with script, editing and licensed music. USD 800. One round of adjustments."
+          },
+          "request": {
+            "es": "El video está casi listo, pero quieres una versión de 15 segundos para redes sociales y cambiar la música.",
+            "en": "The video is almost ready, but you want a 15-second version for social media and a different song."
+          }
+        }
+      ],
+      "intents": [
+        {
+          "id": "overloaded",
+          "label": {
+            "es": "Estaba sobrecargado de trabajo",
+            "en": "Was overloaded with work"
+          },
+          "brief": "You are overloaded with another project this month; you would accept the change only with a later delivery date."
+        },
+        {
+          "id": "extra_paid",
+          "label": {
+            "es": "Quería cobrarlo como adicional",
+            "en": "Wanted it billed as an extra"
+          },
+          "brief": "You consider it clearly extra work and want it paid as an addendum, but you are open to a fair price."
+        },
+        {
+          "id": "unclear",
+          "label": {
+            "es": "No entendía bien el pedido",
+            "en": "Did not fully understand the request"
+          },
+          "brief": "You do not fully understand what the client wants; you need concrete examples before committing."
+        },
+        {
+          "id": "phased",
+          "label": {
+            "es": "Prefería hacerlo en una segunda etapa",
+            "en": "Preferred to do it as a second phase"
+          },
+          "brief": "You prefer to deliver the agreed scope first and do the change as a separate second phase."
+        },
+        {
+          "id": "payment_first",
+          "label": {
+            "es": "Esperaba un pago pendiente antes de seguir",
+            "en": "Was waiting for a pending payment first"
+          },
+          "brief": "You are waiting for a pending payment under the current agreement before taking on more work."
+        }
+      ]
+    },
+    "deadline": {
+      "cases": [
+        {
+          "id": "deadline-launch",
+          "theme": {
+            "es": "App de reservas",
+            "en": "Booking app"
+          },
+          "agreement": {
+            "es": "App web de reservas en 6 semanas, con pago por etapas: 40 % al inicio, 30 % a la mitad y 30 % al entregar. Total: 3000 USD.",
+            "en": "Web booking app in 6 weeks, paid in stages: 40% upfront, 30% midway and 30% on delivery. Total: USD 3,000."
+          },
+          "request": {
+            "es": "Tu campaña de lanzamiento se adelantó y necesitas la app dos semanas antes de lo acordado.",
+            "en": "Your launch campaign moved up and you need the app two weeks earlier than agreed."
+          }
+        },
+        {
+          "id": "deadline-translation",
+          "theme": {
+            "es": "Traducción de un catálogo",
+            "en": "Catalog translation"
+          },
+          "agreement": {
+            "es": "Traducción al inglés de un catálogo de 40 páginas en 10 días hábiles. 900 USD.",
+            "en": "English translation of a 40-page catalog in 10 business days. USD 900."
+          },
+          "request": {
+            "es": "La feria donde presentarás el catálogo se adelantó y lo necesitas en 5 días.",
+            "en": "The trade fair where you will present the catalog moved up and you need it in 5 days."
+          }
+        },
+        {
+          "id": "deadline-delay",
+          "theme": {
+            "es": "Rediseño de marca",
+            "en": "Brand redesign"
+          },
+          "agreement": {
+            "es": "Rediseño de marca con manual de uso, entrega el 20 de noviembre. 1500 USD, con el 50 % ya pagado.",
+            "en": "Brand redesign with a usage guide, due November 20. USD 1,500, with 50% already paid."
+          },
+          "request": {
+            "es": "El freelancer te avisará que necesita una semana más, pero tú presentas la marca a inversores el 22 de noviembre.",
+            "en": "The freelancer will tell you they need one more week, but you present the brand to investors on November 22."
+          }
+        }
+      ],
+      "intents": [
+        {
+          "id": "other_client",
+          "label": {
+            "es": "Tenía otro compromiso esas semanas",
+            "en": "Had another commitment those weeks"
+          },
+          "brief": "You committed to another client's deadline in those weeks; you can only speed up part of the work."
+        },
+        {
+          "id": "rush_fee",
+          "label": {
+            "es": "Quería un recargo por urgencia",
+            "en": "Wanted a rush fee"
+          },
+          "brief": "You can deliver faster only by working weekends, and you want a rush fee for it."
+        },
+        {
+          "id": "waiting_input",
+          "label": {
+            "es": "Esperaba contenido del cliente",
+            "en": "Was waiting for the client's content"
+          },
+          "brief": "You are blocked waiting for content or feedback from the client; that is the real cause of the timing problem."
+        },
+        {
+          "id": "quality_fear",
+          "label": {
+            "es": "Temía que la prisa bajara la calidad",
+            "en": "Feared rushing would hurt quality"
+          },
+          "brief": "You worry that rushing will hurt the quality of the work and your reputation."
+        },
+        {
+          "id": "partial",
+          "label": {
+            "es": "Podía entregar una versión parcial",
+            "en": "Could deliver a partial version"
+          },
+          "brief": "You could deliver a reduced first version on the new date and the rest later."
+        }
+      ]
+    },
+    "delivery": {
+      "cases": [
+        {
+          "id": "delivery-late",
+          "theme": {
+            "es": "Ilustraciones para un libro",
+            "en": "Book illustrations"
+          },
+          "agreement": {
+            "es": "10 ilustraciones para un libro infantil, entrega el 1 de noviembre. 1000 USD, con el 50 % pagado al inicio.",
+            "en": "10 illustrations for a children's book, due November 1. USD 1,000, with 50% paid upfront."
+          },
+          "request": {
+            "es": "Ya pasó la fecha y solo recibiste 6 ilustraciones. Quieres saber cuándo llegan las demás.",
+            "en": "The date has passed and you have only received 6 illustrations. You want to know when the rest will arrive."
+          }
+        },
+        {
+          "id": "delivery-quality",
+          "theme": {
+            "es": "Fotos de producto",
+            "en": "Product photos"
+          },
+          "agreement": {
+            "es": "30 fotos de producto en fondo blanco, editadas y en alta resolución. 600 USD, ya pagados.",
+            "en": "30 edited, high-resolution product photos on a white background. USD 600, already paid."
+          },
+          "request": {
+            "es": "Recibiste las fotos, pero 8 tienen sombras y no sirven para tu tienda en línea.",
+            "en": "You received the photos, but 8 of them have shadows and are not usable for your online store."
+          }
+        },
+        {
+          "id": "delivery-missing",
+          "theme": {
+            "es": "Web de un restaurante",
+            "en": "Restaurant website"
+          },
+          "agreement": {
+            "es": "Web con menú, reservas y versión para celular, entregada con los archivos fuente y los accesos al hosting. 1100 USD, ya pagados.",
+            "en": "Website with menu, bookings and a mobile version, delivered with the source files and hosting access. USD 1,100, already paid."
+          },
+          "request": {
+            "es": "La web funciona, pero no has recibido los accesos al hosting ni los archivos fuente.",
+            "en": "The website works, but you have not received the hosting access or the source files."
+          }
+        }
+      ],
+      "intents": [
+        {
+          "id": "blocked",
+          "label": {
+            "es": "Esperaba algo del cliente y no lo dijo",
+            "en": "Was waiting on the client and did not say so"
+          },
+          "brief": "You were waiting for files or an approval from the client and never said so clearly."
+        },
+        {
+          "id": "personal",
+          "label": {
+            "es": "Tuvo un problema personal",
+            "en": "Had a personal problem"
+          },
+          "brief": "A personal problem delayed you and you feel embarrassed to say it."
+        },
+        {
+          "id": "scope_doubt",
+          "label": {
+            "es": "Creía que eso no estaba en el acuerdo",
+            "en": "Believed it was not in the agreement"
+          },
+          "brief": "You believe part of what the client is claiming was not included in the agreement."
+        },
+        {
+          "id": "changed_requirements",
+          "label": {
+            "es": "Sentía que el pedido cambió después",
+            "en": "Felt the requirements changed later"
+          },
+          "brief": "You feel the client changed the requirements after you started, which is why the result differs."
+        },
+        {
+          "id": "fix_ready",
+          "label": {
+            "es": "Lo arreglaría rápido con detalles claros",
+            "en": "Would fix it fast with clear details"
+          },
+          "brief": "You will fix it quickly as soon as the client explains exactly what is wrong; vague complaints make you defensive."
+        }
+      ]
+    }
+  }
+}

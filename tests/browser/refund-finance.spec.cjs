@@ -22,7 +22,7 @@ async function setup(page,{lang='es',authorized=false,external=false,loss=null,r
   const req=route.request(),path=new URL(req.url()).pathname,method=req.method();let result;
   const fail=code=>route.fulfill({status:503,json:{error:{code}}});
   if(path.endsWith('/config'))result={supabase_url:'https://finance.supabase.invalid',publishable_key:'sb_publishable_test'};
-  else if(path.endsWith('/session'))result={user_id:OWNER};
+  else if(path.endsWith('/session'))result={user_id:OWNER,role:'freelancer'};
   else if(path.endsWith('/clients'))result=[{id:id(10),name:'Finance Client'}];
   else if(path==='/api/v1/projects')result=[{id:PROJECT,client_id:id(10),name:'Finance Project'}];
   else if(path.endsWith('/documents')||path.endsWith('/proposals'))result=[];

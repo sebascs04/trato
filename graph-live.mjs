@@ -1,15 +1,15 @@
 import {uiText,uiLocale} from './i18n.mjs';
 import {icon} from './icons.mjs';
 const esc=value=>String(value??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-const kinds={Refund:[uiText('graph.refund'),'undo-2'],RefundVersion:[uiText('graph.refundProposal'),'file-text'],RefundReceipt:[uiText('graph.refundReceipt'),'credit-card'],Plan:[uiText('graph.initialPlan'),'layout-dashboard'],PlanStage:[uiText('graph.planStage'),'file-text'],Project:[uiText("Proyecto"),'layout-dashboard'],Document:[uiText("Documento"),'file-text'],Extraction:[uiText("Texto extraído"),'file-text'],Proposal:[uiText("Propuesta"),'git-compare-arrows'],Revision:[uiText("Adenda"),'pencil'],Review:[uiText("Revisión"),'eye'],Acceptance:[uiText("Aceptación"),'file-text'],Delivery:[uiText("Envío"),'send'],Payment:[uiText("Pago"),'credit-card']};
+const kinds={Dispute:[uiText('graph.dispute'),'messages-square'],ClientChangeRequest:[uiText('graph.clientChangeRequest'),'messages-square'],Refund:[uiText('graph.refund'),'undo-2'],RefundVersion:[uiText('graph.refundProposal'),'file-text'],RefundReceipt:[uiText('graph.refundReceipt'),'credit-card'],Plan:[uiText('graph.initialPlan'),'layout-dashboard'],PlanStage:[uiText('graph.planStage'),'file-text'],Project:[uiText("Proyecto"),'layout-dashboard'],Document:[uiText("Documento"),'file-text'],Extraction:[uiText("Texto extraído"),'file-text'],Proposal:[uiText("Propuesta"),'git-compare-arrows'],Revision:[uiText("Adenda"),'pencil'],Review:[uiText("Revisión"),'eye'],Acceptance:[uiText("Aceptación"),'file-text'],Delivery:[uiText("Envío"),'send'],Payment:[uiText("Pago"),'credit-card']};
 const links={
- HAS_CHANGE_REQUEST:uiText('graph.hasChangeRequest'),HAS_NEW_WORK:uiText('graph.hasNewWork'),
+ HAS_DISPUTE:uiText('graph.hasDispute'),HAS_CHANGE_REQUEST:uiText('graph.hasChangeRequest'),HAS_NEW_WORK:uiText('graph.hasNewWork'),
  HAS_REFUND:uiText('graph.hasRefund'),HAS_REFUND_VERSION:uiText('graph.hasRefundVersion'),
  REFUND_EVIDENCE:uiText('graph.refundEvidence'),REFUND_PDF:uiText('graph.refundPdf'),
  REFUND_ACCEPTANCE_EVIDENCE:uiText('graph.refundAcceptanceEvidence'),REFUND_FEEDBACK_EVIDENCE:uiText('graph.refundFeedbackEvidence'),
  REFUND_ORIGINAL_PAYMENT:uiText('graph.refundOriginalPayment'),REFUND_CONFIRMED_RECEIPT:uiText('graph.refundConfirmedReceipt'),
  REFUND_APPLIES_TO_PAYMENT:uiText('graph.refundAppliesToPayment'),HAS_PLAN:uiText('graph.hasPlan'),HAS_STAGE:uiText('graph.hasStage'),DELIVERY_EVIDENCE:uiText('graph.deliveryEvidence'),STAGE_PAYMENT:uiText('graph.stagePayment'),PAYMENT_EVIDENCE:uiText('graph.paymentEvidence'),HAS_INITIAL_AGREEMENT:uiText('graph.hasInitialAgreement'),RECEIVES_REQUEST:uiText('graph.receivesRequest'),HAS_CHANGE_PROPOSAL:uiText('graph.hasChangeProposal'),HAS_DOCUMENT:uiText("Contiene"),HAS_EXTRACTION:uiText("Tiene texto extraído"),HAS_PROPOSAL:uiText("Incluye propuesta"),RESPONDS_TO:uiText("Responde al pedido"),HAS_REVISION:uiText("Tiene adenda"),CURRENT_REVISION:uiText("Tiene como vigente"),SUPPORTED_BY:uiText("Usa como fuente"),HAS_PDF:uiText("Tiene PDF"),HAS_REVIEW:uiText("Tiene revisión"),REVIEWED_PDF:uiText("Revisa"),ACCEPTS_REVISION:uiText("Acepta esta adenda"),EVIDENCED_BY:uiText("Se respalda en"),FOR_REVISION:uiText("Corresponde a"),FOLLOWS_ACCEPTANCE:uiText("Sigue a"),REPLACES_DRAFT:uiText("Reemplaza"),REQUESTED_CHANGES_FROM:uiText("Recoge ajustes de"),BASED_ON_ACCEPTANCE:uiText("Se basa en"),CURRENT_ACCEPTANCE:uiText("Tiene acuerdo vigente")};
-const states={planned:uiText('graph.planActive'),finished:uiText('graph.planCompleted'),draft:uiText("Borrador"),active:uiText("Activo"),closed:uiText("Cerrado"),queued:uiText("Por leer"),ready:uiText("Disponible"),error:uiText("Error"),accepted:uiText("Aceptado"),ready_for_review:uiText("Por revisar"),completed:uiText("Pagado"),created:uiText("Pendiente"),sending:uiText("Enviando"),accepted_by_gmail:uiText("Envío registrado"),failed:uiText("Falló"),delivery_uncertain:uiText("Envío por verificar")};
+const states={open:uiText('graph.disputeOpen'),escalated:uiText('graph.disputeEscalated'),resolved:uiText('graph.disputeResolved'),planned:uiText('graph.planActive'),finished:uiText('graph.planCompleted'),draft:uiText("Borrador"),active:uiText("Activo"),closed:uiText("Cerrado"),queued:uiText("Por leer"),ready:uiText("Disponible"),error:uiText("Error"),accepted:uiText("Aceptado"),ready_for_review:uiText("Por revisar"),completed:uiText("Pagado"),created:uiText("Pendiente"),sending:uiText("Enviando"),accepted_by_gmail:uiText("Envío registrado"),failed:uiText("Falló"),delivery_uncertain:uiText("Envío por verificar")};
 const formatDate=value=>value?new Intl.DateTimeFormat(uiLocale(),{dateStyle:'medium',timeStyle:'short',timeZone:'America/Lima'}).format(new Date(value)):'';
 const refundDocumentLinks=['REFUND_EVIDENCE','REFUND_PDF','REFUND_ACCEPTANCE_EVIDENCE','REFUND_FEEDBACK_EVIDENCE'];
 const scopeKeys={plan:'project_start_plans:',change:'documents:',refund:'refund_settlements:'};
@@ -21,7 +21,7 @@ export function presentProjectGraph(data){
  const records=new Map(data.nodes.map(node=>[node.entity_key,node]));
  const replaced=new Set(data.edges.filter(e=>e.kind==='REPLACES_DRAFT').map(e=>e.target));
  const referenced=new Set(data.edges.filter(e=>['ACCEPTS_REVISION','FOR_REVISION'].includes(e.kind)).map(e=>e.target));
- const businessKinds=new Set(['Project','Document','Proposal','Revision','Acceptance','Payment','Plan','PlanStage','Refund','RefundVersion','RefundReceipt']);
+ const businessKinds=new Set(['Project','Document','Proposal','Revision','Acceptance','Payment','Plan','PlanStage','ClientChangeRequest','Dispute','Refund','RefundVersion','RefundReceipt']);
  const nodes=data.nodes.filter(n=>businessKinds.has(n.kind)&&(!replaced.has(n.entity_key)||referenced.has(n.entity_key)));
  const visible=new Set(nodes.map(n=>n.entity_key)),edges=[];
  const currentEdges=data.edges.filter(e=>e.kind==='CURRENT_REVISION'&&visible.has(e.source)&&visible.has(e.target));
@@ -165,6 +165,8 @@ export function layoutProjectGraph(nodes,edges){
   else if(n.kind==='Extraction')parent=incoming(id,'HAS_EXTRACTION')||root;
   else if(n.kind==='Review')parent=incoming(id,'HAS_REVIEW')||root;
   else if(n.kind==='Acceptance')parent=outgoing(id,'ACCEPTS_REVISION')||root;
+  else if(n.kind==='ClientChangeRequest')parent=outgoing(id,'ASKS_TO_CHANGE')||root;
+  else if(n.kind==='Dispute')parent=incoming(id,'HAS_DISPUTE')||root;
   else if(n.kind==='Delivery')parent=outgoing(id,'FOR_REVISION')||root;
   else if(n.kind==='Payment')parent=incoming(id,'STAGE_PAYMENT')||outgoing(id,'FOLLOWS_ACCEPTANCE')||outgoing(id,'FOR_REVISION')||incoming(id,'REFUND_ORIGINAL_PAYMENT')||root;
   parents.set(id,byId.has(parent)?parent:root);
@@ -348,6 +350,20 @@ export async function openProjectGraph({projectId,request,returnFocus,isCurrent=
    render();
   }catch(error){if(!current(mapRun))return;scopeBusy=false;scopeError=error;render();}
  }
+ async function showScope(value){
+  const mapRun=generation,option=value==='all'?{scope:'all'}:scopeOptions.find(o=>o.key===value);
+  if(!option)return;
+  const expectedGeneration=data.generation;
+  requestFilter=value;scopeBusy=true;scopeError=null;selectedRelation=null;render();
+  try{
+   const scoped=await scopeReader.read(option,expectedGeneration);
+   if(!scoped||!current(mapRun))return;
+   data=scoped;scopeOptions=scoped.scopes;scopeBusy=false;
+   ({nodes:all,edges,cases}=presentProjectGraph(scoped));byId=new Map(all.map(n=>[n.entity_key,n]));
+   selected=byId.has(value)?value:all.find(n=>n.kind==='Project').entity_key;
+   render();
+  }catch(error){if(!current(mapRun))return;scopeBusy=false;scopeError=error;render();}
+ }
  function render(){
  const requests=scopeOptions.map((o,index)=>({entity_key:o.key,label:o.scope==='plan'?uiText('graph.initialPlan'):o.scope==='refund'?uiText('graph.refundCase',{number:index+1}):o.title||uiText('graph.unnamedRequest',{number:index+1})}));
  const toolbar=`<div class="gd-toolbar"><label>${uiText("Ver")} <select data-live-request aria-label="${uiText("graph.filterStory")}"><option value="all" ${requestFilter==='all'?'selected':''}>${uiText("Todo el proyecto")}</option>${requests.map(n=>`<option value="${esc(n.entity_key)}" ${n.entity_key===requestFilter?'selected':''}>${esc(n.label)}</option>`).join('')}</select></label>`;
@@ -384,7 +400,7 @@ export async function openProjectGraph({projectId,request,returnFocus,isCurrent=
   placeRelationLabels();
   return;
  }
- const description=node.scope_summary||node.deliverables||node.summary||(node.business_kind==='email_request'?uiText("Conversación que respalda el pedido del cliente."):node.kind==='Acceptance'?uiText("Aceptación registrada mediante revisión manual del documento devuelto."):node.kind==='Payment'?(node.status==='completed'?uiText("Pago confirmado por el backend."):uiText("Este pago aún no está confirmado.")):uiText("Registro del proyecto y sus conexiones documentadas."));
+ const description=node.scope_summary||node.deliverables||node.summary||(node.business_kind==='email_request'?uiText("Conversación que respalda el pedido del cliente."):node.kind==='Acceptance'?uiText(node.method==='client_portal'?'graph.portalAcceptance':"Aceptación registrada mediante revisión manual del documento devuelto."):node.kind==='Dispute'?uiText('graph.disputeDetail'):node.kind==='ClientChangeRequest'?uiText('graph.clientChangeRequestDetail'):node.kind==='Payment'?(node.status==='completed'?uiText("Pago confirmado por el backend."):uiText("Este pago aún no está confirmado.")):uiText("Registro del proyecto y sus conexiones documentadas."));
  aside.innerHTML=close+`<span class="gd-eyebrow">${esc(kinds[node.kind]?.[0])}</span><h2>${esc(title(node))}</h2><p class="gd-detail-copy">${esc(description)}</p>${node.kind==='PlanStage'?`<p class="gd-detail-copy"><strong>${uiText('graph.paymentCondition')}</strong><br>${esc(node.payment_condition)}</p>`:''}${related.some(e=>e.evidence_relations?.some(source=>source.kind==='SUPPORTED_BY'))?`<p class="gd-relation-evidence">${uiText('graph.requestSourceNote')}</p>`:''}<div class="gd-connections"><h3>${uiText("Conectado con")}</h3><div class="gd-connection-legend" aria-label="${uiText("graph.directionLegend")}"><span>${icon('arrow-left')}${uiText("graph.incoming")}</span><span>${icon('arrow-right')}${uiText("graph.outgoing")}</span></div>${related.map(e=>{const other=byId.get(e.source===selected?e.target:e.source);return `<button class="gd-connection" data-live-select="${esc(other.entity_key)}">${icon(kinds[other.kind]?.[1]||'file-text')}<span>${esc(title(other))}<small>${e.source===selected?'→':'←'} ${esc(links[e.kind]||e.kind)}</small></span>${icon('chevron-right')}</button>`;}).join('')||("<p class=\"gd-detail-copy\">"+uiText("Sin conexiones registradas.")+"</p>")}</div>${node.kind==='Document'?`<button class="gd-document-action" data-live-document="${esc(node.source_id)}">${icon('file-text')}${uiText("Ver documento fuente")}</button>`:(node.documents||[]).map(doc=>`<button class="gd-document-action" data-live-document="${esc(doc.id)}">${icon('file-text')}${uiText(doc.role==='pdf'?'graph.openVersionPdf':'graph.openAcceptancePdf')}</button>`).join('')}`;
   placeRelationLabels();
  }

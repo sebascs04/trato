@@ -7,7 +7,7 @@ async function setup(page,{language='es',signedIn=false,configError=false}={}){
   if(path==='/api/v1/config'){
    await route.fulfill(configError?{status:503,json:{error:{code:'AUTH_NOT_CONFIGURED'}}}:{json:{data:{supabase_url:'https://tests.supabase.invalid',publishable_key:'sb_publishable_test'}}});return;
   }
-  if(path==='/api/v1/session')await route.fulfill({json:{data:{user_id:'landing-owner'}}});
+  if(path==='/api/v1/session')await route.fulfill({json:{data:{user_id:'landing-owner',role:'freelancer'}}});
   else if(path.endsWith('/gmail/connection'))await route.fulfill({json:{data:{connected:false}}});
   else await route.fulfill({json:{data:[]}});
  });
@@ -99,13 +99,10 @@ for(const language of ['es','en'])test(`practice illustration previews three cli
  expect(state.requests).toEqual(['/api/v1/config']);expect(state.errors).toEqual([]);
  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth)).toBe(true);
 });
-test('practice cycles only while visible and stops when paused',async({page})=>{
+test('practice examples change only when the visitor chooses one',async({page})=>{
  await setup(page);const section=page.locator('#land-practice');
  await section.scrollIntoViewIfNeeded();await expect(section).toBeInViewport({ratio:.7});
- await expect(section).toHaveClass(/land-revealed/);
  await page.clock.install();await section.locator('[data-land-mood="calm"]').click();
+ await page.clock.runFor(16000);
  await expect(section.locator('[data-land-mood="calm"]')).toHaveAttribute('aria-pressed','true');
- await page.clock.runFor(7600);await expect(section.locator('[data-land-mood="unsure"]')).toHaveAttribute('aria-pressed','true');
- await section.locator('[data-land-motion]').click();await page.clock.runFor(16000);
- await expect(section.locator('[data-land-mood="unsure"]')).toHaveAttribute('aria-pressed','true');
 });

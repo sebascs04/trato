@@ -192,7 +192,12 @@ class ConnectedWorker:
             return self.event(message,claim['lease_id'],'completed',{'generation':data['generation'],'content_hash':data['content_hash']})
         except JobError as exc:
             return self.event(message,claim['lease_id'],'failed',{'error_code':exc.code})
-        except (KeyError,ValueError,TypeError):
+        except (KeyError,ValueError,TypeError) as exc:
+            # Type and code line only: the message of these errors can carry business data.
+            trace=exc.__traceback__
+            while trace.tb_next:trace=trace.tb_next
+            logging.getLogger(__name__).warning(json.dumps({'event':'graph_sync_failed','error':type(exc).__name__,
+                'file':trace.tb_frame.f_code.co_filename.rsplit('/',1)[-1],'line':trace.tb_lineno}))
             return self.event(message,claim['lease_id'],'failed',{'error_code':'INVALID_GRAPH_SOURCE'})
         except RuntimeError:
             return self.event(message,claim['lease_id'],'failed',{'error_code':'INTERNAL_SERVICE_UNAVAILABLE'})

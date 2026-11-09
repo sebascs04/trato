@@ -2,6 +2,7 @@
 from copy import deepcopy
 from hashlib import sha256
 import json
+import logging
 import os
 import re
 from urllib.parse import urlparse
@@ -10,6 +11,17 @@ from uuid import UUID
 import httpx
 from langgraph.graph import StateGraph, START, END
 from langsmith import tracing_context
+
+logger = logging.getLogger('trato.worker.agent_tools')
+
+
+def log_invalid_reply(reply, index):
+    # Diagnose malformed model replies without dumping project content: shape plus a short preview only.
+    shape = {'python_type': type(reply).__name__, 'step': index}
+    if isinstance(reply, dict):
+        shape.update(keys=sorted(map(str, reply))[:10], type=str(reply.get('type'))[:40], tool=str(reply.get('tool'))[:80])
+    preview = json.dumps(reply, ensure_ascii=False, default=str)[:200] if reply is not None else ''
+    logger.warning('INVALID_AGENT_TOOL_RESPONSE shape=%s preview=%s', json.dumps(shape, ensure_ascii=False), preview)
 
 TOOL = 'search_text_file_id'
 WORKFLOW = 'rehearsal_feedback'
@@ -182,10 +194,12 @@ def run_tool_agent(model, runtime, messages, final_schema, *, maximum_context_by
             raise ToolError('EVALUATION_CONTEXT_LIMIT')
         reply = model.generate(history, schema)
         if not isinstance(reply, dict):
+            log_invalid_reply(reply, index)
             raise ToolError('INVALID_AGENT_TOOL_RESPONSE')
         if reply.get('type') == 'final' and set(reply) == {'type', 'result'}:
             return reply['result']
         if reply.get('type') != 'tool_call' or set(reply) != {'type', 'tool', 'params'}:
+            log_invalid_reply(reply, index)
             raise ToolError('INVALID_AGENT_TOOL_RESPONSE')
         if index == max_tool_calls:
             raise ToolError('TOOL_CALL_LIMIT')

@@ -2,7 +2,7 @@
 const {uiText}=window.TratoI18n;
 const cloud=window.TratoCloud;
 if(!cloud)throw new Error(uiText("No pudimos recuperar tu espacio. Vuelve a intentar."));
-const labels={inicio:uiText("Vista general"),clientes:uiText("Clientes"),ensayos:uiText('practice.title'),reputacion:uiText('reputation.title')};
+const labels={inicio:uiText("Vista general"),clientes:uiText("Clientes"),ensayos:uiText('practice.title'),reputacion:uiText('reputation.title'),acuerdos:uiText("Mis proyectos")};
 function renderView(){
   let view=location.hash.slice(1)||'inicio';
   if(view==='kb'||view==='conversaciones')view='clientes';
@@ -28,8 +28,12 @@ function setSidebarCollapsed(collapsed){
   const label=uiText(collapsed?'Mostrar barra lateral':'Ocultar barra lateral');
   toggle.setAttribute('aria-label',label);toggle.setAttribute('title',label);
 }
+const SIDEBAR_KEY='trato:sidebar-collapsed';
 document.querySelector('#sidebar-toggle').addEventListener('click',()=>{
-  setSidebarCollapsed(!document.querySelector('#trato-sidebar').hidden);
+  const collapsed=!document.querySelector('#trato-sidebar').hidden;
+  setSidebarCollapsed(collapsed);
+  try{localStorage.setItem(SIDEBAR_KEY,collapsed?'1':'0');}catch{}
 });
+try{if(localStorage.getItem(SIDEBAR_KEY)==='1')setSidebarCollapsed(true);}catch{}
 window.addEventListener('hashchange',renderView);
 cloud.attach(renderView);

@@ -35,6 +35,11 @@ const assets = new Map([
   ['/initial-payment.mjs',['initial-payment.mjs','text/javascript; charset=utf-8']],
   ['/initial-payments.css',['initial-payments.css','text/css; charset=utf-8']],
   ['/initial-payment.html',['initial-payment.html','text/html; charset=utf-8']],
+  ['/portal.html',['portal.html','text/html; charset=utf-8']],
+  ['/portal.mjs',['portal.mjs','text/javascript; charset=utf-8']],
+  ['/portal-view.mjs',['portal-view.mjs','text/javascript; charset=utf-8']],
+  ['/portal-assistant.mjs',['portal-assistant.mjs','text/javascript; charset=utf-8']],
+  ['/portal.css',['portal.css','text/css; charset=utf-8']],
   ['/project-grid.mjs',['project-grid.mjs','text/javascript; charset=utf-8']],
   ['/project-grid-locale-keys.mjs',['project-grid-locale-keys.mjs','text/javascript; charset=utf-8']],
   ['/project-grid.css',['project-grid.css','text/css; charset=utf-8']],
@@ -48,6 +53,7 @@ const assets = new Map([
   ['/change-proposal-assistant.mjs',['change-proposal-assistant.mjs','text/javascript; charset=utf-8']],
   ['/agent-panel.mjs',['agent-panel.mjs','text/javascript; charset=utf-8']],
   ['/project-assistant.mjs',['project-assistant.mjs','text/javascript; charset=utf-8']],
+  ['/section-assistant.mjs',['section-assistant.mjs','text/javascript; charset=utf-8']],
   ['/project-assistant.css',['project-assistant.css','text/css; charset=utf-8']],
   ['/assets/mascot/trato-guide.png',['assets/mascot/trato-guide.png','image/png']],
   ['/section-guide.mjs',['section-guide.mjs','text/javascript; charset=utf-8']],
@@ -65,6 +71,8 @@ const assets = new Map([
   ['/practice-workspace.css',['practice-workspace.css','text/css; charset=utf-8']],
   ['/refund-preview.mjs', ['refund-preview.mjs', 'text/javascript; charset=utf-8']],
   ['/refund-workspace.mjs', ['refund-workspace.mjs', 'text/javascript; charset=utf-8']],
+  ['/dispute-workspace.mjs', ['dispute-workspace.mjs', 'text/javascript; charset=utf-8']],
+  ['/dispute-workspace.css', ['dispute-workspace.css', 'text/css; charset=utf-8']],
   ['/refund-finance.mjs',['refund-finance.mjs','text/javascript; charset=utf-8']],
   ['/refund-documents.mjs',['refund-documents.mjs','text/javascript; charset=utf-8']],
   ['/refund-form.mjs', ['refund-form.mjs', 'text/javascript; charset=utf-8']],
@@ -107,6 +115,7 @@ const assets = new Map([
   ['/payment-panel.js', ['payment-panel.js', 'text/javascript; charset=utf-8']],
   ['/workflow-ui.js', ['workflow-ui.js', 'text/javascript; charset=utf-8']],
   ['/data/demo.json', ['data/demo.json', 'application/json; charset=utf-8']],
+  ['/data/rehearsal-cases.json', ['data/rehearsal-cases.json', 'application/json; charset=utf-8']],
 ]);
 const demo = JSON.parse(await readFile(new URL('data/demo.json', import.meta.url), 'utf8'));
 for (const doc of demo.documents) {

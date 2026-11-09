@@ -17,6 +17,12 @@ async function bootTrato() {
       if (ids.some(id => typeof id !== 'string') || new Set(ids).size !== ids.length) throw new Error(`Identificadores inválidos en ${table}.`);
     }
     window.TRATO_DATA = data;
+    // Fictional rehearsal cases shared with the API (data/rehearsal-cases.json). Hidden intents are chosen by the server.
+    const cases = await fetch('/data/rehearsal-cases.json', { cache: 'no-store' });
+    if (!cases.ok) throw new Error(`No se pudieron cargar los casos de Ensayos (${cases.status}).`);
+    const bank = await cases.json();
+    if (bank.version !== 1 || ['scope','payment','refund'].some(id => !Array.isArray(bank.scenarios?.[id]?.cases) || !bank.scenarios[id].cases.length)) throw new Error('El formato de los casos de Ensayos no es compatible.');
+    window.TRATO_REHEARSAL_CASES = bank;
     const {mountIcons}=await import('/icons.mjs');
     mountIcons(document);
     try {
@@ -35,12 +41,16 @@ async function bootTrato() {
       installVisitorLanding(window.TratoCloud);
       const {installProposalWorkspace} = await import('/proposal-workspace.mjs');
       installProposalWorkspace(window.TratoCloud);
+      const {installDisputeWorkspace} = await import('/dispute-workspace.mjs');
+      installDisputeWorkspace(window.TratoCloud);
       const {installRefundWorkspace} = await import('/refund-workspace.mjs');
       installRefundWorkspace(window.TratoCloud);
       const {installGmailConnection} = await import('/gmail-connection.mjs');
       installGmailConnection(window.TratoCloud);
       const {installProjectAssistant}=await import('/project-assistant.mjs');
       installProjectAssistant(window.TratoCloud);
+      // TeTrato flotante en Ensayos y Reputación: desactivado (Sebastian, 8/11/2026). Esas secciones se explican con sus botones «i»;
+      // el código (section-assistant.mjs, /api/v1/ai/section-questions) queda para un posible TeTrato único.
       const {installDemoWorkspace}=await import('/demo-workspace.mjs');
       installDemoWorkspace(window.TratoCloud);
     } catch {throw new Error('No se pudo abrir tu espacio. Recarga para volver a intentar.');}

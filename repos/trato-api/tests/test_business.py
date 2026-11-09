@@ -155,3 +155,32 @@ class RequestLifecycleTests(unittest.TestCase):
             missing=client.post(f'/api/v1/requests/{DOCUMENT}/close',headers={'Authorization':'Bearer user-a'},json={'reason':'rejected'})
         self.assertEqual((result.status_code,empty.status_code,missing.status_code),(200,200,200))
         self.assertEqual(repo.calls,[('close',DOCUMENT,'withdrawn','El cliente retiró el pedido'),('close',DOCUMENT,'rejected',''),('close',DOCUMENT,'rejected','')])
+
+class AccountRoleTests(unittest.TestCase):
+    class RoleRepo(Repo):
+        def __init__(self, role):
+            super().__init__();self.role=role
+        def account_role(self):
+            self.calls.append('role');return self.role
+        def create_client(self, name, email):
+            self.calls.append(('create-client',name,email));return {'id':PROJECT,'name':name,'contact_email':email}
+    def client(self,repo):
+        return TestClient(create_app(services=Services(),repository_factory=lambda settings,token:repo))
+    def test_session_reports_role_from_repository(self):
+        for role in ('freelancer','client'):
+            with self.client(self.RoleRepo(role)) as client:
+                response=client.get('/api/v1/session',headers={'Authorization':'Bearer user-a'})
+            self.assertEqual(response.json()['data'],{'user_id':'user-a','role':role})
+    def test_session_requires_authentication_before_reading_role(self):
+        repo=self.RoleRepo('client')
+        with self.client(repo) as client:self.assertEqual(client.get('/api/v1/session').status_code,401)
+        self.assertEqual(repo.calls,[])
+    def test_client_email_is_required_and_validated(self):
+        repo=self.RoleRepo('freelancer')
+        with self.client(repo) as client:
+            auth={'Authorization':'Bearer user-a'}
+            self.assertEqual(client.post('/api/v1/clients',json={'name':'Ana'},headers=auth).status_code,422)
+            self.assertEqual(client.post('/api/v1/clients',json={'name':'Ana','contact_email':'no-es-correo'},headers=auth).status_code,422)
+            ok=client.post('/api/v1/clients',json={'name':'Ana','contact_email':' ana@sol.com '},headers=auth)
+        self.assertEqual(ok.status_code,201)
+        self.assertEqual(repo.calls,[('create-client','Ana','ana@sol.com')])

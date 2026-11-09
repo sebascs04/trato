@@ -9,3 +9,8 @@ dist/
 .local/
 __pycache__/
 *.pyc
+
+
+# Local assistant settings, never published
+.codex/
+.agents/

@@ -16,6 +16,11 @@ export function priceFor(rate_minor,hoursInput){const hours=String(hoursInput).t
  const total=(BigInt(rate_minor)*hundredths+50n)/100n;if(total>99999999999n)throw Error('INVALID_AMOUNT');return {additional_minor:Number(total),currency:'USD',rate_minor,confirmed_hours:hours};}
 // What the form shows while the user types rate and hours: the price and the amount written into «Adicional».
 export function livePrice(result,rate,hours){const price=priceFor(rateMinor(rate),hours);return {price,amount:draftFields(result,price).amount};}
+// The date the client asked for in their reply, ready for the freelancer to confirm. Never a past date, which the form rejects.
+export function requestedDeadline(result,mode,today){
+ const value=result?.suggested_deadline;
+ return mode==='revise'&&typeof value==='string'&&/^\d{4}-\d{2}-\d{2}$/.test(value)&&value>=today?value:null;
+}
 export function draftFields(result,price){if(result?.kind!=='change_proposal'||result.status!=='ready'||!Number.isSafeInteger(price?.additional_minor)||price.additional_minor<0||price.currency!=='USD')throw Error('AI_INVALID_RESPONSE');for(const key of ['scope_summary','conditions','description'])if(typeof result[key]!=='string')throw Error('AI_INVALID_RESPONSE');return {scope:result.scope_summary,conditions:result.conditions,description:result.description,amount:(price.additional_minor/100).toFixed(2)};}
 export function installChangeProposalAssistant(cloud){
  if(cloud.openChangeProposalAssistant)return;
@@ -84,7 +89,7 @@ export function installChangeProposalAssistant(cloud){
   else if(s.sourcesLoading||s.reusing||s.pending?.mode==='draft')html=renderAIActivity({label:t('thinking'),compact:true});
   else if(s.sourceError||s.error&&(s.failedMode==='draft'||!result))html=`<p class="cloud-error" role="alert">${s.sourceError?t('documentsError'):projectDocumentError(s.error)||(s.error==='AI_INVALID_CITATION'?uiText('projectAssistant.invalidEvidence'):t('error'))}</p><button type="button" class="button secondary" data-change-auto="retry">${t('retry')}</button>`;
   else if(result?.status==='ready'){
-   if(!s.filled){s.filled=true;for(const [name,key] of [['scope','scope_summary'],['conditions','conditions'],['description','description']])if(typeof result[key]==='string')setField(s,name,result[key],{onlyEmpty:s.formState.mode!=='revise'});}
+   if(!s.filled){s.filled=true;for(const [name,key] of [['scope','scope_summary'],['conditions','conditions'],['description','description']])if(typeof result[key]==='string')setField(s,name,result[key],{onlyEmpty:s.formState.mode!=='revise'});const requested=requestedDeadline(result,s.formState.mode,new Intl.DateTimeFormat('en-CA',{timeZone:'America/Lima'}).format(new Date()));if(requested)setField(s,'deadline',requested);}
    html=`<div class="plan-reasoning change-reasoning"><div class="plan-reasoning-summary"><img src="/assets/mascot/trato-guide.png" alt="" width="84" height="84"><p>${t('readyIntro')}</p></div><button type="button" class="plan-recommendation-open" data-change-auto="detail" aria-haspopup="dialog">${uiIcon('file-text')}<strong>${t('openProposal')}</strong>${uiIcon('arrow-up-right')}</button><p class="change-auto-note">${t('autoFilled')}</p></div>`;
    if(priceHost)priceHost.innerHTML=`<div class="change-auto-price"><label class="field">${t('rate')}<input class="context-box" name="auto_rate" inputmode="decimal" value="${esc(s.rate)}" ${s.pricing?'disabled':''}></label><label class="field">${t('hours')}<input class="context-box" name="auto_hours" inputmode="decimal" value="${esc(s.hours)}" ${s.pricing?'disabled':''}></label>${s.pricing?renderAIActivity({label:t('calculating'),compact:true}):''}</div>${s.error?`<p class="cloud-error" role="alert">${projectDocumentError(s.error)||t('error')}</p>`:''}`;
   }else if(result)html=`<p>${esc(result.reasoning)}</p>${result.missing_information?.length?`<p>${esc(result.missing_information.join(' '))}</p>`:''}`;
@@ -127,7 +132,7 @@ export function installChangeProposalAssistant(cloud){
  async function poll(s){if(!current(s)||!s.pending)return;try{const job=await cloud.request(s.pending.poll);if(current(s)){s.pending.uncertain=false;accept(s,job);}}catch(error){if(current(s)){s.error=error.code||'AI_REQUEST_FAILED';render(s);}}}
  // Like the initial plan: reopening with the same inputs reuses TeTrato's validated proposal instead of asking again.
  const draftKey=s=>`${cloud.session.key}:change-draft:${s.owner}:${s.project}:${s.request}:${s.revision||'new'}`;
- const draftFingerprint=s=>JSON.stringify([s.request,s.revision||null,s.formState.mode==='revise'?[s.formState.feedbackId||null,s.feedbackNotes]:null,uiLanguage(),s.selected||null,
+ const draftFingerprint=s=>JSON.stringify([s.request,s.revision||null,s.formState.mode==='revise'?[s.formState.feedbackId||null,s.formState.portalRequestId||null,s.feedbackNotes]:null,uiLanguage(),s.selected||null,
   s.files.filter(file=>file.summary_status==='ready').map(file=>file.id+':'+(file.generation||'')).sort()]);
  function rememberDraft(s,jobId){try{cloud.storage.setItem(draftKey(s),JSON.stringify({version:1,job:jobId,fingerprint:s.draftFingerprint||draftFingerprint(s)}));}catch{}}
  async function reuseDraft(s){
@@ -152,7 +157,7 @@ export function installChangeProposalAssistant(cloud){
   }finally{s.reusing=false;}
  }
  async function start(s,mode,{repeat=false}={}){if(!current(s)||s.pending||s.pricing)return;if(mode==='draft')s.draftFingerprint=draftFingerprint(s);const question=s.question.trim();if(mode==='question'&&!question)return;s.error='';s.failedMode=null;const readyIds=s.files.filter(file=>file.summary_status==='ready').map(file=>file.id),hasPending=s.files.some(file=>file.summary_status!=='ready');const id=crypto.randomUUID(),selected=s.selected?{document_ids:s.selected}:hasPending&&readyIds.length?{document_ids:readyIds}:{};
-  const body=mode==='draft'?{project_id:s.project,request_document_id:s.request,output_language:uiLanguage(),question,history_ids:s.history.slice(-6),...selected,...(s.proposal?{proposal_id:s.proposal,revision_id:s.revision}:{}),...(s.formState.mode==='revise'?{feedback_document_id:s.formState.feedbackId,feedback_notes:s.feedbackNotes}:{})}:{project_id:s.project,question:`${t('context',{title:s.requestTitle})}\n${question}`,output_language:uiLanguage(),...(s.resultJob?{change_proposal_job_id:s.resultJob}:{}),...selected};
+  const body=mode==='draft'?{project_id:s.project,request_document_id:s.request,output_language:uiLanguage(),question,history_ids:s.history.slice(-6),...selected,...(s.proposal?{proposal_id:s.proposal,revision_id:s.revision}:{}),...(s.formState.mode==='revise'?(s.formState.portalRequestId?{feedback_portal_request_id:s.formState.portalRequestId}:{feedback_document_id:s.formState.feedbackId,feedback_notes:s.feedbackNotes}):{})}:{project_id:s.project,question:`${t('context',{title:s.requestTitle})}\n${question}`,output_language:uiLanguage(),...(s.resultJob?{change_proposal_job_id:s.resultJob}:{}),...selected};
   s.pending={id,mode,userQuestion:question,body,path:mode==='draft'?'/api/v1/ai/change-proposals':'/api/v1/ai/project-questions',poll:mode==='draft'?`/api/v1/ai/change-proposals/${id}`:`/api/v1/ai/jobs/${id}`,uncertain:true};if(question&&!repeat)s.messages.push({user:true,text:question});s.question='';if(mode==='draft')rememberDraft(s,id);render(s);await submit(s);
  }
  async function submit(s){if(!current(s)||!s.pending||s.submitting)return;s.submitting=true;s.error='';try{const job=await cloud.request(s.pending.path,{method:'POST',headers:{'Content-Type':'application/json','Idempotency-Key':s.pending.id},body:JSON.stringify(s.pending.body)});if(current(s)){s.pending.uncertain=false;accept(s,job);}}catch(error){
@@ -169,7 +174,7 @@ export function installChangeProposalAssistant(cloud){
  cloud.openChangeProposalAssistant=function(button){const form=cloud.modal.querySelector('[data-cloud-form="proposal-terms"]');if(!form||!cloud.proposalForm)return;const previous=state;if(!previous||previous.formState!==cloud.proposalForm){clear();state=newState(form,true);}state.open=true;render(state);panel.open(button);load(state);};
  // A new proposal starts drafted by Trato; every field stays editable and the amount needs the user's rate.
  // TeTrato must read the client's request itself: wait until it is processed instead of drafting without it.
- const requiredIds=s=>[s.request,...(s.formState.mode==='revise'?[s.formState.feedbackId]:[])];
+ const requiredIds=s=>[s.request,...(s.formState.mode==='revise'&&!s.formState.portalRequestId?[s.formState.feedbackId]:[])];
  const requestReady=s=>requiredIds(s).every(id=>{const file=s.files.find(f=>f.id===id);return file?.status==='ready'&&file.summary_status==='ready';});
  // A failed reading stops the wait at once and keeps its real error code for the message.
  // extract: the text extraction failed; process: extraction is ready but TeTrato's reading/indexing failed.

@@ -3,6 +3,7 @@ import os
 import re
 import logging
 import json
+import time
 from dataclasses import dataclass, field
 
 
@@ -61,6 +62,7 @@ class GeminiLangChainModel:
         self.name = self.config.model
         _check_shared_environment()
         self.last_usage = None
+        self.calls = 0
         if client_factory is None:
             from langchain_google_genai import ChatGoogleGenerativeAI
             client_factory = ChatGoogleGenerativeAI
@@ -80,6 +82,8 @@ class GeminiLangChainModel:
 
     def generate(self, messages, schema):
         self.last_usage = None
+        self.calls += 1
+        started = time.monotonic()
         invalid_response = False
         response = None
         try:
@@ -98,7 +102,10 @@ class GeminiLangChainModel:
             return response['parsed']
         except Exception as error:
             code = 'MODEL_INVALID_RESPONSE' if invalid_response else 'MODEL_REQUEST_FAILED'
-            diagnostic = {'event': 'model_request_failed', 'error_code': code, 'exception_type': type(error).__name__}
+            # Sizes, counts and fixed labels only: never the provider's message, prompts or document text.
+            diagnostic = {'event': 'model_request_failed', 'error_code': code, 'exception_type': type(error).__name__, 'model': self.name,
+                          'call_number': self.calls, 'elapsed_ms': round(1000 * (time.monotonic() - started)),
+                          'input_chars': sum(len(str(getattr(message, 'content', message))) for message in messages)}
             if isinstance(response, dict):
                 raw = response.get('raw')
                 metadata = getattr(raw, 'response_metadata', {})
@@ -128,6 +135,18 @@ class GeminiLangChainModel:
                            'output_token_configuration': ('max_output_tokens','maxoutputtokens'),
                            'thinking_configuration': ('thinking',), 'unsupported_field': ('not supported','unsupported')}
                 diagnostic['request_issue_hints'] = [name for name, markers in reasons.items() if any(marker in text for marker in markers)]
+            if status == 429:
+                # Tells a shared-capacity rejection from a limit of this project.
+                chain, seen = [], error
+                for _ in range(4):
+                    if seen is None: break
+                    chain.append(str(seen).lower())
+                    seen = seen.__cause__ or seen.__context__
+                text = ' '.join(chain)
+                reasons = {'resource_exhausted': ('resource exhausted', 'resource_exhausted'), 'quota_failure': ('quota exceeded', 'quotafailure', 'quota metric', 'quota_metric'),
+                           'per_minute': ('per minute', 'perminute'), 'per_day': ('per day', 'perday'), 'tokens': ('token',),
+                           'billing': ('billing',), 'retry_delay': ('retrydelay', 'retry in', 'retry after')}
+                diagnostic['rate_limit_hints'] = [name for name, markers in reasons.items() if any(marker in text for marker in markers)]
             if type(status) is int:
                 diagnostic['status_code'] = status
                 if not invalid_response:

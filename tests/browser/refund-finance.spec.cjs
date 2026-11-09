@@ -22,10 +22,11 @@ async function setup(page,{lang='es',authorized=false,external=false,loss=null,r
   const req=route.request(),path=new URL(req.url()).pathname,method=req.method();let result;
   const fail=code=>route.fulfill({status:503,json:{error:{code}}});
   if(path.endsWith('/config'))result={supabase_url:'https://finance.supabase.invalid',publishable_key:'sb_publishable_test'};
-  else if(path.endsWith('/session'))result={user_id:OWNER};
+  else if(path.endsWith('/session'))result={user_id:OWNER,role:'freelancer'};
   else if(path.endsWith('/clients'))result=[{id:id(10),name:'Finance Client'}];
   else if(path==='/api/v1/projects')result=[{id:PROJECT,client_id:id(10),name:'Finance Project'}];
   else if(path.endsWith('/documents')||path.endsWith('/proposals'))result=[];
+  else if(path.endsWith('/plan-progress'))return route.fulfill({status:404,json:{error:{code:'PLAN_NOT_FOUND'}}});
   else if(path.endsWith('/request-status'))result={can_register:false,closures:[]};
   else if(path.endsWith('/refund-payments'))result=[{id:PAY,origin:'change',amount_minor:30000,local_previous_refunds_minor:0,updated_at:new Date().toISOString()}];
   else if(path.endsWith('/refunds'))result=[parent];
@@ -62,7 +63,7 @@ async function setup(page,{lang='es',authorized=false,external=false,loss=null,r
  await expect(page.locator('.refund-finance')).toBeVisible();
  return model;
 }
-async function confirm(page){const form=page.locator('[data-refund-form="finance"]');if(await form.locator('textarea').count())await form.locator('textarea').fill('Reviewed financial action');await form.locator('[name="confirmed"]').check();await form.locator('[type="submit"]').click();}
+async function confirm(page){const form=page.locator('[data-refund-form="finance"]');await expect(form).toBeVisible();if(await form.locator('textarea').count())await form.locator('textarea').fill('Reviewed financial action');await form.locator('[name="confirmed"]').check();await form.locator('[type="submit"]').click();}
 for(const lang of ['es','en'])test(`authorization and execution stay separate; confirmed result after reload (${lang})`,async({page})=>{
  if(lang==='en')await page.setViewportSize({width:390,height:844});
  const m=await setup(page,{lang});expect(m.writes).toHaveLength(0);
@@ -98,6 +99,7 @@ test('financial read failure stays visible and does not expose an execution acti
 
 test('canonical consultation does not replay money; replay requires its own confirmation',async({page})=>{
  const m=await setup(page,{authorized:true});Object.assign(m.data.attempts[0],{status:'uncertain',dispatched_at:new Date().toISOString()});m.data.operations[0].status='uncertain';
+ await page.locator('.refund-finance details:has([data-refund-action="fin-inspect"]) summary').click();
  await page.locator('[data-refund-action="fin-inspect"]').click();await page.locator('[data-refund-action="fin-reconcile"]').click();await expect(page.locator('.refund-finance')).toContainText('La evidencia requiere revisión');expect(m.writes).toHaveLength(1);expect(m.writes[0].key).toBeUndefined();
  await page.locator('[data-refund-action="fin-replay"]').click();expect(m.writes).toHaveLength(1);await confirm(page);await expect(page.locator('.refund-finance')).toContainText('VERIFIED-REFUND');expect(m.writes).toHaveLength(2);expect(m.errors).toEqual([]);
 });

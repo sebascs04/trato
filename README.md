@@ -1,26 +1,75 @@
 # Trato
 
-> **Judges / jurado:** start with **[JUDGES.md](JUDGES.md)** (English) — demo, test account and a 15-minute walkthrough.
+> **Judges:** start with **[JUDGES.md](JUDGES.md)**. It has the live demo, the test accounts and a 15-minute walkthrough.
 
-Un espacio para freelancers que conecta acuerdos, solicitudes de cambio, evidencias y pagos con PayPal.
+**Trato helps freelancers get paid for what they agreed, and for every change along the way.** Each phase of a project leaves a document behind: the agreement, the client's change request, every addendum version, the acceptance and the sign-off of each deliverable. AI agents read those documents and prepare the next step. A person approves it, and PayPal handles the payment.
 
-Esta publicación reúne el frontend y los servicios necesarios para compartir y ejecutar el proyecto. Cada servicio conserva su carpeta y responsabilidad; no se publican credenciales, documentos del usuario, bases locales ni entornos virtuales.
+**Live demo:** https://trato-web-68896425401.us-central1.run.app (PayPal Sandbox, no real money is moved)
 
-## Estado actual
+## The problem
 
-- Clientes y proyectos privados con Supabase Auth, Postgres, Storage y políticas por propietario.
-- Ingesta PDF asíncrona mediante outbox, Redis y worker; extracción con referencias por página.
-- Propuestas/adendas versionadas, PDF por instantánea, revisión humana y envío explícito mediante Gmail OAuth.
-- Aceptación registrada mediante documento recibido y revisión humana. No se certifican firmas criptográficas.
-- Cobros PayPal Sandbox y confirmación de pago en backend. Un cambio pagado queda sólo para consulta.
-- Historial único por proyecto y carga bajo demanda. Tipografía Manrope e iconos Lucide locales.
-- Recorrido de devolución simulado con revisiones, cálculos y fuentes oficiales PayPal. No ejecuta reembolsos reales ni sandbox.
-- Grafo privado por proyecto con Neo4j y búsqueda autorizada en Weaviate mediante el file processor. Requieren credenciales/configuración del entorno.
-- Ensayos, evaluación con cinco fuentes y planificación inicial con Gemini por cola/worker y JSON validado. La validación completa desde la interfaz sigue pendiente; los recorridos explícitamente simulados de cambios/devoluciones son independientes. No se cambia de proveedor si falla.
+Scope changes are usually agreed in loose messages. The work grows, the price does not, and when a payment is late or disputed the freelancer has no clear record of what was agreed.
 
-## Empezar
+## What Trato does
 
-Requiere Node.js 18+, Python 3.12 y, para la ingesta conectada, Redis propio. Poppler (`pdftotext`) es necesario para la extracción PDF del procesador actual. Los puertos están en `local-ports.json`.
+| For | Feature | How it works |
+|---|---|---|
+| Freelancer | **Plan from the agreement** | AI proposes deliverables and staged payments from the project's documents |
+| Freelancer | **Paid deliverables** | AI checks the client's sign-off, then the client pays that stage with PayPal |
+| Freelancer | **Addenda from change requests** | AI compares the request with the agreement and drafts scope, conditions and effort. Each version keeps its own PDF, delivery and acceptance |
+| Client | **Client portal** | Review, request changes, accept and pay from a secure emailed link, with no account needed. An optional client account shows the same agreements inside Trato |
+| Freelancer | **PayPal disputes** | Disputes on verified payments appear in the project, read through the official PayPal Agent Toolkit, with a response prepared from the project's evidence |
+| Freelancer | **TeTrato assistant** | Answers questions about the project and cites its documents |
+| Freelancer | **Rehearsals** | Practice a difficult conversation with an AI client, then get coaching with cited sources |
+| Both | **History and map** | Every phase and document, in one timeline and one graph |
+
+**Rules the code enforces**
+
+- Agents never send email or move money without a person's approval.
+- Only a capture verified by the backend counts as paid. Returning from PayPal or sending an email does not.
+- A paid change is read-only. New work becomes a separate request.
+- Agent output is JSON validated in code. If a step fails, Trato shows the error and never fakes a result.
+
+## How it is built
+
+```
+Browser (vanilla JS modules)
+   │
+   ▼
+trato-api (FastAPI)  ── authorizes, validates, talks to PayPal, Gmail and Supabase
+   │        │
+   │        └── trato-file-processor ── extraction, embeddings, Weaviate search
+   ▼
+Redis queue ── trato-worker (LangGraph + Gemini) ── generic processes defined by their input
+```
+
+| Layer | Technology |
+|---|---|
+| **Payments** | PayPal Sandbox: Orders, capture, webhooks and the Agent Toolkit |
+| **AI** | Google Gemini through LangGraph and LangChain |
+| **Data** | Supabase (Postgres with row-level security, Auth, Storage), Neo4j (project graph), Weaviate (vector search) |
+| **Email** | Gmail API |
+| **Hosting** | Google Cloud (Cloud Run and Compute Engine) |
+
+## Repository layout
+
+| Folder | Purpose |
+|---|---|
+| Root (`index.html`, `connected-workspace.mjs`, `portal.html`…) | Web product and client portal |
+| `repos/trato-api` | **The backend:** authentication, business rules, persistence, Gmail and PayPal |
+| `repos/trato-worker` | Agent graphs, model contracts and job execution |
+| `repos/trato-file-processor` | Validation, extraction, chunking and Weaviate operations |
+| `repos/trato-web` | Optional technical tool, not the product interface |
+| `supabase` | Database migrations, policies and SQL tests |
+| `deploy` | Google Cloud images and deployment |
+| `ejemplos/cafe-aurora-en` | Fictional documents for testing the full flow |
+| `tests`, `scripts`, `locales`, `assets` | Frontend tests, tooling, English and Spanish text, static files |
+| `docs` | Design notes and decisions, mostly in Spanish |
+| `backend` | Earlier prototype. The product runs on `repos/trato-api` |
+
+## Run it locally
+
+The hosted demo is the quickest way to try Trato. To run it yourself you need Node.js 18+, Python 3.12, Redis, Poppler (`pdftotext`) and your own PayPal Sandbox, Supabase, Gemini and Weaviate credentials. Ports are listed in `local-ports.json`.
 
 ```bash
 git clone https://github.com/sebascs04/trato.git
@@ -28,53 +77,33 @@ cd trato
 npm ci
 ```
 
-Sigue [la guía para colaboradores](docs/colaboradores.md) para instalar los entornos Python y configurar los servicios. Las plantillas `.env.example` no contienen las credenciales de desarrollo. Un clon no tiene acceso automático a Gmail, PayPal o Supabase de otra persona.
-
-Con los servicios configurados:
+Set up the Python environments and services with [docs/colaboradores.md](docs/colaboradores.md) (in Spanish). Each `.env.example` lists what a service needs and contains no credentials. Then start everything:
 
 ```bash
 python3 scripts/dev-polyrepo.py --with-worker
 ```
 
-Interfaz oficial: http://localhost:5173/#clientes. Sin configuración, muestra el error o acceso pendiente; no sustituye datos reales por ejemplos. La interfaz técnica opcional de `repos/trato-web` no es el diseño oficial.
+Open http://localhost:5173.
 
-## Organización
-
-| Carpeta | Responsabilidad |
-| --- | --- |
-| Raíz: `index.html`, `connected-workspace.mjs`, `proposal-workspace.mjs` | Producto web, navegación y operaciones de usuario |
-| `repos/trato-api` | Autenticación, reglas de negocio, persistencia, Gmail y PayPal |
-| `repos/trato-file-processor` | Validación, extracción, fragmentación y operaciones Weaviate |
-| `repos/trato-worker` | Grafos, contratos de modelos y ejecución de trabajos |
-| `repos/trato-web` | Herramienta técnica opcional |
-| `scripts` | Arranque local, configuración privada e iconos |
-| `docs` | Arquitectura, contratos, producto e instrucciones |
-| `data` | Datos y PDFs ficticios del prototipo |
-| `backend` | Motor/adaptadores anteriores, conservados para referencia y compatibilidad |
-
-Los `.git` de los repositorios locales no se incluyen en esta publicación. Las carpetas de servicios son archivos normales del repositorio compartido, no submódulos que requieran acceso a repos privados.
-
-## Comprobaciones
+## Tests
 
 ```bash
+# Frontend
 npm run check
-npm test
+node --test tests/*.test.mjs
+node scripts/check-i18n.mjs
+
+# Browser tests (need the local server and Chromium libraries)
 npx playwright install chromium
 npm run test:browser
+
+# API, from repos/trato-api
+PYTHONPATH=../trato-file-processor ../trato-file-processor/.venv/bin/python -m unittest discover -s tests
+
+# Worker, from repos/trato-worker
+.venv/bin/python -m unittest discover -s tests
 ```
 
-Las pruebas de navegador requieren el servidor local y bibliotecas de Chromium. Los tests de devoluciones arrancan el worker simulado local; no llaman a proveedores financieros ni modelos reales. Consulta los README de cada servicio para sus pruebas Python. Las pruebas Redis tienen requisitos propios y no deben apuntar a recursos de otros proyectos.
+## License
 
-## Documentación
-
-- [Instalación paso a paso y accesos para colaboradores](docs/colaboradores.md)
-- [Auditoría y límites de instalación](docs/auditoria-instalacion-colaboradores.md)
-- [Accesos que prepara el equipo](docs/accesos-colaboradores.md)
-- [Ingesta conectada](docs/ingesta-conectada.md)
-- [Arquitectura de IA](docs/arquitectura-ia-trato.md)
-- [Flujo de cambios simulado](docs/worker-flujo-cambios.md)
-- [Flujo de devoluciones simulado](docs/worker-flujo-devoluciones.md)
-- [Estándar de prompts](docs/estandar-prompts.md)
-- [Propuesta del producto](docs/propuesta-ganadora.md)
-
-No está desplegado públicamente ni preparado como un servicio de producción. El objetivo inmediato es completar y validar un recorrido funcional para la hackathon.
+See [LICENSE](LICENSE).

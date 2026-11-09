@@ -52,10 +52,10 @@ class Store:
         if action=='register_initial':return {'project_id':PROJECT,'payment':{'id':PAY}}
         if action=='mail_reserve':
             if self.claim:return deepcopy(self.claim)|{'acquired':False}
-            self.claim={'id':DELIVERY,'operation_key':data['operation_key'],'status':'sending','sender':data['sender'],'recipient':data['recipient'],'created_at':'2026-11-01T12:00:00+00:00','provider_thread_id':None}
+            self.claim={'id':DELIVERY,'operation_key':data['operation_key'],'status':'sending','sender':data['sender'],'recipient':data['recipient'],'message_hash':data['message_hash'],'created_at':'2026-11-01T12:00:00+00:00','provider_thread_id':None}
             return deepcopy(self.claim)|{'acquired':True}
         if action=='mail_finish':
-            self.claim.update(status=data['status'],provider_message_id=data.get('message_id'),provider_thread_id=data.get('thread_id'))
+            self.claim.update(status=data['status'],provider_message_id=data.get('message_id'),provider_thread_id=data.get('thread_id'),error_code=data.get('error_code'))
             self.repo.deliveries=[deepcopy(self.claim)]
             if data['status']=='accepted_by_gmail':self.repo.parent['status']='awaiting_response'
             return deepcopy(self.claim)
@@ -118,6 +118,15 @@ class RefundWorkflowTests(unittest.TestCase):
         self.assertEqual(result['delivery']['status'],'accepted_by_gmail')
         claim=next(c[2] for c in self.store.calls if c[1]=='mail_reserve')
         self.assertEqual(claim['preview'],p);self.assertEqual(self.gmail.sent[0][1].recipient_email,p['recipient'])
+    def test_optional_note_is_bound_to_the_reviewed_email(self):
+        preview=self.flow.preview(self.repo,OWNER,PARENT,SNAP,'Gracias por revisar el cierre.')
+        with self.assertRaisesRegex(ApiError,'EMAIL_PREVIEW_CHANGED'):
+            self.flow.send(self.repo,OWNER,PARENT,SNAP,preview['digest'],'send-key',note='Otra nota')
+        self.assertFalse(self.store.calls)
+        self.flow.send(self.repo,OWNER,PARENT,SNAP,preview['digest'],'send-key',note=preview['note'])
+        self.assertEqual(self.gmail.sent[0][1].note,preview['note'])
+        self.assertTrue(preview['body'].startswith(preview['note']))
+
     def test_changed_recipient_sender_or_digest_blocks_send_before_reservation(self):
         for change in ['recipient','sender','digest']:
             with self.subTest(change=change):
@@ -137,9 +146,16 @@ class RefundWorkflowTests(unittest.TestCase):
         with self.assertRaises(ApiError):self.send(p['digest'])
         self.assertEqual(len(self.gmail.sent),1);self.assertEqual(self.repo.parent['status'],'draft')
     def test_definitive_failure_is_not_an_accepted_send(self):
-        self.gmail.error=EmailDeliveryError('GMAIL_SEND_NOT_AUTHORIZED')
-        with self.assertRaises(ApiError):self.send()
+        self.gmail.error=EmailDeliveryError('GMAIL_RECONNECT_REQUIRED');p=self.preview()
+        with self.assertRaises(ApiError) as failure:self.send(p['digest'])
+        self.assertEqual((failure.exception.code,failure.exception.status),('GMAIL_RECONNECT_REQUIRED',409))
         self.assertEqual(self.store.claim['status'],'failed');self.assertEqual(self.repo.parent['status'],'draft')
+        self.flow.gmail=None
+        with self.assertRaises(ApiError) as replay:self.send(p['digest'])
+        self.assertEqual(replay.exception.code,'GMAIL_RECONNECT_REQUIRED')
+        result=self.flow.reconcile_send(self.repo,OWNER,PARENT,SNAP,'send-key')
+        self.assertEqual(result['result']['delivery']['status'],'failed')
+        self.assertEqual(len(self.gmail.sent),1)
     def test_initial_sandbox_binding_is_explicit_owner_scoped_and_preserves_capture_checks(self):
         data={'order_id':'ORDER','capture_id':'CAPTURE','notes':'Reviewed','evidence':[CITE]}
         self.provider.order['payer']['email_address']='sandbox@example.invalid'
@@ -235,6 +251,39 @@ class RefundWorkflowTests(unittest.TestCase):
         self.assertEqual(self.repo.parent['status'],'awaiting_response')
 
 class RefundGmailTransportTests(unittest.TestCase):
+    def test_confirmation_uses_branded_sandbox_email_for_confirmed_amount(self):
+        from trato_api.refunds.mail import RefundConfirmationEmail
+        service=object.__new__(GmailConnectionService);service.lock=threading.RLock();calls=[]
+        service.credentials=lambda user:{'email':'owner@example.invalid','access_token':'test-token'}
+        service.transport=lambda method,url,**kwargs:(calls.append((url,kwargs)) or (200,{'id':'sent'}))
+        item=RefundConfirmationEmail('customer@example.invalid','Proyecto Café','es',1250)
+        service.send_refund_confirmation(OWNER,item,PARENT)
+        self.assertEqual(calls[0][0],SEND_URL)
+        mail=message_from_bytes(base64.urlsafe_b64decode(calls[0][1]['json']['raw']),policy=policy.default)
+        self.assertEqual(str(mail['To']),item.recipient_email)
+        self.assertEqual(str(mail['Message-ID']),f'<trato-refund-confirmed-{PARENT}@example.invalid>')
+        self.assertIn('[Sandbox]',str(mail['Subject']))
+        html=mail.get_body(preferencelist=('html',)).get_content()
+        for text in ('Proyecto Café','Importe reembolsado','USD 12.50','cid:mascot@trato'):
+            self.assertIn(text,html)
+
+    def test_confirmation_records_gmail_failures_separately(self):
+        from types import SimpleNamespace
+        from unittest.mock import Mock
+        from trato_api.refunds.confirmation import RefundConfirmation
+        for uncertain,status in [(False,'failed'),(True,'delivery_uncertain')]:
+            with self.subTest(uncertain=uncertain):
+                claim={'settlement_id':PARENT,'claim_id':DELIVERY,'recipient':'customer@example.invalid',
+                       'project_name':'Project','language':'en','amount_minor':1250}
+                repo=SimpleNamespace(rpc=Mock(side_effect=[claim,{'status':status},None]))
+                gmail=SimpleNamespace(send_refund_confirmation=Mock(side_effect=EmailDeliveryError('GMAIL_SEND_FAILED',uncertain=uncertain)))
+                confirmation=RefundConfirmation(None,gmail,repository=repo)
+                self.assertEqual(confirmation.after_confirmation(OWNER,settlement=PARENT)['status'],status)
+                confirmation.after_confirmation(OWNER,settlement=PARENT)
+                self.assertEqual(gmail.send_refund_confirmation.call_count,1)
+                finish=repo.rpc.call_args_list[1].args
+                self.assertEqual(finish[1]['p_result'],{'status':status,'error_code':'GMAIL_SEND_FAILED'})
+
     def test_real_gmail_adapter_builds_exact_attachment_and_rechecks_sender(self):
         service=object.__new__(GmailConnectionService);service.lock=threading.RLock();calls=[]
         service.credentials=lambda user:{'email':'owner@example.invalid','access_token':'test-token','scope':READ_SCOPE}
@@ -246,6 +295,19 @@ class RefundGmailTransportTests(unittest.TestCase):
         mail=message_from_bytes(base64.urlsafe_b64decode(calls[0][2]['json']['raw']),policy=policy.default)
         self.assertEqual(str(mail['Message-ID']),f'<trato-refund-{DELIVERY}@example.invalid>')
         self.assertEqual(next(mail.iter_attachments()).get_payload(decode=True),pdf)
+        html=mail.get_body(preferencelist=('html',)).get_content()
+        for text in ('Proposed refund','USD 1.00','Awaiting your reply','Review the attached proposal','settlement.pdf','cid:mascot@trato'):
+            self.assertIn(text,html)
+        mascot=next(part for part in mail.walk() if part.get_content_type()=='image/png')
+        self.assertEqual(mascot.get_content_disposition(),'inline')
+        self.assertEqual(str(mascot['Content-ID']),'<mascot@trato>')
+        from dataclasses import replace
+        note=build_settlement_email('owner@example.invalid',replace(item,language='es',note='<script>hello</script>'),DELIVERY)
+        self.assertIn('<script>hello</script>',note.get_body(preferencelist=('plain',)).get_content())
+        html=note.get_body(preferencelist=('html',)).get_content()
+        for text in ('Tu propuesta de devolución','Revisa la propuesta adjunta','&lt;script&gt;hello&lt;/script&gt;'):
+            self.assertIn(text,html)
+        self.assertEqual(next(note.iter_attachments()).get_payload(decode=True),pdf)
         with self.assertRaises(EmailDeliveryError):service.send_refund(OWNER,item,DELIVERY,expected_sender='other@example.invalid')
         self.assertEqual(len(calls),1)
     def test_send_preserves_long_message_id_crlf_and_mime_payload(self):

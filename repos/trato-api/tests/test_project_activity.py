@@ -19,6 +19,7 @@ class ActivityTest(unittest.TestCase):
     'proposal_deliveries':[{'id':'mail-adenda','proposal_id':'proposal','revision_id':'revision','kind':'adenda','updated_at':'2026-10-26T16:00:00Z'},{'id':'mail-payment','proposal_id':'proposal','revision_id':'revision','kind':'payment','updated_at':'2026-10-26T17:00:00Z'}],
     'proposal_acceptances':[{'id':'acceptance','proposal_id':'proposal','revision_id':'revision','created_at':'2026-10-26T16:30:00Z'}],
     'proposal_payments':[{'id':'payment','proposal_id':'proposal','revision_id':'revision','amount_minor':10,'currency':'USD','updated_at':'2026-10-26T18:00:00Z'}],
+    'client_portal_change_requests':getattr(self,'portal_requests',[]),
     'request_closures':[],**getattr(self,'plan_tables',{'project_start_plans':[]}),**{table:[] for table in ['refund_settlements','refund_snapshots','refund_deliveries','refund_feedback','refund_acceptances','refund_financial_authorizations','refund_provider_receipts','refund_receipt_applications']}}
    return httpx.Response(200,json=data[table])
   return Repository(Settings(supabase_url='https://tests.supabase.invalid',supabase_key='sb_publishable_test'),'Bearer owner-user',transport=httpx.MockTransport(handle))
@@ -58,3 +59,13 @@ class ActivityTest(unittest.TestCase):
   repo=self.repo(foreign=True)
   with self.assertRaises(ApiError):repo.activity(PROJECT)
   self.assertEqual(len(self.requests),1)
+
+
+class PortalActivityTest(ActivityTest):
+ def test_portal_request_and_portal_acceptance_are_labelled_as_client_actions(self):
+  self.portal_requests=[{'id':'portal-req','proposal_id':'proposal','revision_id':'revision','created_at':'2026-10-26T16:10:00Z'}]
+  events={e['id']:e for e in self.repo().activity(PROJECT)}
+  self.assertEqual(events['portal-request-portal-req']['kind'],'client_changes_requested')
+  self.assertEqual(events['portal-request-portal-req']['source'],'client_portal')
+  self.assertEqual(events['portal-request-portal-req']['revision_no'],1)
+  self.assertNotIn('source',events['acceptance-acceptance'])

@@ -26,8 +26,10 @@ class ProposalRepository(Repository):
             'placements':('change_request_plan_placements',{'select':'request_document_id,placement,stage_position','project_id':'eq.'+project['id']}),
             'artifacts':('proposal_artifacts',{'select':'revision_id','revision_id':ids}),
             'deliveries':('proposal_deliveries',{'select':'revision_id,kind,status','revision_id':ids}),
-            'closures':('request_closures',{'select':'request_document_id','project_id':'eq.'+project['id']})})
-        revisions,artifacts,deliveries,closures,placements=(data[key] for key in ('revisions','artifacts','deliveries','closures','placements'))
+            'closures':('request_closures',{'select':'request_document_id','project_id':'eq.'+project['id']}),
+            # Changes the client asked for in the portal that no new version has answered yet: it is the freelancer's turn.
+            'portal_requests':('client_portal_change_requests',{'select':'revision_id','revision_id':ids,'used_at':'is.null'})})
+        revisions,artifacts,deliveries,closures,placements,portal_requests=(data[key] for key in ('revisions','artifacts','deliveries','closures','placements','portal_requests'))
         placed={p['request_document_id']:p for p in placements}
         for proposal in proposals:
             revision=next((r for r in revisions if r['id']==proposal['current_revision_id']),None)
@@ -38,7 +40,7 @@ class ProposalRepository(Repository):
             where=placed.get(proposal['request_document_id'])
             proposal['plan_placement']=where['placement'] if where else None
             proposal['plan_stage_position']=where['stage_position'] if where else None
-            proposal['business_status']=('Cerrado' if any(c['request_document_id']==proposal['request_document_id'] for c in closures) else 'Finalizado' if proposal['locked_at'] else 'Pendiente de pago' if proposal['status']=='accepted' else 'Esperando respuesta' if any(d['revision_id']==revision['id'] and d['kind']=='adenda' and d['status']=='accepted_by_gmail' for d in deliveries) else 'Adenda en borrador' if any(a['revision_id']==revision['id'] for a in artifacts) else 'Propuesta en preparación')
+            proposal['business_status']=('Cerrado' if any(c['request_document_id']==proposal['request_document_id'] for c in closures) else 'Finalizado' if proposal['locked_at'] else 'Pendiente de pago' if proposal['status']=='accepted' else 'Cambios pedidos por el cliente' if any(q['revision_id']==revision['id'] for q in portal_requests) else 'Esperando respuesta' if any(d['revision_id']==revision['id'] and d['kind']=='adenda' and d['status']=='accepted_by_gmail' for d in deliveries) else 'Adenda en borrador' if any(a['revision_id']==revision['id'] for a in artifacts) else 'Propuesta en preparación')
         return proposals
 
 

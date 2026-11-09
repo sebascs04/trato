@@ -46,3 +46,18 @@ class ConsumerReplyTests(unittest.TestCase):
         stored=json.loads(redis.hset.call_args.kwargs['mapping']['result'])
         self.assertEqual(stored['message'],'¿Qué incluiría esa alternativa?');self.assertEqual(len(model.calls),1)
         redis.eval.return_value=0;consumer.process_once();self.assertEqual(len(model.calls),1)
+
+
+class ClientSideDialogueTests(unittest.TestCase):
+    def test_client_accounts_rehearse_with_the_ai_as_freelancer(self):
+        import json
+        model=Model();reply_rehearsal({**data(language='en'),'scenario':'deadline','counterpart':'freelancer'},model)
+        self.assertEqual(json.loads(model.calls[0][1]['content'])['counterpart'],'freelancer')
+        self.assertIn('freelancer (the user is that freelancer',PROMPT)
+        # Older jobs without counterpart keep the AI as the client.
+        model=Model();reply_rehearsal(data(),model)
+        self.assertEqual(json.loads(model.calls[0][1]['content'])['counterpart'],'client')
+
+    def test_role_and_scenario_must_match(self):
+        for bad in ({'scenario':'deadline'},{'scenario':'scope','counterpart':'freelancer'},{'scenario':'change','counterpart':'coach'}):
+            with self.assertRaises(ToolError,msg=bad):reply_rehearsal({**data(),**bad},Model())

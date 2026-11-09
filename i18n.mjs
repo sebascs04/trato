@@ -45,7 +45,8 @@ export function localizeStaticDocument(root=document){
 export function installLanguagePreference(cloud){
  const mount=()=>{
   const modal=cloud.modal;if(!modal?.open||modal.querySelector('[data-ui-language]'))return;
-  if(!modal.querySelector('.cloud-identity,form[data-cloud-form="auth"]'))return;
+  // Only in the profile: login and signup already have the language selector at the top of the page.
+  if(!modal.querySelector('.cloud-identity'))return;
   const section=document.createElement('section');section.className='cloud-language-preference';
   const label=document.createElement('label');label.htmlFor='trato-ui-language';label.textContent=uiText('profile.language');
   const select=document.createElement('select');select.id='trato-ui-language';select.dataset.uiLanguage='';select.className='context-box';

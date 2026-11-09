@@ -20,6 +20,8 @@ repos/trato-worker/.venv/bin/python scripts/reprocess-project-files.py \
 
 Los archivos ya preparados y los trabajos activos se conservan. Si hubo un fallo confirmado y se desea un nuevo intento, `--apply --retry-failed` crea una ejecución nueva. Es una acción explícita del operador; no es un bucle automático de inferencia. Un rechazo o una petición de aclaración no se convierte en aprobación ni se relanza silenciosamente.
 
+Si el trabajo de la generación actual figura como procesado pero falta un recibo vigente del índice, `--apply` crea un trabajo nuevo del mismo flujo para recuperar la publicación. El flujo conserva sus validaciones y reutiliza los artefactos vigentes.
+
 Si falta extracción, la utilidad devuelve `EXTRACTION_REQUIRED` sin encolar parcialmente el resto. Primero debe recuperarse la lectura mediante `POST /api/v1/documents/{id}/retry` con la sesión del propietario. Para una reparación administrativa puntual se puede ejecutar la función existente `queue_document` en una transacción de mantenimiento de Supabase, con el propietario del proyecto comprobado y establecido como contexto local de la transacción. Nunca crear una extracción ficticia, fabricar segmentos ni modificar auth.users. Al terminar, el publicador y el worker normales procesan la lectura; la recepción del resultado enlaza con `process_file`. Ejecutar nuevamente la inspección después.
 
 La utilidad no garantiza que un documento supere su tratamiento semántico. Conserva y muestra sus estados reales. Consultar los trabajos de proceso y sus fases para diagnosticar la causa. No reintentar la pregunta del asistente como sustituto de reparar una fuente pendiente.

@@ -3,6 +3,7 @@ from dataclasses import asdict
 from hashlib import sha256
 from email.utils import getaddresses
 import json
+import logging
 import os
 import secrets
 import threading
@@ -16,7 +17,10 @@ from paypal.config import SandboxSettings
 from paypal.email import ProposalEmail, PaymentEmail, PdfAttachment, EmailDeliveryError, build_proposal_email, build_payment_email
 from ..errors import ApiError
 from ..persistence import Repository
+from ..client_portal import LINK_DAYS, portal_token, portal_url, token_hash
 from ..gmail.service import GmailMailer, reply_text
+
+logger = logging.getLogger('uvicorn.error').getChild('trato.gmail_replies')
 
 class BackendStore:
     def __init__(self, settings):
@@ -61,7 +65,7 @@ class ProposalWorkflow:
         if config.environment!='sandbox':raise ApiError('LIVE_PAYMENTS_DISABLED',503)
         if not all((config.client_id,config.client_secret,config.merchant_id)):raise ApiError('PAYPAL_SANDBOX_NOT_CONFIGURED',503)
         return PayPalSandboxClient(config.client_id,config.client_secret,config.merchant_id)
-    def context(self,repo,proposal_id,revision_id,kind,*,allow_unreviewed=False,freelancer_email=''):
+    def context(self,repo,proposal_id,revision_id,kind,*,allow_unreviewed=False,freelancer_email='',language='es'):
         if not self.gmail:raise ApiError('GMAIL_NOT_CONFIGURED',503)
         snapshot=repo.get_revision(proposal_id,revision_id,collections=('artifacts','reviews')+(('payments',) if kind=='payment' else ()))
         proposal,revision=snapshot['proposal'],snapshot['revision']
@@ -81,38 +85,49 @@ class ProposalWorkflow:
         amount=f'{revision["additional_minor"]//100}.{revision["additional_minor"]%100:02d}'
         if kind=='adenda':
             if proposal['status']!='ready_for_review' and not (draft_preview and proposal['status']=='draft'):raise ApiError('PROPOSAL_NOT_READY_FOR_EMAIL',409)
-            item=ProposalEmail(proposal_id,client['contact_email'],client['name'],project['name'],revision['scope_summary'],amount,'USD',revision['deadline'],attachment,freelancer_email=freelancer_email)
+            link=portal_url(self.settings,portal_token(revision_id))
+            item=ProposalEmail(proposal_id,client['contact_email'],client['name'],project['name'],revision['scope_summary'],amount,'USD',revision['deadline'],attachment,freelancer_email=freelancer_email,language=language,portal_url=link)
         elif kind=='payment':
             if proposal['status']!='accepted':raise ApiError('ACCEPTANCE_REQUIRED',409)
             payments=snapshot['payments']
             if not payments or payments[0]['status']!='pending_approval':raise ApiError('PAYMENT_NOT_READY',409)
             pay=payments[0]
-            item=PaymentEmail(pay['id'],client['contact_email'],client['name'],project['name'],amount,'USD',pay['approval_url'],attachment)
+            item=PaymentEmail(pay['id'],client['contact_email'],client['name'],project['name'],amount,'USD',pay['approval_url'],attachment,language=language)
         else:raise ApiError('INVALID_MAIL_KIND',422)
         return snapshot,item
-    def prepare_email(self,repo,owner,proposal_id,revision_id,kind,*,for_preview=False,freelancer_email=''):
-        snapshot,item=self.context(repo,proposal_id,revision_id,kind,allow_unreviewed=for_preview,freelancer_email=freelancer_email)
+    def prepare_email(self,repo,owner,proposal_id,revision_id,kind,*,for_preview=False,freelancer_email='',language='es'):
+        snapshot,item=self.context(repo,proposal_id,revision_id,kind,allow_unreviewed=for_preview,freelancer_email=freelancer_email,language=language)
         status=self.gmail.status(owner)
         if not status['connected']:raise ApiError('GMAIL_NOT_CONNECTED',409)
         sender=status['email']
         message=(build_proposal_email if kind=='adenda' else build_payment_email)(sender,item,'preview')
         canonical=asdict(item);canonical['agreement']={'filename':item.agreement.filename,'sha256':item.agreement.sha256}
         canonical.update(sender=sender,revision_id=revision_id,kind=kind)
-        # Keep the existing delivery identity while binding the reviewed preview to its contact.
+        # Keep the delivery identity stable across language changes. Bind the preview to its language and contact.
         contact=canonical.pop('freelancer_email','')
+        email_language=canonical.pop('language','es')
         delivery_digest=sha256(json.dumps(canonical,sort_keys=True).encode()).hexdigest()
-        digest=sha256(json.dumps({**canonical,'freelancer_email':contact},sort_keys=True).encode()).hexdigest() if contact else delivery_digest
+        preview_fields = {}
+        if contact:
+            preview_fields['freelancer_email'] = contact
+        if email_language == 'en':
+            preview_fields['language'] = email_language
+        digest=sha256(json.dumps({**canonical,**preview_fields},sort_keys=True).encode()).hexdigest() if preview_fields else delivery_digest
         preview={'sender':sender,'recipient':item.recipient_email,'subject':str(message['Subject']),'body':message.get_body(preferencelist=('plain',)).get_content(),'document_id':snapshot['artifacts'][0]['document_id'],'filename':item.agreement.filename,'sha256':item.agreement.sha256,'digest':digest}
         if for_preview:
             preview['body_html']=message.get_body(preferencelist=('html',)).get_content()
         return item,preview,delivery_digest
-    def preview(self,repo,owner,proposal_id,revision_id,kind,*,freelancer_email=''):
-        return self.prepare_email(repo,owner,proposal_id,revision_id,kind,for_preview=True,freelancer_email=freelancer_email)[1]
-    def send(self,repo,owner,proposal_id,revision_id,kind,digest,*,freelancer_email=''):
-        item,preview,delivery_digest=self.prepare_email(repo,owner,proposal_id,revision_id,kind,freelancer_email=freelancer_email)
+    def preview(self,repo,owner,proposal_id,revision_id,kind,*,freelancer_email='',language='es'):
+        return self.prepare_email(repo,owner,proposal_id,revision_id,kind,for_preview=True,freelancer_email=freelancer_email,language=language)[1]
+    def send(self,repo,owner,proposal_id,revision_id,kind,digest,*,freelancer_email='',language='es'):
+        item,preview,delivery_digest=self.prepare_email(repo,owner,proposal_id,revision_id,kind,freelancer_email=freelancer_email,language=language)
         if not secrets.compare_digest(preview['digest'],digest):raise ApiError('EMAIL_PREVIEW_CHANGED',409)
         store=self.backend()
         data={'proposal_id':proposal_id,'revision_id':revision_id,'kind':kind,'recipient':preview['recipient'],'message_hash':delivery_digest}
+        if kind=='adenda':
+            # Register the emailed portal link (only its hash) as the owner before reserving the delivery.
+            # Issuing is idempotent for the same revision, so a retried send reuses the same link.
+            repo.rpc('client_portal_link_issue',{'p_proposal':proposal_id,'p_expected_revision':revision_id,'p_token_hash':token_hash(portal_token(revision_id)),'p_days':LINK_DAYS})
         claim=store.command(owner,'mail_reserve',data)
         if not claim['acquired']:
             if claim['status']=='accepted_by_gmail':return claim
@@ -138,26 +153,45 @@ class ProposalWorkflow:
         return value.strip().strip('<>').lower()
 
     def sync_gmail_replies(self,repo,owner,project_id):
-        if not self.gmail:raise ApiError('GMAIL_NOT_CONFIGURED',503)
-        connection=self.gmail.status(owner)
-        if not connection['connected']:raise ApiError('GMAIL_NOT_CONNECTED',409)
-        if not connection.get('can_read'):raise ApiError('GMAIL_READ_PERMISSION_REQUIRED',409)
-        sync_key,sync_lock=self._claim_gmail_sync(owner,project_id)
+        started=time.monotonic()
+        sync_lock=None
+        diagnostic={'eligible_threads':0,'checked_threads':0,'messages':0,'missing_original':0,
+                    'discarded_address':0,'discarded_reference':0,'discarded_date':0,
+                    'discarded_trash':0,'matched':0,'already_saved':0,'saved':0}
         try:
+            if not self.gmail:raise ApiError('GMAIL_NOT_CONFIGURED',503)
+            connection=self.gmail.status(owner)
+            if not connection['connected']:raise ApiError('GMAIL_NOT_CONNECTED',409)
+            if not connection.get('can_read'):raise ApiError('GMAIL_READ_PERMISSION_REQUIRED',409)
+            _,sync_lock=self._claim_gmail_sync(owner,project_id)
             targets=self.backend().gmail_inbox(owner,'targets',{'project_id':project_id})
+            diagnostic['eligible_threads']=len(targets)
             synced=0;refreshed=0
             for target in targets[:5]:
                 if synced>=25:break
                 thread=self.gmail.read_thread(owner,target['provider_thread_id'])
                 messages=thread['messages']
+                diagnostic['checked_threads']+=1
+                diagnostic['messages']+=len(messages)
                 sent=next((message for message in messages if message.get('id')==target['provider_message_id']),None)
                 if sent is None or str(sent.get('threadId',''))!=target['provider_thread_id']:
+                    diagnostic['missing_original']+=1
                     continue
-                if self._addresses(self.gmail._header(sent,'From'))!=[connection['email'].lower()]:continue
+                if self._addresses(self.gmail._header(sent,'From'))!=[connection['email'].lower()]:
+                    diagnostic['discarded_address']+=1
+                    continue
                 sent_header=self._normal_message_id(self.gmail._header(sent,'Message-ID'))
-                if not sent_header:continue
+                if not sent_header:
+                    diagnostic['discarded_reference']+=1
+                    continue
                 self.backend().gmail_inbox(owner,'record_sent_header',{'delivery_id':target['delivery_id'],
                     'provider_thread_id':target['provider_thread_id'],'provider_rfc_message_id':sent_header})
+                # The whole thread was read: stored replies now in Trash or gone from it are marked, never deleted.
+                ids=[m['id'] for m in messages if isinstance(m.get('id'),str)]
+                trashed=[m['id'] for m in messages if isinstance(m.get('id'),str) and 'TRASH' in (m.get('labelIds') or [])]
+                removed=self.backend().gmail_inbox(owner,'mailbox_state',{'delivery_id':target['delivery_id'],
+                    'present_ids':[i for i in ids if i not in trashed][:200],'trashed_ids':trashed[:200]})
+                diagnostic['removed_from_mailbox']=diagnostic.get('removed_from_mailbox',0)+(len(removed) if isinstance(removed,list) else 0)
                 try:sent_at=datetime.fromisoformat(target['sent_at'].replace('Z','+00:00'))
                 except (ValueError,TypeError,AttributeError):raise ApiError('GMAIL_DELIVERY_DATE_INVALID',502)
                 candidates=[]
@@ -165,13 +199,21 @@ class ProposalWorkflow:
                     message_id=message.get('id')
                     if not isinstance(message_id,str) or message_id==target['provider_message_id'] or str(message.get('threadId',''))!=target['provider_thread_id']:
                         continue
+                    if 'TRASH' in (message.get('labelIds') or []):
+                        diagnostic['discarded_trash']+=1
+                        continue
                     try:received_at=datetime.fromtimestamp(int(message.get('internalDate'))/1000,tz=timezone.utc)
-                    except (ValueError,TypeError,OverflowError):continue
-                    if received_at<=sent_at:continue
+                    except (ValueError,TypeError,OverflowError):
+                        diagnostic['discarded_date']+=1
+                        continue
+                    if received_at<=sent_at:
+                        diagnostic['discarded_date']+=1
+                        continue
                     from_header=self.gmail._header(message,'From')
                     to_header=' '.join((self.gmail._header(message,'To'),self.gmail._header(message,'Cc')))
                     from_addresses=self._addresses(from_header);to_addresses=self._addresses(to_header)
                     if len(from_addresses)!=1 or from_addresses[0]!=target['client_email'].lower() or connection['email'].lower() not in to_addresses:
+                        diagnostic['discarded_address']+=1
                         continue
                     in_reply_to=self.gmail._header(message,'In-Reply-To')[:998]
                     references=' '.join(self.gmail._header(message,'References').split())[:4000]
@@ -179,11 +221,15 @@ class ProposalWorkflow:
                     ancestors=[self._normal_message_id(item) for item in re.findall(r'<[^<>\s]{1,500}>',references)]
                     # An older ancestor is not the revision being answered. Match
                     # the direct reply, or the final reference when it is absent.
-                    if (immediate!=[sent_header] if immediate else not ancestors or ancestors[-1]!=sent_header):continue
+                    if (immediate!=[sent_header] if immediate else not ancestors or ancestors[-1]!=sent_header):
+                        diagnostic['discarded_reference']+=1
+                        continue
                     candidates.append((message,received_at,from_addresses[0],to_addresses,in_reply_to,references))
+                diagnostic['matched']+=len(candidates)
                 known=self.backend().gmail_inbox(owner,'known',{'delivery_id':target['delivery_id'],
                     'provider_message_ids':[candidate[0]['id'] for candidate in candidates]})
                 known=set(known if isinstance(known,list) else [])
+                diagnostic['already_saved']+=len(known)
                 for message,received_at,from_email,to_addresses,in_reply_to,references in candidates:
                     if synced>=25:break
                     content=self.gmail.message_content(message)
@@ -199,10 +245,17 @@ class ProposalWorkflow:
                             'attachment_metadata':content['attachments']}
                     self.backend().gmail_inbox(owner,'record',record)
                     if message['id'] in known:refreshed+=1
-                    else:synced+=1
+                    else:
+                        synced+=1
+                        diagnostic['saved']+=1
             return {'synced':synced}
+        except Exception as error:
+            diagnostic['error']=error.code if isinstance(error,(ApiError,EmailDeliveryError)) else type(error).__name__
+            raise
         finally:
-            sync_lock.release()
+            if sync_lock is not None:sync_lock.release()
+            diagnostic['duration_ms']=round((time.monotonic()-started)*1000)
+            logger.info('gmail_reply_sync %s',json.dumps(diagnostic))
 
     def gmail_replies(self,owner,project_id,proposal_id):
         messages=self.backend().gmail_inbox(owner,'list',{'project_id':project_id,'proposal_id':proposal_id})
@@ -220,6 +273,10 @@ class ProposalWorkflow:
         # Resolve owner/revision before making any provider request.
         snapshot=repo.get_revision(proposal_id,revision_id,collections=())
         if snapshot['proposal']['current_revision_id']!=revision_id:raise ApiError('PROPOSAL_REVISION_CONFLICT',409)
+        return self.create_payment(owner,proposal_id,revision_id)
+    def create_payment(self,owner,proposal_id,revision_id):
+        # Shared by the freelancer flow and the client portal; the caller has already authorized owner and revision.
+        # payment_prepare is idempotent per acceptance, so both paths reuse one PayPal order.
         client=self.provider()
         merchant=SandboxSettings.from_env().merchant_id
         pay=self.backend().command(owner,'payment_prepare',{'proposal_id':proposal_id,'revision_id':revision_id,'merchant_id':merchant,'token':secrets.token_urlsafe(32)})

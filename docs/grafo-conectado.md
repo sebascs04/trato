@@ -20,7 +20,7 @@ Implementado el 27 de octubre de 2026. AuraDB Free propio; Supabase conserva la 
 - Se conservan snapshots internos en la proyección; la UI muestra el último borrador por versión y snapshots asociados a envíos/aceptaciones. Filtro por pedido y detalle de conexiones.
 - Sincronización bajo demanda al abrir/actualizar; no hay trigger de negocio ni actualización automática continua. Si el proyecto cambia mientras el mapa está abierto, se actualiza explícitamente. No afirmar sincronización en tiempo real.
 - Archivar un cliente bloquea de inmediato la lectura desde la API aunque Aura conserve la proyección. El borrado físico de proyecciones archivadas y la retención de snapshots/jobs son trabajo posterior; no exponen los registros archivados mediante la aplicación.
-- Devoluciones aún no tienen registros reales de dominio: no se proyecta el simulador como si fueran reembolsos confirmados. Ejemplos antiguos permanecen únicamente en `/grafo.html`.
+- La proyección 3 incorpora los expedientes de devolución, sus versiones, PDF, respaldos de solicitud, aceptación y ajustes, cobros originales y comprobantes verificados. Las relaciones salen de los registros de Supabase. El filtro de una devolución acota el mapa a su expediente. Los ejemplos permanecen en `/grafo.html`.
 - Máximo snapshot2MB, consulta2000nodos/5000relaciones. Un exceso falla explícitamente; no se presenta una respuesta truncada como completa.
 
 ## Configuración
@@ -28,6 +28,8 @@ Implementado el 27 de octubre de 2026. AuraDB Free propio; Supabase conserva la 
 Credenciales en `.env.neo4j` privado; ejecutar `python3 scripts/configure-graph.py` para copiarlas a `.env` privados de API y worker. `neo4j==6.4.1` y dependencia pytz fijados en ambos lockfiles. El frontend nunca recibe secretos. No se añade puerto local: conexión TLS a Aura, servicios reservados en local-ports.json. No utilizar Neo4j de otros proyectos locales.
 
 Migración `20261027165842_project_graph_threads.sql`: tabla private.graph_jobs con RLS sin acceso directo para usuarios, wrappers autorizados y extensión del dispatcher backend. La implementación de ingesta anterior se conserva como handler; relay y transporte siguen compartidos.
+
+Para activar Devoluciones en el mapa, desplegar primero la API y los workers que leen las proyecciones 2 y 3. La migración `20261108101000_refund_graph_projection.sql` habilita un despliegue por proyecto mediante `private.refund_graph_rollout`. Inscribir el proyecto y abrir o actualizar el mapa genera una nueva instantánea bajo demanda.
 
 ## Verificación
 

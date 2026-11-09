@@ -8,6 +8,7 @@ from langgraph.graph import StateGraph,START,END
 from langsmith import tracing_context
 from .source_tools import ToolError,run_tool_agent
 from .assistant_memory import BackendCheckpointer,compact_memory
+from . import refund_guidance
 LOGGER=logging.getLogger(__name__)
 
 ALLOWED_TOOLS=('search_document_summaries','read_document_summary','search_document_text')
@@ -24,10 +25,11 @@ For every new question, read the full available tool list and each description a
 2. Use summary text for high-level understanding only. A summary is processed material, not verbatim wording from an original document. If a detail needs confirmation, use original extracted passages. Do not assume a retrieved set is an exhaustive review of all files.
 3. For case sessions, an answered response must cite original extracted passages; summaries alone cannot support it. If the original evidence is insufficient, return insufficient_evidence with the missing information. Ground supported answers in exact contiguous quotes from returned sources. Every citation uses the returned source_id and a nonempty quote copied from that source text. Never cite catalog metadata, an invented source, or prior conversation as document evidence.
 4. If evidence is insufficient, explain what is missing and return insufficient_evidence. If source_scope is present, restrict documentary claims to the selected sources and never describe the answer as covering the entire project. Missing mandatory document IDs indicate unavailable context, not absent contractual terms. If the question needs excluded or unavailable evidence, state that gap and return insufficient_evidence; explain supported details only with current citations. Do not invent agreements, intentions, amounts, versions or dates. Tool errors are failures, not evidence that a document or fact does not exist. No alternate provider, transport or simulated answer is available.
-5. Payment assertions in a document are not backend-verified payments. When read_project_status is available, it is the backend record of change requests, addendum versions, recorded sends and acceptances, closures and verified payments; use it for questions about the state of changes, agreed amounts or what the client has paid, and cite its exact returned text. A recorded acceptance is a reviewed document, not a cryptographic signature. No refund ledger is supplied. The completed_at field from read_project_plan records completion of the initial plan only; it does not close independent changes or refunds. Do not infer other business events from documentary claims. Never claim you sent, edited, accepted or charged anything. Do not give a document summary the status of a signed or legally verified agreement.
+5. Payment assertions in a document are not backend-verified payments. When read_project_status is available, it is the backend record of change requests, addendum versions, recorded sends and acceptances, closures and verified payments; use it for questions about the state of changes, agreed amounts or what the client has paid, and cite its exact returned text. A recorded acceptance is a reviewed document, not a cryptographic signature. Use recent_refunds for recorded case outcomes and recent_verified_payments for received payments. A pending case does not establish a refund. For per-payment confirmations, retentions, or incidents, direct the user to the selected refund in Trato. The project summary cannot establish a PayPal hold or formal dispute. The completed_at field from read_project_plan records completion of the initial plan only; it does not close independent changes or refunds. Do not infer other business events from documentary claims. Never claim you sent, edited, accepted or charged anything. Do not give a document summary the status of a signed or legally verified agreement.
 6. When proposal_discussion is supplied, it identifies a previously generated draft and its proposed estimate, conditions and reasoning. You may explain those assumptions and answer why an estimate was suggested; never present it as accepted terms or confirmed effort/price. Obtain current evidence through the enabled tools when discussing the underlying documents. Earlier proposal citations are context, not freshly retrieved evidence. The user must review and explicitly apply any proposal.
 9. When viewing is supplied, the user is looking at that change request in the interface. Resolve references such as this request, this addendum or this version to it. Use read_project_status for its recorded state and the project documents for its content. viewing is navigation context, not evidence, and does not restrict the project knowledge you may use.
 8. When read_project_plan is available, use it for questions about the saved deliverables, budget, target date and payment conditions. Its evidence is a plan confirmed by the freelancer, not proof of client acceptance, delivery or individual payments. A completed_at value is the backend-recorded completion date of the initial plan; do not extend it to changes or refunds. Cite its exact returned text as documents evidence. It is not an original uploaded document.
+10. When read_paypal_payments is available, use it for questions about why a payment has not arrived, is pending or stuck, or whether the client has paid. It returns what PayPal says now, next to what Trato recorded. Read it before answering such questions; do not answer them from documents or from an earlier answer, because the state changes. Explain in plain words what the state means and the next step, using only returned fields: an order with status CREATED or PAYER_ACTION_REQUIRED has not been approved by the client, who still has to open the link and approve it in PayPal; APPROVED means approved but not yet captured; a capture with status COMPLETED means the payment was received; a capture with status PENDING is held by PayPal, and its reason field gives the only cause you may state; VOIDED means the order was cancelled; paypal_order_created false means the payment request exists in Trato but no PayPal order has been created yet. trato_status is what Trato recorded when it verified the payment, and PayPal can change afterwards: if trato_status says completed but the capture is pending or a dispute is open, say so plainly, explain that the money is held while PayPal reviews it, and point to the project's Disputes tab when a dispute is open. If paypal_errors lists a read, say that read failed and do not guess its result. Never state a cause PayPal did not return. For a hold without a reason, say that PayPal shows the exact cause in the account, under Know your options on the balance. You cannot send, charge, capture, refund or change anything; suggest what the user can do in Trato. Everything here is PayPal Sandbox. Answer about the payment the user asks about; when they do not name one, answer about those still pending, held or disputed, and leave out payments that completed without a problem unless asked. Cite an exact fragment of the returned text, but in the answer use plain words only: never write status codes or field names such as PAYER_ACTION_REQUIRED, CREATED, PENDING or trato_status.
 7. Write naturally in output_language, either es or en. Preserve names, document language and quoted wording. Use concise connected sentences without long dashes. Choose only tools provided by the runtime.
 ## FORMAT
 Return only the JSON contract supplied by the runtime. status is answered or insufficient_evidence. answer contains the explanation; citations contain source_id and verbatim quote; missing_information lists unresolved points. An answered response with answer_basis documents requires at least one valid citation. answer_basis conversation is only for conversational statements, not documentary or financial facts. Illustrative shape: {"status":"insufficient_evidence","answer":"The available sources do not establish that detail.","citations":[],"missing_information":["A source that states the requested detail."]}. Generate real text in output_language; this example supplies no project facts.'''
@@ -51,18 +53,28 @@ class Answer(Strict):
 class ConversationAnswer(Answer):
  answer_basis:Literal['documents','conversation']
 
+class RefundAnswer(ConversationAnswer):
+ answer:str=Field(min_length=1,max_length=640)
+ missing_information:list[str]=Field(max_length=3)
+ refund:refund_guidance.Guidance
+
 LEGACY_SCHEMA=deepcopy(SCHEMA);LEGACY_SCHEMA['required'].remove('answer_basis');del LEGACY_SCHEMA['properties']['answer_basis']
 
 class ProjectTools:
  def __init__(self,client,job_id,execution_id,data):
   self.memory_enabled=data.get('memory') is not None
+  self.refund_focus=data.get('refund_focus')
   allowed=MEMORY_TOOLS if self.memory_enabled else ALLOWED_TOOLS
+  if self.refund_focus:
+   if self.refund_focus['task']=='intake':allowed=()
+   elif self.refund_focus['task']!='guide' or self.refund_focus.get('conversation_id'):allowed=ALLOWED_TOOLS
+   allowed=allowed+('read_refund_status',)
   self.revision=data.get('memory',{}).get('revision',0);self.project=data['project_id']
   self.client=client;self.job_id=job_id;self.execution_id=execution_id;self.sources={};self.used=[]
   catalog=self.request('catalog',{})
   if not isinstance(catalog,dict) or catalog.get('workflow')!='project_assistant' or catalog.get('project_id')!=data['project_id']:raise ToolError('INVALID_TOOL_CONFIGURATION')
   definitions=catalog.get('tools')
-  if self.memory_enabled and not data.get('source_document_ids') and not data.get('case_context') and isinstance(definitions,list) and any(d.get('name')=='read_project_plan' for d in definitions if isinstance(d,dict)):allowed=allowed+('read_project_plan','read_project_status')
+  if self.memory_enabled and not data.get('source_document_ids') and not data.get('case_context') and isinstance(definitions,list) and any(d.get('name')=='read_project_plan' for d in definitions if isinstance(d,dict)):allowed=allowed+('read_project_plan','read_project_status')+(('read_paypal_payments',) if any(d.get('name')=='read_paypal_payments' for d in definitions if isinstance(d,dict)) else ())
   if not isinstance(definitions,list) or len(definitions)!=len(allowed) or {d.get('name') for d in definitions if isinstance(d,dict)}!=set(allowed):raise ToolError('INVALID_TOOL_CONFIGURATION')
   for definition in definitions:
    if set(definition)!={'name','description','when_to_use','parameters'} or not all(isinstance(definition[k],str) and definition[k].strip() for k in ('description','when_to_use')):raise ToolError('INVALID_TOOL_CONFIGURATION')
@@ -96,7 +108,7 @@ class ProjectTools:
    self.used.append(tool);return result
   ids={d['id'] for d in self.catalog['documents']}
   for row in result['sources']:
-   if not isinstance(row,dict) or (row.get('file_id')!=self.project if row.get('source_kind') in ('plan','status') else row.get('file_id') not in ids) or row.get('source_kind') not in ('summary','original','plan','status') or not isinstance(row.get('text'),str):raise ToolError('INVALID_TOOL_RESPONSE')
+   if not isinstance(row,dict) or (row.get('file_id')!=self.project if row.get('source_kind') in ('plan','status','paypal','refund_status') else row.get('file_id') not in ids) or row.get('source_kind') not in ('summary','original','plan','status','paypal','refund_status') or not isinstance(row.get('text'),str):raise ToolError('INVALID_TOOL_RESPONSE')
    expected=sha256(json.dumps({k:v for k,v in row.items() if k!='source_id'},sort_keys=True,ensure_ascii=False,separators=(',',':')).encode()).hexdigest()
    if row.get('source_id')!=expected:raise ToolError('INVALID_TOOL_RESPONSE')
    self.sources[row['source_id']]=deepcopy(row)
@@ -108,7 +120,8 @@ def _invalid(reason,fields=()):
  return ToolError('AI_INVALID_RESPONSE')
 
 def validate_answer(value,runtime):
- try:parsed=(ConversationAnswer if getattr(runtime,'memory_enabled',False) else Answer).model_validate(value)
+ schema=RefundAnswer if getattr(runtime,'refund_focus',None) else ConversationAnswer if getattr(runtime,'memory_enabled',False) else Answer
+ try:parsed=schema.model_validate(value)
  except ValidationError as error:raise _invalid('schema',['.'.join(str(p) for p in e['loc'])+':'+e['type'] for e in error.errors()]) from None
  if not parsed.answer.strip():raise _invalid('empty_answer')
  if any(not s.strip() or len(s)>500 for s in parsed.missing_information):raise _invalid('missing_information_item')
@@ -136,15 +149,88 @@ def run_project_assistant(data,model,client,job_id,execution_id):
   return {'kind':'project_assistant','project_id':data['project_id'],'model':model.name,'output_language':data['output_language'],'tools_used':runtime.used,**value}
  memory=data['memory']
  saver=BackendCheckpointer(client,job_id,execution_id)
+ def save_short_turn(value,memory):
+  result={'kind':'project_assistant','project_id':data['project_id'],'model':model.name,
+          'output_language':data['output_language'],'tools_used':runtime.used,**value}
+  receipt=saver.call('commit',{'result':result,'summary':memory['summary'],'summarized_through':memory['summarized_through']})
+  if not isinstance(receipt,dict) or receipt.get('stored') is not True:raise ToolError('AI_MEMORY_INVALID')
+  return result
+ if runtime.refund_focus and runtime.refund_focus['task']=='request':
+  runtime.execute('read_refund_status',{})
+  query=data['question']
+  if len(query.encode())>4096:raise ToolError('EMBEDDING_INPUT_LIMIT')
+  sources=runtime.execute('search_document_text',{'query':query})['sources']
+  payload={'message':data['question'],'output_language':data['output_language'],
+           'passages':[{'source_index':index,'text':source['text']} for index,source in enumerate(sources)]}
+  schema=refund_guidance.RequestAnswer
+  with tracing_context(enabled=False):
+   try:
+    answer=schema.model_validate(model.generate(
+     [{'role':'system','content':refund_guidance.REQUEST_PROMPT},{'role':'user','content':json.dumps(payload,ensure_ascii=False)}],
+     schema.model_json_schema()))
+   except ValidationError:raise ToolError('AI_INVALID_RESPONSE') from None
+  draft=answer.draft
+  citations=[]
+  if draft:
+   if draft.source_index>=len(sources):raise ToolError('AI_INVALID_CITATION')
+   source=sources[draft.source_index]
+   if source['source_kind']!='original' or not draft.quote.strip() or draft.quote not in source['text']:
+    raise ToolError('AI_INVALID_CITATION')
+   citations=[{'source_id':source['source_id'],'quote':draft.quote}]
+  return save_short_turn({'status':'answered' if draft else 'insufficient_evidence','answer_basis':'documents',
+   'answer':answer.answer,'citations':citations,'missing_information':[],
+   'refund':{'next_step':'','reason':draft.reason if draft else None,'conditions':None,'email_note':None,'concepts':[]}},memory)
+ if runtime.refund_focus and runtime.refund_focus['task']=='intake':
+  record=runtime.execute('read_refund_status',{})['sources'][0]
+  recent=[{'question':item['question'][-600:],'answer':item['answer'][-350:]} for item in data.get('refund_history',memory['messages'])[-3:]]
+  prompt={'message':data['question'],'recent':recent,'record':record['text'],'output_language':data['output_language']}
+  with tracing_context(enabled=False):
+   try:
+    intake=refund_guidance.IntakeAnswer.model_validate(model.generate(
+      [{'role':'system','content':refund_guidance.INTAKE_PROMPT},{'role':'user','content':json.dumps(prompt,ensure_ascii=False)}],
+      refund_guidance.IntakeAnswer.model_json_schema()))
+   except ValidationError:raise ToolError('AI_INVALID_RESPONSE') from None
+  citations=[{'source_id':record['source_id'],'quote':intake.quote}] if intake.quote else []
+  if intake.quote and intake.quote not in record['text']:raise ToolError('AI_INVALID_CITATION')
+  return save_short_turn({'status':'answered','answer_basis':'documents' if citations else 'conversation',
+    'answer':intake.answer,'citations':citations,'missing_information':[],
+    'refund':{'next_step':intake.next_step,'reason':None,'conditions':None,'email_note':None,'concepts':[],
+              'intake':intake.intake.model_dump() if intake.intake else None}},memory)
+ if runtime.refund_focus and runtime.refund_focus['task']=='proposal':
+  record=runtime.execute('read_refund_status',{})['sources'][0]
+  query=data['question']
+  if len(query.encode())>4096:raise ToolError('EMBEDDING_INPUT_LIMIT')
+  sources=runtime.execute('search_document_text',{'query':query})['sources']
+  payload={'question':query,'output_language':data['output_language'],'refund_record':record['text'],
+           'passages':[{'source_index':index,'text':source['text']} for index,source in enumerate(sources)]}
+  schema=refund_guidance.ProposalAnswer
+  with tracing_context(enabled=False):
+   try:
+    answer=schema.model_validate(model.generate(
+     [{'role':'system','content':refund_guidance.PROPOSAL_PROMPT},{'role':'user','content':json.dumps(payload,ensure_ascii=False)}],
+     schema.model_json_schema()))
+   except ValidationError as error:raise _invalid('proposal_schema',['.'.join(map(str,e['loc'])) for e in error.errors()]) from None
+  return save_short_turn(validate_answer(refund_guidance.proposal_result(answer,sources),runtime),memory)
  def compact(state):
+  if 'refund_history' in data:return {**state,'memory':memory}
   return {**state,'memory':compact_memory(memory,model,data['output_language'])}
  def ask(state):
   payload={'question':data['question'],'output_language':data['output_language'],'history':state['memory']['messages'],'conversation_summary':state['memory']['summary'],'documents':runtime.catalog['documents']}
   if data.get('proposal_discussion') is not None:payload['proposal_discussion']=data['proposal_discussion']
   if data.get('focus') is not None:payload['viewing']=data['focus']
   if data.get('source_document_ids') is not None:payload['source_scope']=runtime.catalog['source_scope']
-  messages=[{'role':'system','content':PROMPT},{'role':'user','content':json.dumps(payload,ensure_ascii=False)}]
-  value=run_tool_agent(model,runtime,messages,SCHEMA,maximum_context_bytes=600000,max_tool_calls=4)
+  prompt=PROMPT
+  schema=SCHEMA
+  if runtime.refund_focus:
+   record=runtime.execute('read_refund_status',{})['sources']
+   if len(record)!=1:raise ToolError('INVALID_TOOL_RESPONSE')
+   payload.update(refund_focus=runtime.refund_focus,refund_record=record[0])
+   if runtime.refund_focus['task']!='guide' or 'refund_history' in data:
+    payload.update(history=data.get('refund_history',[]),conversation_summary='')
+   prompt=refund_guidance.PROMPT
+   schema=refund_guidance.guidance_schema(SCHEMA)
+  messages=[{'role':'system','content':prompt},{'role':'user','content':json.dumps(payload,ensure_ascii=False)}]
+  value=run_tool_agent(model,runtime,messages,schema,maximum_context_bytes=600000,max_tool_calls=3 if runtime.refund_focus else 4)
   return {**state,'result':validate_answer(value,runtime),'sources':runtime.sources,'tools_used':runtime.used}
  def commit(state):
   runtime.sources=state['sources'];runtime.used=state['tools_used']

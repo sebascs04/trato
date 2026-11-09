@@ -15,7 +15,7 @@ def scoped_rows(repo,project,kind,group_id,queries,read):
         data['proposals']=read('change_proposals',{'select':'id,request_document_id','request_document_id':'eq.'+identifier})
         ids=[row['id'] for row in data['proposals']]
         if ids:
-            for name in ('revisions','deliveries','acceptances','payments'):
+            for name in ('revisions','deliveries','acceptances','payments','portal_requests'):
                 table,params=queries[name];data[name]=read(table,{**params,'proposal_id':'in.('+','.join(ids)+')'})
         table,params=queries['closures'];data['closures']=read(table,{**params,'request_document_id':'eq.'+identifier})
         return data

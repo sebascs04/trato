@@ -145,6 +145,7 @@ export function installReputationWorkspace(cloud){
    data=result;more=result.next_offset!==null;loading=false;render();
   }catch(issue){if(run!==epoch||!visible())return;error=t('loadError');loading=false;render();}
  }
+ cloud.reputationScreen=()=>({view:selected?'client_profile':'directory'});
  cloud.renderReputationWorkspace=function(container){
   root=container;if(owner!==cloud.navigationOwner)reset();
   render();if(!data&&!loading&&!error)load();

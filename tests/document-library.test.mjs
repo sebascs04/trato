@@ -3,6 +3,7 @@ globalThis.crypto=webcrypto;
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {ConnectedWorkspace} from '../connected-workspace.mjs';
+import {uiText} from '../i18n.mjs';
 const file=(id,kind,day,extra={})=>({id,title:id,kind,created_at:`2026-11-${day}T12:00:00Z`,mime_type:'application/pdf',document_extractions:[{status:'ready'}],...extra});
 function render(documents){
  const cloud=new ConnectedWorkspace({document:{},location:{},storage:{},fetchFn:()=>{throw Error('Document grouping must not fetch data');}});
@@ -66,4 +67,51 @@ test('request and refund headings follow registration dates even when refund evi
   const request=html.indexOf('data-document-kind="request"'),refund=html.indexOf('data-document-kind="refund"');
   assert.ok(initial<Math.min(request,refund));assert.equal(refund<request,refundFirst);
  }
+});
+
+test('dispute documents get their own group and an addendum also stays in its change',()=>{
+ const sent={dispute_id:'PP-R-1',role:'sent',created_at:'2026-11-08T12:00:00Z'},uploaded={dispute_id:'PP-R-1',role:'uploaded',created_at:'2026-11-08T11:00:00Z'};
+ const html=render([
+  file('request-a','email_request','01'),
+  file('addendum-a','addendum','02',{request_links:[{request_document_id:'request-a',role:'addendum',revision_no:1}],dispute_links:[sent]}),
+  file('proof','delivery','03',{dispute_links:[uploaded,sent]}),
+ ]);
+ const group=html.slice(html.indexOf('data-document-kind="dispute"'));
+ assert.ok(group.includes('addendum-a')&&group.includes('proof'));
+ const request=html.slice(html.indexOf('data-document-kind="request"'),html.indexOf('data-document-kind="dispute"'));
+ assert.ok(request.includes('addendum-a'),'the addendum stays in its change');
+ assert.ok(!html.includes('data-document-kind="reference"'),'a linked proof does not also land in the general group');
+});
+test('a group the person opened stays open when the list redraws',()=>{
+ const cloud=new ConnectedWorkspace({document:{},location:{},storage:{},fetchFn:()=>{throw Error('Document grouping must not fetch data');}});
+ cloud.projectId='project-a';cloud.documents=[file('initial-a','initial_agreement','01'),file('other-a','reference','02')];
+ const listeners=[],opened=[{dataset:{documentKind:'reference'}}];
+ const panel={dataset:{},addEventListener:(type,listener)=>listeners.push([type,listener]),querySelectorAll:()=>opened};
+ const groupTag=(html,kind)=>html.match(new RegExp(`<details[^>]*data-document-kind="${kind}"[^>]*>`))[0];
+ cloud.renderDocuments(panel);
+ assert.match(groupTag(panel.innerHTML,'initial_agreement'),/ open/,'the first group opens by default');
+ assert.deepEqual(listeners.map(([type])=>type),['toggle']);
+ listeners[0][1]({target:{matches:()=>true}});
+ cloud.renderDocuments(panel);
+ assert.match(groupTag(panel.innerHTML,'reference'),/ open/);
+ assert.doesNotMatch(groupTag(panel.innerHTML,'initial_agreement'),/ open/);
+ assert.equal(listeners.length,1,'one listener per panel');
+});
+test('a document refreshed from a panel keeps being watched until it is processed',async()=>{
+ const cloud=new ConnectedWorkspace({document:{},location:{},storage:{},fetchFn:()=>{throw Error('unused');}});
+ const processing=file('client-a','reference','02',{document_extractions:[{status:'queued',worker_thread_id:'thread-a'}]});
+ cloud.active=true;cloud.projectId='project-a';cloud.request=async()=>[processing];cloud.notify=()=>{};
+ await cloud.refreshDocumentList();
+ assert.ok(cloud.ingestionTimer,'still watching');
+ cloud.stopIngestionPolling();
+});
+test('the client sees that a dispute ended, and whether the money comes back',()=>{
+ const cloud=new ConnectedWorkspace({document:{},location:{},storage:{},fetchFn:()=>{throw Error('unused');}});
+ const item={proposal_id:'a',project_name:'P',revision_no:1,additional_minor:12000,currency:'USD',status:'accepted',payment_status:'completed'};
+ const row=dispute=>{cloud.clientDisputes={a:dispute};return cloud.clientAgreementRow(item);};
+ const text=key=>uiText(key);
+ assert.ok(row({status:'RESOLVED',outcome:'RESOLVED_SELLER_FAVOUR'}).includes(text('clientAccount.state.disputeClosed')));
+ assert.ok(row({status:'RESOLVED',outcome:'CANCELED_BY_BUYER'}).includes(text('clientAccount.state.disputeClosed')));
+ assert.ok(row({status:'RESOLVED',outcome:'RESOLVED_BUYER_FAVOUR'}).includes(text('clientAccount.state.disputeRefunded')));
+ assert.ok(row({status:'UNDER_REVIEW',outcome:null}).includes(text('clientAccount.state.inDispute')));
 });

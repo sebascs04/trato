@@ -4,6 +4,21 @@ import {renderAIActivity,submitChatOnEnter,chatScrollPosition,restoreChatScroll}
 import {uiText,uiLanguage,uiLocale} from './i18n.mjs';
 import {icon} from './icons.mjs';
 import {documentProgressLabel} from './document-progress.mjs';
+// Sends a question the user did not type without losing what they were writing in the box.
+export function sendKeepingDraft(state,send){
+ const draft=state.draft,sent=send();
+ state.draft=draft;
+ return sent;
+}
+// Every PayPal citation points at the same read and shows the same line, so an answer lists it once.
+export function distinctPayPalCitations(value){
+ let shown=false;
+ return value.citations.filter(citation=>{
+  if(value.sources.find(source=>source.source_id===citation.source_id)?.source_kind!=='paypal')return true;
+  if(shown)return false;
+  shown=true;return true;
+ });
+}
 const text=(key,values)=>uiText(['projectAssistant',key].join('.'),values);
 const esc=value=>String(value??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 export function projectDocumentError(code){
@@ -17,7 +32,7 @@ export function validateProjectAnswer(value,projectId){
  if(value.answer_basis!==undefined&&!['documents','conversation'].includes(value.answer_basis)||value.status==='answered'&&value.answer_basis!=='conversation'&&!value.citations.length)throw Error('AI_JOB_INVALID');
  for(const citation of value.citations){
   const source=value.sources.find(s=>s.source_id===citation.source_id);
-  if(!source||!['summary','original','plan','status'].includes(source.source_kind)||typeof source.file_id!=='string'||typeof citation.quote!=='string'||!citation.quote.trim())throw Error('AI_JOB_INVALID');
+  if(!source||!['summary','original','plan','status','paypal','refund_status'].includes(source.source_kind)||typeof source.file_id!=='string'||typeof citation.quote!=='string'||!citation.quote.trim())throw Error('AI_JOB_INVALID');
  }
  return value;
 }
@@ -98,7 +113,7 @@ export function installProjectAssistant(cloud){
   cloud.document.body.append(fab);}
  const floatingOpen=()=>!!floatingPanel?.element.open;
  function updateFab(){
-  if(!fab)return;fab.hidden=!(cloud.active&&cloud.projectId&&!['asistente','devoluciones'].includes(cloud.tab)&&!floatingOpen());
+  if(!fab)return;fab.hidden=!(cloud.active&&cloud.projectId&&!['#ensayos','#reputacion'].includes(cloud.location.hash)&&!['asistente','devoluciones'].includes(cloud.tab)&&!floatingOpen());
   // Same bottom line as the section guide launcher, placed to its left so neither covers the other.
   const launcher=cloud.document.querySelector?.('.guide-launcher'),width=launcher&&!launcher.hidden?launcher.getBoundingClientRect?.().width:0;
   fab.style.right=width?`${Math.round(28+width+12)}px`:'';
@@ -110,22 +125,42 @@ export function installProjectAssistant(cloud){
   const doc=cloud.documents?.find(item=>item.id===cloud.requestId);
   return doc?{id:doc.id,title:doc.title}:null;
  }
+ function openFloating(button,focus){
+  const state=stateForProject();state.focus=focus;
+  if(!floatingPanel)floatingPanel=createAgentPanel({cloud,id:'tetrato-floating-title',className:'project-agent-drawer tetrato-floating',
+   trigger:()=>cloud.document.querySelector('.refund-dialog[open] [data-refund-assistant="guide"]')||fab,
+   onClose(){if(context)context.focus=null;updateFab();}});
+  floatingPanel.open(button);updateFab();renderFloating(state);
+  if(!focus?.refund&&!state.sourcesLoaded)void loadSources(state);
+  floatingPanel.element.querySelector('#project-assistant-question')?.focus();
+  return state;
+ }
+ // One click asks why a payment is pending: the agent only reads PayPal, so nothing needs confirming. A second click during the answer sends nothing.
+ cloud.openPaymentDetective=function(button,title){
+  const state=openFloating(button,{title});
+  void sendKeepingDraft(state,()=>ask(state,uiText('paymentDetective.prompt')));
+  renderFloating(state);
+ };
+ cloud.openRefundAssistant=function(button,refund){
+  const state=openFloating(button,{title:uiText(`refund.wizard.step${refund.step}`),refund});
+  const key={request:'requestPrompt',proposal:'proposalPrompt',email:'emailPrompt',reply:'replyPrompt'}[refund.task];
+  if(key&&!state.draft){
+   state.draft=uiText(`refundAI.${key}`);renderFloating(state);
+  }
+ };
  function renderFloating(state){
   const body=cloud.document.createElement('div');cloud.renderProjectAssistant(body);
-  // Until the project's sources have loaded, show only the wait: focus card, conversation and composer appear together.
-  const ready=state.sourcesLoaded;
-  const focus=ready&&state.focus?`<div class="tetrato-focus" role="note"><span class="tetrato-focus-icon" aria-hidden="true">${icon('git-compare-arrows')}</span><div><small>${text('focusLabel')}</small><strong title="${esc(state.focus.title)}">${esc(state.focus.title)}</strong></div></div>`:'';
-  floatingPanel.render(`<div class="case-agent-shell"><header class="case-agent-header"><div class="case-agent-heading"><img class="case-agent-mascot" src="/assets/mascot/trato-guide.png" alt="" width="44" height="44"><div><span>Trato</span><h2 id="tetrato-floating-title">TeTrato</h2></div></div><button type="button" class="case-agent-close" data-agent-close aria-label="${uiText('Cerrar')}" title="${uiText('Cerrar')}">${icon('x')}</button></header><div class="case-agent-chat tetrato-floating-body" data-agent-chat>${focus}${ready?body.innerHTML:renderAIActivity({label:text('loadingHistory'),compact:true})}</div></div>`);
+  const refund=state.focus?.refund;
+  const ready=!!refund||state.sourcesLoaded;
+  floatingPanel.element.classList.toggle('tetrato-refund',!!refund);
+  const next=refund?.task==='guide'&&!state.loading&&!state.historyError&&!state.job.state.uncertain&&!['queued','running'].includes(state.job.state.status)
+   ?`<button type="button" class="text-button" data-assistant-action="refund-next">${uiText('refundAI.nextQuestion')}</button>`:'';
+  const clear=refund?`<button type="button" class="text-button" data-assistant-action="clear-refund" ${state.loading||state.applyingRefund||['queued','running','unavailable'].includes(state.job.state.status)?'disabled':''}>${uiText('refundAI.clearConversation')}</button>`:'';
+  const focus=ready&&state.focus?`<div class="tetrato-focus" role="note"><span class="tetrato-focus-icon" aria-hidden="true">${icon(refund?'file-text':'git-compare-arrows')}</span><div><small>${text('focusLabel')}</small><strong title="${esc(state.focus.title)}">${esc(state.focus.title)}</strong></div>${next}${clear}</div>`:'';
+  floatingPanel.render(`<div class="case-agent-shell"><header class="case-agent-header"><div class="case-agent-heading"><img class="case-agent-mascot" src="/assets/mascot/trato-guide.png" alt="" width="44" height="44"><div><span>Trato</span><h2 id="tetrato-floating-title">TeTrato</h2></div></div><button type="button" class="case-agent-close" data-agent-close aria-label="${uiText('Cerrar')}" title="${uiText('Cerrar')}">${icon('x')}</button></header>${refund?focus:''}<div class="case-agent-chat tetrato-floating-body" data-agent-chat>${refund?'':focus}${ready?body.innerHTML:renderAIActivity({label:text('loadingHistory'),compact:true})}</div></div>`);
   restoreChatScroll(floatingPanel.element.querySelector('.project-assistant-log'),state.chatScroll);
  }
- fab?.addEventListener('click',()=>{
-  const state=stateForProject();state.focus=focusTarget();
-  if(!floatingPanel)floatingPanel=createAgentPanel({cloud,id:'tetrato-floating-title',className:'project-agent-drawer tetrato-floating',onClose(){if(context)context.focus=null;updateFab();}});
-  floatingPanel.open(fab);updateFab();renderFloating(state);
-  // The panel waits for the project's sources; load them here too (the documents drawer is not the only entry point).
-  if(!state.sourcesLoaded)void loadSources(state);
-  floatingPanel.element.querySelector('#project-assistant-question')?.focus();
- });
+ fab?.addEventListener('click',()=>openFloating(fab,focusTarget()));
 
  const current=state=>context===state&&cloud.active&&cloud.navigationOwner===state.owner&&cloud.projectId===state.project;
  const visible=state=>current(state)&&(cloud.tab==='asistente'||documentsPanel?.element.open||floatingOpen());
@@ -257,6 +292,7 @@ export function installProjectAssistant(cloud){
   const state={owner,project,key:`${cloud.session.key}:project-assistant:${owner}:${project}`,draft:'',agentOpen:false,followPage:true,pageScroll:cloud.document.defaultView?.scrollY,ids:[],entries:[],loading:false,historyError:'',sourceFiles:[],readings:new Map(),selectedDocuments:null,sourceOpen:false,sourceLoading:true,sourceError:'',sourceNotice:'',preparing:'',processingId:'',processingJob:null,processingGeneration:null,processingSnapshots:new Map(),processingStarts:new Map()};
   const stored=cloud.storage.getItem(state.key);
   if(stored!==null){const record=JSON.parse(stored);if(record.version!==1||!Array.isArray(record.ids)||record.ids.some(id=>typeof id!=='string'||!/^[a-f0-9-]{36}$/.test(id)))throw Error('AI_JOB_INVALID');state.ids=record.ids;if(record.readings!==undefined){if(!Array.isArray(record.readings)||record.readings.some(reading=>typeof reading.fileId!=='string'||typeof reading.jobId!=='string'||reading.status!=='requested'||!['queued','processing'].includes(reading.jobStatus)))throw Error('AI_JOB_INVALID');for(const {fileId,...reading} of record.readings)state.readings.set(fileId,reading);}}
+  state.refundConversation=cloud.storage.getItem(state.key+':refund-conversation');
   context=state;
   state.job=new AIJobClient({cloud,scope:'project-assistant:'+project,onChange:job=>{
    if(!current(state))return;
@@ -277,13 +313,29 @@ export function installProjectAssistant(cloud){
   return state;
  }
  function messageError(code){
-  const keys={FILE_SUMMARY_CHANGED:'sourcesChanged',VECTOR_SOURCE_CHANGED:'sourcesChanged',AI_NOT_FOUND:'historyUnavailable',AI_INVALID_CITATION:'invalidEvidence',AI_CONTEXT_INVALID:'historyUnavailable',AI_JOB_INVALID:'historyUnavailable',AI_EVALUATOR_NOT_CONFIGURED:'notConfigured',AI_MEMORY_CONFLICT:'memoryConflict',AI_MEMORY_INVALID:'memoryError',AI_MEMORY_CONTEXT_LIMIT:'memoryError'};
+  const failures={PERSISTENCE_UNAVAILABLE:'dataUnavailable',TOOL_SERVICE_UNAVAILABLE:'toolUnavailable',AI_QUEUE_UNAVAILABLE:'queueUnavailable',
+   VECTOR_PROVIDER_UNAVAILABLE:'vectorUnavailable',MODEL_QUOTA_EXCEEDED:'modelQuota',MODEL_UNAVAILABLE:'modelUnavailable',
+   MODEL_REQUEST_FAILED:'modelUnavailable',AI_INVALID_RESPONSE:'invalidAnswer',MODEL_INVALID_RESPONSE:'invalidAnswer',AI_REQUEST_TIMEOUT:'requestTimeout',AI_CONFLICT:'requestConflict'};
+  if(failures[code])return text(failures[code]);
+  const keys={FILE_SUMMARY_CHANGED:'sourcesChanged',VECTOR_SOURCE_CHANGED:'sourcesChanged',AI_NOT_FOUND:'historyUnavailable',AI_INVALID_CITATION:'invalidEvidence',AI_CONTEXT_INVALID:'historyUnavailable',REFUND_REVISION_CONFLICT:'sourcesChanged',AI_JOB_INVALID:'historyUnavailable',AI_EVALUATOR_NOT_CONFIGURED:'notConfigured',AI_MEMORY_CONFLICT:'memoryConflict',AI_MEMORY_INVALID:'memoryError',AI_MEMORY_CONTEXT_LIMIT:'memoryError'};
   return projectDocumentError(code)||text(keys[code]||'error');
  }
- function citations(value){return value.citations.map(citation=>{
+ function citations(value){return distinctPayPalCitations(value).map(citation=>{
   const source=value.sources.find(s=>s.source_id===citation.source_id);
+  if(source.source_kind==='paypal')return `<article class="project-assistant-source"><span>${uiText('paymentDetective.source')}</span></article>`;
   return `<article class="project-assistant-source"><span>${text(source.source_kind==='plan'?'planLabel':source.source_kind==='status'?'statusLabel':source.source_kind==='summary'?'referenceLabel':'documentLabel')}</span><button type="button" data-assistant-action="${source.source_kind==='plan'?'plan':source.source_kind==='status'?'status':'source'}" data-document-id="${esc(source.file_id)}">${icon('file-text')}${esc(source.source_kind==='plan'?text('planLabel'):source.source_kind==='status'?text('statusLabel'):source.title||text('documentLabel'))}${icon('arrow-up-right')}</button><blockquote>${esc(citation.quote)}</blockquote>${source.locator?`<small>${text(source.locator.kind==='page'?'page':'sectionLabel')} ${esc(source.locator.page??source.locator.paragraph??source.locator.section??'')}</small>`:''}</article>`;
  }).join('');}
+ function refundDetails(entry,state){
+  const result=entry.result,guidance=result.refund;
+  if(!guidance)return '';
+  const apply=state.focus?.refund&&cloud.canApplyRefundSuggestion?.(result.refund_focus);
+  const intake=guidance.intake;
+  const wording=guidance.reason||guidance.conditions||guidance.email_note||intake?.reason;
+  const hasDraft=wording||guidance.concepts.length;
+  const currentConditions=apply?cloud.refundConditionsForReview?.(result.refund_focus,guidance.conditions):'';
+  const conditionsChoice=currentConditions?`<details><summary>${uiText('refundAI.currentTerms')}</summary><p>${esc(currentConditions)}</p></details><label class="refund-ai-replace"><input type="checkbox" data-refund-replace-conditions>${uiText('refundAI.replaceTerms')}</label>`:'';
+  return `${guidance.next_step?`<section class="refund-ai-next"><strong>${uiText('refundAI.next')}</strong><p>${esc(guidance.next_step)}</p></section>`:''}${hasDraft?`<section class="refund-ai-draft"><strong>${uiText('refundAI.suggestion')}</strong>${wording?`<p>${esc(wording)}</p>`:''}${guidance.concepts.length?`<ul>${guidance.concepts.map(item=>`<li>${esc(item.description)}</li>`).join('')}</ul>`:''}${apply?`${conditionsChoice}<p class="refund-ai-review">${intake?uiText('refundAI.intakeEvidence'):(result.refund_focus.task==='proposal'?uiText('refundAI.review'):uiText('refundAI.reviewWording'))}</p><button type="button" class="button secondary" data-assistant-action="apply-refund" data-document-id="${esc(entry.id)}" ${state.applyingRefund?'disabled':''}>${intake?uiText('refundAI.reviewIntake'):result.refund_focus.task==='request'?uiText('refundAI.useReason'):uiText('refundAI.apply')}</button>`:''}</section>`:''}`;
+ }
  cloud.renderProjectAssistant=function(panel){
   let state;
   try{state=stateForProject();}
@@ -296,22 +348,30 @@ export function installProjectAssistant(cloud){
    panel.innerHTML=`<section class="workspace-panel project-assistant" aria-label="${text('title')}"><p class="cloud-error" role="alert">${messageError(state.historyError)}</p><button type="button" class="text-button" data-assistant-action="reload-history">${text('retry')}</button></section>`;
    return;
   }
-  const job=state.job.state,pending=['queued','running'].includes(job.status),failed=['failed','unavailable'].includes(job.status);
+  const job=state.job.state,pending=['queued','running'].includes(job.status);
+  const inRefund=!!(floatingOpen()&&state.focus?.refund);
+  const currentRefund=focus=>focus&&(focus.conversation_id??null)===state.refundConversation;
+  const showJob=!inRefund||currentRefund(job.payload?.refund_focus);
+  const failed=showJob&&['failed','unavailable'].includes(job.status);
+  const entries=inRefund?state.entries.filter(entry=>currentRefund(entry.result.refund_focus)):state.entries;
+  const showOlder=state.nextBefore&&(!inRefund||!state.refundConversation||entries.some(entry=>entry.position===state.nextBefore));
   const citations=value=>{
    // Status quotes are literal fragments of the project's JSON state (that is what is verified); show them as readable facts.
    const status=value.citations.filter(c=>value.sources.find(s=>s.source_id===c.source_id)?.source_kind==='status');
    const facts=[];for(const c of status)for(const fact of statusFacts(c.quote))if(!facts.some(f=>f[0]===fact[0]&&f[1]===fact[1]))facts.push(fact);
    const statusBlock=status.length?`<article class="project-assistant-source"><span>${text('statusLabel')}</span><button type="button" data-assistant-action="status" data-document-id="${esc(value.sources.find(s=>s.source_kind==='status').file_id)}">${icon('history')}${text('statusOpen')}${icon('arrow-up-right')}</button>${facts.length?`<dl class="assistant-status-facts">${facts.map(([label,shown])=>`<div><dt>${esc(label)}</dt><dd>${esc(shown)}</dd></div>`).join('')}</dl>`:status.map(c=>`<blockquote>${esc(c.quote)}</blockquote>`).join('')}</article>`:'';
-   return statusBlock+value.citations.filter(c=>!status.includes(c)).map(citation=>{
+   return statusBlock+distinctPayPalCitations(value).filter(c=>!status.includes(c)).map(citation=>{
    const source=value.sources.find(s=>s.source_id===citation.source_id);
+   if(source.source_kind==='paypal')return `<article class="project-assistant-source"><span>${uiText('paymentDetective.source')}</span></article>`;
+   if(source.source_kind==='refund_status')return `<article class="project-assistant-source"><span>${uiText('refundAI.record')}</span></article>`;
    return `<article class="project-assistant-source"><span>${text(source.source_kind==='status'?'statusLabel':source.source_kind==='summary'?'summarySource':'originalSource')}</span><button type="button" data-assistant-action="${source.source_kind==='plan'?'plan':source.source_kind==='status'?'status':'source'}" data-document-id="${esc(source.file_id)}">${icon('file-text')}${esc(source.source_kind==='status'?text('statusLabel'):source.title)}${icon('arrow-up-right')}</button><blockquote>${esc(citation.quote)}</blockquote>${source.locator?`<small>${text(source.locator.kind==='page'?'page':'paragraph')} ${esc(source.locator[source.locator.kind])}</small>`:''}</article>`;
   }).join('');};
-  const submitted=typeof job.payload?.question==='string'&&!!job.payload.question.trim();
+  const submitted=showJob&&typeof job.payload?.question==='string'&&!!job.payload.question.trim();
   const unanswered=submitted&&!state.entries.some(entry=>entry.id===job.id);
   const questionMarkup=question=>`<div class="project-assistant-user-message"><span class="project-assistant-user-avatar" aria-hidden="true">${esc(cloud.profile?.textContent?.trim()||'')||icon('user-round')}</span><p class="project-assistant-question"><strong>${text('you')}</strong>${esc(question)}</p></div>`;
-  const activity=pending?renderAIActivity({label:text(job.status==='queued'?'queued':'thinking'),hint:text('waitHint')}):'';
-  const failure=failed?`<div class="project-assistant-failure" role="alert"><button type="button" class="text-button project-assistant-retry" data-assistant-action="retry" title="${text('retry')}" aria-label="${text('messageRetry')}">${icon('refresh-cw')}${text('messageRetry')}</button></div>`:'';
-  panel.innerHTML=`<section class="workspace-panel project-assistant" aria-label="${text('title')}"><header><div><span class="eyebrow">${text('eyebrow')}</span><h3>${text('title')}</h3><p>${text('intro')}</p></div></header><div class="project-assistant-log" role="log" aria-live="polite">${state.nextBefore?`<button type="button" class="text-button" data-assistant-action="older" ${state.loading?'disabled':''}>${text('olderMessages')}</button>`:''}${state.loading?`<div class="project-assistant-loading">${renderAIActivity({label:text('loadingHistory'),compact:true})}</div>`:state.entries.map(entry=>`<article class="project-assistant-exchange">${questionMarkup(entry.result.question)}<div class="project-assistant-answer"><strong><img class="project-assistant-avatar" src="/assets/mascot/trato-guide.png" alt="" width="38" height="38">${text('answer')}</strong><p>${esc(entry.result.answer)}</p>${answerScopeMarkup(entry.result)}${entry.result.missing_information.length?`<ul>${entry.result.missing_information.map(info=>`<li>${esc(info)}</li>`).join('')}</ul>`:''}${entry.result.citations.length?`<details data-project-answer-sources><summary>${text('sources')}</summary><div class="project-assistant-sources">${citations(entry.result)}</div></details>`:''}</div></article>`).join('')||(!submitted?`<div class="project-assistant-empty">${icon('messages-square')}<h4>${text('emptyTitle')}</h4><p>${text('emptyCopy')}</p></div>`:'')}${state.loading?'':unanswered?`<article class="project-assistant-exchange" data-pending-question>${questionMarkup(job.payload.question)}${activity}${failure}</article>`:activity+failure}</div>${state.historyError?`<p class="cloud-error" role="alert">${messageError(state.historyError)}</p><button type="button" class="text-button" data-assistant-action="reload-history">${text('retry')}</button>`:''}<form data-project-question><label class="field" for="project-assistant-question">${text('questionLabel')}</label><textarea class="context-box" id="project-assistant-question" name="question" rows="3" maxlength="4000" required ${pending||state.loading||state.historyError?'disabled':''} placeholder="${text('placeholder')}">${esc(state.draft)}</textarea><div class="project-assistant-compose"><small>${text('scopeNote')}</small><button type="submit" class="button" ${pending||state.loading||state.historyError?'disabled':''}>${text('ask')}${icon('send')}</button></div></form></section>`;
+  const activity=pending&&showJob?renderAIActivity({label:text(job.status==='queued'?'queued':'thinking'),hint:text('waitHint')}):'';
+  const failure=failed?`<div class="project-assistant-failure" role="alert">${inRefund?`<p>${esc(messageError(job.error))}</p>`:''}<button type="button" class="text-button project-assistant-retry" data-assistant-action="retry" title="${text('retry')}" aria-label="${text('messageRetry')}">${icon('refresh-cw')}${text('messageRetry')}</button></div>`:'';
+  panel.innerHTML=`<section class="workspace-panel project-assistant" aria-label="${text('title')}"><header><div><span class="eyebrow">${text('eyebrow')}</span><h3>${text('title')}</h3><p>${text('intro')}</p></div></header><div class="project-assistant-log" role="log" aria-live="polite">${showOlder?`<button type="button" class="text-button" data-assistant-action="older" ${state.loading?'disabled':''}>${text('olderMessages')}</button>`:''}${state.loading?`<div class="project-assistant-loading">${renderAIActivity({label:text('loadingHistory'),compact:true})}</div>`:entries.map(entry=>`<article class="project-assistant-exchange">${questionMarkup(entry.result.question)}<div class="project-assistant-answer"><strong><img class="project-assistant-avatar" src="/assets/mascot/trato-guide.png" alt="" width="38" height="38">${text('answer')}</strong><p>${esc(entry.result.answer)}</p>${refundDetails(entry,state)}${answerScopeMarkup(entry.result)}${entry.result.missing_information.length?`<ul>${entry.result.missing_information.map(info=>`<li>${esc(info)}</li>`).join('')}</ul>`:''}${entry.result.citations.length?`<details data-project-answer-sources><summary>${text('sources')}</summary><div class="project-assistant-sources">${citations(entry.result)}</div></details>`:''}</div></article>`).join('')||(!submitted?`<div class="project-assistant-empty">${icon('messages-square')}<h4>${text('emptyTitle')}</h4><p>${text('emptyCopy')}</p></div>`:'')}${state.loading?'':unanswered?`<article class="project-assistant-exchange" data-pending-question>${questionMarkup(job.payload.question)}${activity}${failure}</article>`:activity+failure}</div>${state.refundApplyError?`<p class="cloud-error" role="alert">${esc(state.refundApplyError)}</p>`:''}${state.historyError?`<p class="cloud-error" role="alert">${messageError(state.historyError)}</p><button type="button" class="text-button" data-assistant-action="reload-history">${text('retry')}</button>`:''}<form data-project-question><label class="field" for="project-assistant-question">${text('questionLabel')}</label><textarea class="context-box" id="project-assistant-question" name="question" rows="3" maxlength="4000" required ${pending||state.loading||state.historyError?'disabled':''} placeholder="${text('placeholder')}">${esc(state.draft)}</textarea><div class="project-assistant-compose"><small>${text('scopeNote')}</small><button type="submit" class="button" ${pending||state.loading||state.historyError?'disabled':''}>${text('ask')}${icon('send')}</button></div></form></section>`;
   restoreChatScroll(panel.querySelector('.project-assistant-log'),state.chatScroll);
   if(state.revealPage&&!state.loading){
    state.revealPage=false;
@@ -328,9 +388,9 @@ export function installProjectAssistant(cloud){
    });
   }
  };
- async function ask(state,question){
+ async function ask(state,question,refund=floatingOpen()?state.focus?.refund:null){
   state.chatScroll=null;state.draft='';state.followPage=true;state.revealPage=true;state.pageScroll=cloud.document.defaultView?.scrollY;
-  await state.job.start('/api/v1/ai/project-questions',{project_id:state.project,question,output_language:uiLanguage(),...(floatingOpen()&&state.focus?{focus_request_id:state.focus.id}:{})});
+  await state.job.start('/api/v1/ai/project-questions',{project_id:state.project,question,output_language:uiLanguage(),...(refund?{refund_focus:{...refund,...(state.refundConversation?{conversation_id:state.refundConversation}:{})}}:floatingOpen()&&state.focus?{focus_request_id:state.focus.id}:{})});
  }
  const submit=event=>{
   if(!event.target.matches('[data-project-question]')||!cloud.active||(cloud.tab!=='asistente'&&!floatingOpen()))return;
@@ -341,6 +401,35 @@ export function installProjectAssistant(cloud){
  const click=event=>{
   const button=event.target.closest('[data-assistant-action]');if(!button||!context||!visible(context))return;
   const state=context,action=button.dataset.assistantAction;
+  if(action==='clear-refund'&&state.focus?.refund){
+   if(state.loading||state.applyingRefund||['queued','running','unavailable'].includes(state.job.state.status))return;
+   state.refundConversation=crypto.randomUUID();
+   cloud.storage.setItem(state.key+':refund-conversation',state.refundConversation);
+   state.draft='';state.refundApplyError='';state.chatScroll=null;
+   paint(state);floatingPanel.element.querySelector('#project-assistant-question')?.focus();
+   return;
+  }
+  if(action==='refund-next'&&state.focus?.refund){
+   void ask(state,uiText('refundAI.nextQuestion'));
+   return;
+  }
+  if(action==='apply-refund'){
+   if(state.applyingRefund)return;
+   const replaceConditions=button.closest('.refund-ai-draft')?.querySelector('[data-refund-replace-conditions]')?.checked===true;
+   state.applyingRefund=true;state.refundApplyError='';paint(state);
+   void (async()=>{
+    try{
+     const value=await cloud.request(`/api/v1/projects/${state.project}/assistant/refund-suggestions/${button.dataset.documentId}`);
+     if(!current(state)||!floatingOpen()||!state.focus?.refund)return;
+     if(!cloud.applyRefundSuggestion?.(value,replaceConditions))throw Error('REFUND_REVISION_CONFLICT');
+     floatingPanel.close();
+     if(value.focus.task==='intake')cloud.document.querySelector('.refund-dialog[open] h2')?.focus();
+    }catch(error){
+     if(current(state))state.refundApplyError=error.code?messageError(error.code):uiText('refundAI.changed');
+    }finally{state.applyingRefund=false;if(current(state))paint(state);}
+   })();
+   return;
+  }
   if(action==='open-sources'){state.sourceOpen=!state.sourceOpen;if(state.sourceOpen)loadSources(state);paint(state);if(state.sourceOpen){
    const close=cloud.document.querySelector('[data-assistant-action=close-sources]');
    close?.focus();
@@ -362,9 +451,11 @@ export function installProjectAssistant(cloud){
   if(action==='all-documents'&&!state.job.state.uncertain&&!['queued','running'].includes(state.job.state.status)){state.selectedDocuments=null;paint(state);}
   if(action==='retry'&&state.job.state.payload){
    state.chatScroll=null;state.followPage=true;state.revealPage=true;state.pageScroll=cloud.document.defaultView?.scrollY;
-   const previous=state.job.state.payload,chosen=state.selectedDocuments?.map(file=>file.id);
-   if(!state.job.state.uncertain&&state.job.state.status==='failed'&&JSON.stringify(previous.document_ids)!==JSON.stringify(chosen))ask(state,previous.question);
-   else state.job.start(state.job.state.path,previous);
+   void state.job.retry(payload=>{
+    const refund=payload.refund_focus;
+    return refund?.task==='guide'&&refund.step===1&&!refund.settlement_id
+     ?{...payload,refund_focus:{...refund,task:'intake'}}:payload;
+   });
   }
  };
  const original=cloud.syncChrome.bind(cloud);

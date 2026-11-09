@@ -43,8 +43,10 @@ export class SessionClient {
     if(!this.save({...result,user}))throw fail('invalid');
   }
   async login(email, password) {if (!this.save(await this.auth('token?grant_type=password', {email,password}))) throw new Error(uiText("Sesión inválida."));}
-  async signup(email, password, redirectTo) {
-    const payload=await this.auth('signup'+(redirectTo?'?redirect_to='+encodeURIComponent(redirectTo):''), {email,password,data:{output_language:uiLanguage()}});
+  async signup(email, password, redirectTo, role='freelancer') {
+    if(!['freelancer','client'].includes(role))throw new Error(uiText('auth.roleRequired'));
+    // The database fixes the role once at signup (account_roles); later edits to user metadata do not change it.
+    const payload=await this.auth('signup'+(redirectTo?'?redirect_to='+encodeURIComponent(redirectTo):''), {email,password,data:{output_language:uiLanguage(),account_role:role}});
     const user=payload.user||payload;
     if(!payload.access_token&&Array.isArray(user.identities)&&user.identities.length===0)throw new Error(uiText('auth.accountExists'));
     return this.save(payload);
@@ -96,4 +98,21 @@ export async function apiRequest(session, base, path, options = {}, asBlob = fal
     throw error;
   }
   return payload.data;
+}
+
+// Several parts of the workspace read the same project state independently. Identical reads in flight, or answered
+// moments ago, share one response. Each caller gets its own copy; clear() runs on any change so nothing stale is shown.
+export function createReadCoalescer({ttlMs=2000,now=()=>Date.now()}={}){
+  const entries=new Map();
+  return {
+    async read(key,load){
+      const found=entries.get(key);
+      if(found&&(found.pending||now()-found.at<ttlMs))return structuredClone(await found.promise);
+      const entry={pending:true,at:0,promise:null};
+      entry.promise=Promise.resolve().then(load).then(value=>{entry.pending=false;entry.at=now();return value;},error=>{if(entries.get(key)===entry)entries.delete(key);throw error;});
+      entries.set(key,entry);
+      return structuredClone(await entry.promise);
+    },
+    clear(){entries.clear();}
+  };
 }

@@ -41,15 +41,22 @@ function facts(s,check){
 }
 function sources(check){
  const p=check?.policy;if(!p)return '';
- return `<details class="refund-finance-sources"><summary>${t('sources')}</summary><p>${t('policyScope',{country:p.reference_country,currency:p.currency})}</p>${p.sources.map(source=>{
+ return `<details class="refund-fold refund-finance-sources"><summary><span>${t('sources')}</span>${icon('chevron-down')}</summary><div class="refund-fold-body"><p>${t('policyScope',{country:p.reference_country,currency:p.currency})}</p>${p.sources.map(source=>{
   const url=new URL(source.url);if(url.protocol!=='https:'||!['developer.paypal.com','www.paypal.com'].includes(url.hostname))throw Error('refundFinance.requestError');
   return `<p><a href="${esc(url.href)}" target="_blank" rel="noopener noreferrer">${esc(url.href)}</a> · ${esc(source.consulted_on)}</p>`;
- }).join('')}</details>`;
+ }).join('')}</div></details>`;
 }
 function form(s){
  const f=s.financeForm;if(!f)return '';
  const check=f.check;
  return `<form data-refund-form="finance" class="refund-finance-confirm"><h4>${t('action.'+f.kind)}</h4><p>${t('help.'+f.kind)}</p><p><strong>${t('amount')}: ${money(f.amount)}</strong></p>${facts(s,check)}${sources(check)}${f.kind==='external'?`<p>${t('receipt')}: <code>${esc(f.refundId)}</code></p>`:''}${f.kind==='execute'?'':`<label>${t('notes')}<textarea name="notes" maxlength="4000" required>${esc(f.notes)}</textarea></label>`}<label class="refund-checkbox"><input type="checkbox" name="confirmed" required ${f.confirmed?'checked':''}>${t('confirm.'+f.kind)}</label><button class="button" type="submit">${t('action.'+f.kind)}</button>${btn('cancel','cancel')}</form>`;
+}
+function confirmationEmail(email){
+ if(!email)return '';
+ const retry=['pending','failed'].includes(email.status);
+ const needsMailbox=['GMAIL_NOT_CONNECTED','GMAIL_RECONNECT_REQUIRED','GMAIL_SEND_NOT_AUTHORIZED'].includes(email.error_code);
+ const key=email.status==='failed'&&needsMailbox?'mailbox':email.status==='sending'?'delivery_uncertain':email.status;
+ return `<section class="refund-card refund-confirmation-email"><span class="refund-mark">${icon('mail')}</span><div><h4>${t('email.title')}</h4><p role="status">${t('email.'+key)}</p></div>${retry?btn('confirmation-email','email.send'):''}</section>`;
 }
 export function renderRefundFinance(s,stage=0){
  if(!financeEligible(s))return '';
@@ -62,11 +69,12 @@ export function renderRefundFinance(s,stage=0){
  if(d){
   const incidents=d.incidents.length>0;
   const auth=d.authorizations.find(a=>a.snapshot_id===s.snapshot.id);
-  body=`<dl class="refund-finance-totals">${[['agreed',s.snapshot.breakdown.refund_minor],['confirmed',d.confirmed_minor],['reserved',d.reserved_minor]].map(([k,v])=>`<div><dt>${t(k)}</dt><dd>${money(v)}</dd></div>`).join('')}</dl>${incidents?`<p role="alert" class="cloud-error">${t('incident')}</p><details><summary>${t('incidentDetails')}</summary><ul>${d.incidents.map(i=>`<li><code>${esc(i.code)}</code> · ${esc(i.reference)}</li>`).join('')}</ul></details>`:''}
+  body=`<dl class="refund-finance-totals">${[['agreed',s.snapshot.breakdown.refund_minor],['confirmed',d.confirmed_minor],['reserved',d.reserved_minor]].map(([k,v])=>`<div><dt>${t(k)}</dt><dd>${money(v)}</dd></div>`).join('')}</dl>${incidents?`<p role="alert" class="cloud-error">${t('incident')}</p><details class="refund-fold"><summary><span>${t('incidentDetails')}</span>${icon('chevron-down')}</summary><ul class="refund-fold-body refund-allocation">${d.incidents.map(i=>`<li><code>${esc(i.code)}</code> · ${esc(i.reference)}</li>`).join('')}</ul></details>`:''}
+  ${stage===6&&d.settlement.status==='completed'?confirmationEmail(d.confirmation_email):''}
   ${stage!==6&&!auth&&d.settlement.status==='accepted'&&!incidents?btn('check','check'):''}
   ${auth&&d.operations.some(o=>o.status==='reserved')&&!incidents&&!d.runs.some(r=>r.status==='running')?btn('execute','execute',`data-authorization="${esc(auth.id)}"`):''}
   ${d.runs.some(r=>r.status==='running')?`<p>${t('runPending')}</p>`:''}
-  ${stage===6||s.financeForm||!check?'':`<details><summary>${t('check')}</summary>${facts(s,check)}${sources(check)}</details>`}
+  ${stage===6||s.financeForm||!check?'':`<details class="refund-fold"><summary><span>${t('check')}</span>${icon('chevron-down')}</summary><div class="refund-fold-body">${facts(s,check)}${sources(check)}</div></details>`}
   <div class="refund-finance-operations">${d.operations.map(op=>{
    const a=latestAttempt(d,op.id),pay=s.payments.find(p=>p.id===op.payment_id),remaining=outstanding(d,op);
    const uncertain=a&&['dispatching','uncertain'].includes(a.status);
@@ -74,17 +82,17 @@ export function renderRefundFinance(s,stage=0){
    const replayAllowed=uncertain&&!a.replay_in_progress&&a.dispatched_at&&Date.now()-Date.parse(a.dispatched_at)<44*86400000;
    const terminal=a&&['failed','cancelled'].includes(a.status)&&!active&&remaining>0;
    const external=d.receipts.filter(r=>r.payment_id===op.payment_id&&r.status==='completed'&&!d.applications.some(x=>x.receipt_id===r.id));
-   return `<article class="refund-finance-operation"><h4>${t('paymentTitle',{origin:pay?uiText(`refund.origin.${pay.origin}`):t('notConsulted'),id:op.payment_id.slice(0,8)})}</h4><dl><div><dt>${t('gross')}</dt><dd>${money(pay?.amount_minor)}</dd></div><div><dt>${t('agreed')}</dt><dd>${money(op.amount_minor)}</dd></div><div><dt>${t('outstanding')}</dt><dd>${money(remaining)}</dd></div></dl><p>${t('status.'+op.status)}</p>
+   return `<article class="refund-finance-operation"><header><h4>${t('paymentTitle',{origin:pay?uiText(`refund.origin.${pay.origin}`):t('notConsulted'),id:op.payment_id.slice(0,8)})}</h4><span class="refund-status" data-status="${esc(op.status)}">${t('status.'+op.status)}</span></header><dl><div><dt>${t('gross')}</dt><dd>${money(pay?.amount_minor)}</dd></div><div><dt>${t('agreed')}</dt><dd>${money(op.amount_minor)}</dd></div><div><dt>${t('outstanding')}</dt><dd>${money(remaining)}</dd></div></dl>
     ${op.status!=='completed'&&(a?.dispatched_at||d.runs.some(r=>r.status==='running')||external.length)?`<p>${t('reconcileHelp')}</p>${btn('reconcile','reconcile',`data-operation="${esc(op.id)}"`)}`:''}
     ${op.status!=='completed'&&a?.provider_refund_id?`<p>${t('refreshHelp')}</p>${btn('refresh','refresh',`data-operation="${esc(op.id)}"`)}`:''}
     ${replayAllowed&&!incidents?btn('replay','replay',`data-operation="${esc(op.id)}"`):''}${uncertain&&!replayAllowed?`<p>${t('replayBlocked')}</p>`:''}
     ${terminal&&!incidents?btn('retry-check','retryCheck',`data-operation="${esc(op.id)}"`):''}
     ${!active&&!incidents&&remaining>0?external.map(r=>btn('external','applyExternal',`data-operation="${esc(op.id)}" data-receipt="${esc(r.id)}"`,{amount:money(r.amount_minor),id:r.refund_id})).join(''):''}
-    <details><summary>${t('attempts')}</summary><ol>${d.attempts.filter(x=>x.operation_id===op.id).sort((a,b)=>a.attempt_no-b.attempt_no).map(x=>`<li>${t('attemptNumber',{number:x.attempt_no})} · ${money(x.amount_minor)} · ${t('status.'+x.status)}${x.provider_refund_id?`<p>${t('receipt')}: <code>${esc(x.provider_refund_id)}</code></p>`:''}</li>`).join('')}</ol></details></article>`;
+    <details class="refund-fold"><summary><span>${t('attempts')}</span>${icon('chevron-down')}</summary><ol class="refund-fold-body refund-attempts">${d.attempts.filter(x=>x.operation_id===op.id).sort((a,b)=>a.attempt_no-b.attempt_no).map(x=>`<li>${t('attemptNumber',{number:x.attempt_no})} · ${money(x.amount_minor)} · ${t('status.'+x.status)}${x.provider_refund_id?`<p>${t('receipt')}: <code>${esc(x.provider_refund_id)}</code></p>`:''}</li>`).join('')}</ol></details></article>`;
   }).join('')}</div>
-  ${d.receipts.length?`<h4>${t('receipts')}</h4><ul>${d.receipts.map(r=>`<li><code>${esc(r.refund_id)}</code> · ${money(r.amount_minor)} · ${t('status.'+r.status)} · ${t(d.applications.some(a=>a.receipt_id===r.id)?'applied':'external')}</li>`).join('')}</ul>`:''}`;
+  ${d.receipts.length?`<details class="refund-fold"><summary>${icon('file-text')}<span>${t('receipts')}</span>${icon('chevron-down')}</summary><ul class="refund-fold-body refund-allocation">${d.receipts.map(r=>`<li><div><code>${esc(r.refund_id)}</code><small>${t('status.'+r.status)} · ${t(d.applications.some(a=>a.receipt_id===r.id)?'applied':'external')}</small></div><strong>${money(r.amount_minor)}</strong></li>`).join('')}</ul></details>`:''}`;
  }
- return `<section class="refund-finance" aria-label="${t('title')}"><h3>${icon('credit-card')} ${t(stage===6?(d?.settlement.status==='completed'?'resultTitle':'executeTitle'):'title')}</h3><p>${t(stage===6?(d?.settlement.status==='completed'?'resultHelp':'executeHelp'):'intro')}</p><p>${t('bankHelp')}</p>${s.financeError?`<p role="alert" class="cloud-error">${esc(s.financeError)}</p>`:''}${s.financeNotice?`<p role="status">${esc(s.financeNotice)}</p>`:''}${!d?`<p>${t('inspectHelp')}</p>${btn('inspect','inspect')}`:stage===6&&d.settlement.status!=='completed'?`<details><summary>${t('moreQueries')}</summary><p>${t('inspectHelp')}</p>${btn('inspect','inspect')}</details>`:''}${body}${form(s)}</section>`;
+ return `<section class="refund-finance" aria-label="${t('title')}"><h3>${icon('credit-card')} ${t(stage===6?(d?.settlement.status==='completed'?'resultTitle':'executeTitle'):'title')}</h3><p>${t(stage===6?(d?.settlement.status==='completed'?'resultHelp':'executeHelp'):'intro')}</p><p>${t('bankHelp')}</p>${s.financeError?`<p role="alert" class="cloud-error">${esc(s.financeError)}</p>`:''}${s.financeNotice?`<p role="status">${esc(s.financeNotice)}</p>`:''}${!d?`<p>${t('inspectHelp')}</p>${btn('inspect','inspect')}`:stage===6&&d.settlement.status!=='completed'?`<details class="refund-fold"><summary><span>${t('moreQueries')}</span>${icon('chevron-down')}</summary><div class="refund-fold-body"><p>${t('inspectHelp')}</p>${btn('inspect','inspect')}</div></details>`:''}${body}${form(s)}</section>`;
 }
 export function financialInput(s,el){
  if(el.closest('[data-refund-form]')?.dataset.refundForm!=='finance'||!s.financeForm||!el.name)return false;
@@ -116,6 +124,11 @@ export async function financialAction(s,cloud,action,target,h){
  try{
   if(!financeEligible(s)||!s.financeData)throw Error('refundFinance.requestError');
   const d=s.financeData,op=d.operations.find(o=>o.id===target.dataset.operation),attempt=op?latestAttempt(d,op.id):null;
+  if(a==='confirmation-email'){
+   const result=await cloud.request(base+'/confirmation-email',cloud.json({}));
+   if(h.current(s)&&s.detail?.settlement.id===parent)s.financeData=validate(s,result);
+   return true;
+  }
   if(['check','retry-check'].includes(a)){
    s.financeForm=null;
    const result=await cloud.request(a==='check'?base+'/financial-checks':base+`/financial-operations/${op.id}/retry-checks`,cloud.json({expected_snapshot_id:s.snapshot.id}));

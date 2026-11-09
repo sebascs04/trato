@@ -19,13 +19,25 @@ async function setup(page,{lang='es',saved=false,multipay=false}={}){
   const req=route.request(),path=new URL(req.url()).pathname,method=req.method();let data;
   const fail=async(code,status=503)=>route.fulfill({status,json:{error:{code}}});
   if(path.endsWith('/config'))data={supabase_url:'https://refund-ui.supabase.invalid',publishable_key:'sb_publishable_test'};
-  else if(path.endsWith('/session'))data={user_id:OWNER};
+  else if(path.endsWith('/session'))data={user_id:OWNER,role:'freelancer'};
   else if(path.endsWith('/clients'))data=[{id:id(10),name:'Refund Client'}];
   else if(path==='/api/v1/projects')data=[{id:P,client_id:id(10),name:'Refund Project',status:'draft'},{id:id(20),client_id:id(10),name:'Other Project',status:'draft'}];
   else if(path.endsWith('/documents'))data=model.documents;
+  else if(path.endsWith('/assistant/conversation'))data={entries:[],next_before:null};
+  else if(path.endsWith('/ai/project-questions')){
+   const body=req.postDataJSON(),id=req.headers()['idempotency-key'];
+   model.assistantFocus={...body.refund_focus,evidence_ids:[]};
+   model.guidance={next_step:'Completa el importe del trabajo.',reason:null,email_note:null,conditions:'Propuesta para el pago seleccionado.',
+    concepts:[{kind:'recognized_work',beneficiary:'seller',description:'Trabajo entregado',evidence:[quote]}]};
+   data={id,status:'completed',result:{kind:'project_assistant',project_id:P,question:body.question,status:'answered',
+    answer:'Puedes incluir el trabajo entregado.',answer_basis:'documents',missing_information:[],
+    citations:[{source_id:'test-source',quote:quote.quote}],sources:[{source_id:'test-source',file_id:DOC,source_kind:'original'}],
+    refund:model.guidance,refund_focus:model.assistantFocus}};
+  }else if(path.includes('/assistant/refund-suggestions/'))data={focus:model.assistantFocus,guidance:model.guidance};
   else if(path.endsWith('/proposals'))data=[];
   else if(path.endsWith('/request-status'))data={can_register:!model.items.some(x=>x.status==='draft'),closures:[]};
   else if(path.endsWith('/refund-payments'))data=model.payments;
+  else if(path.endsWith('/financial'))data={settlement:model.items[0],operations:[],authorizations:[],attempts:[],receipts:[],applications:[],incidents:[],runs:[],recovery_consents:[],confirmed_minor:0,reserved_minor:0};
   else if(path.endsWith('/extraction'))data={document:{id:DOC,project_id:P,sha256:'a'.repeat(64)},extraction:{id:EXT,status:'ready'},segments:[{text:'Cancel please. Work recognized: USD 120. Cancellation fee: USD 30.',locator_number:1}]};
   else if(path.includes('/refund-operations/')){
    const result=model.operations.get(path.split('/').pop());data=result?{state:'confirmed',result}:{state:'unconfirmed'};
@@ -134,30 +146,30 @@ async function draft(page,amount){
 for(const amount of ['', '120','300'])test(`connected proposal ${amount||'full'} saves and reloads exact snapshot`,async({page})=>{
  const {model,errors}=await setup(page);await create(page);const form=await draft(page,amount);
  await form.locator('button[type="submit"]').click();
- await expect(page.locator('[data-case-assistant]')).toHaveCount(1);
- await expect(page.locator('[data-case-action="toggle"]')).toBeVisible();
+ await expect(page.locator('.refund-dialog [data-refund-assistant="guide"]')).toBeVisible();
  await page.locator('.refund-wizard-steps [data-step="2"]').click();
  await expect(page.locator('.refund-history button')).toHaveCount(1);
  expect(model.snapshots[0].terms.proposed_refund_minor).toBe(30000-Number(amount||0)*100);
  expect(model.writes[1].body.expected_snapshot_id).toBe(null);
  await page.reload();await expect(page.locator('.refund-workspace')).toBeVisible();
  await page.locator('[data-refund-action="open"]').click();
- await expect(page.locator('[data-case-assistant]')).toHaveCount(1);
- await expect(page.locator('[data-case-action="toggle"]')).toBeVisible();
+ await expect(page.locator('.refund-dialog [data-refund-assistant="guide"]')).toBeVisible();
  await page.locator('.refund-wizard-steps [data-step="2"]').click();
  await expect(page.locator('.refund-history button')).toHaveCount(1);
  expect(errors).toEqual([]);
 });
 test('editing preserves concept id, prior snapshot and v1; historical snapshot is read-only',async({page})=>{
  const {model,errors}=await setup(page);await create(page);let form=await draft(page,'120');await form.locator('button[type="submit"]').click();
+ await page.locator('.refund-wizard-steps [data-step="2"]').click();
  await expect(page.locator('.refund-history button')).toHaveCount(1);
  const concept=model.snapshots[0].terms.adjustments[0].concept_id;
  await page.locator('[data-refund-action="edit"]').click();form=page.locator('[data-refund-form="draft"]');
  await form.locator('[name="amount"]').fill('150');await form.locator('[name="reviewed"]').check();await form.locator('button[type="submit"]').click();
+ await page.locator('.refund-wizard-steps [data-step="2"]').click();
  await expect(page.locator('.refund-history button')).toHaveCount(2);
  expect(model.snapshots[0].terms.proposed_refund_minor).toBe(18000);
  expect(model.snapshots[1].terms.adjustments[0].concept_id).toBe(concept);
- await page.locator('.refund-history button').last().click();await expect(page.locator('[data-refund-action="edit"]')).toHaveCount(0);
+ await page.locator('details:has(.refund-history) summary').click();await page.locator('.refund-history button').last().click();await expect(page.locator('[data-refund-action="edit"]')).toHaveCount(0);
  expect(errors).toEqual([]);
 });
 test('uncertain saved result is queried after reload without a second write',async({page})=>{
@@ -165,13 +177,14 @@ test('uncertain saved result is queried after reload without a second write',asy
  const form=await draft(page,'');model.failAfterCommit=true;await form.locator('button[type="submit"]').click();
  await expect(page.locator('[data-refund-action="query"]')).toBeVisible();
  await page.reload();await expect(page.locator('[data-refund-action="query"]')).toBeVisible();
- await page.locator('[data-refund-action="query"]').click();await expect(page.locator('.refund-history button')).toHaveCount(1);
+ await page.locator('[data-refund-action="query"]').click();await page.locator('.refund-wizard-steps [data-step="2"]').click();await expect(page.locator('.refund-history button')).toHaveCount(1);
  expect(model.writes).toHaveLength(1);expect(errors).toEqual([]);
 });
 test('explicit retry reuses identical key and payload; stale edits keep the form',async({page})=>{
  const {model,errors}=await setup(page,{saved:true});await page.locator('[data-refund-action="open"]').click();
  let form=await draft(page,'');model.failBeforeCommit=true;await form.locator('button[type="submit"]').click();
  await expect(page.locator('[data-refund-action="retry-operation"]')).toBeVisible();await page.locator('[data-refund-action="retry-operation"]').click();
+ await page.locator('.refund-wizard-steps [data-step="2"]').click();
  await expect(page.locator('.refund-history button')).toHaveCount(1);expect(model.writes[0]).toEqual(model.writes[1]);
  await page.locator('[data-refund-action="edit"]').click();form=page.locator('[data-refund-form="draft"]');
  await form.locator('[name="conditions"]').fill('Preserve my unsaved terms.');await form.locator('[name="reviewed"]').check();model.conflict=true;
@@ -180,15 +193,21 @@ test('explicit retry reuses identical key and payload; stale edits keep the form
 });
 test('English labels and explicit closure refresh the project request gate',async({page})=>{
  const {model,errors}=await setup(page,{lang:'en',saved:true});await page.locator('[data-refund-action="open"]').click();
- await page.locator('.refund-workspace summary').click();const form=page.locator('[data-refund-form="close"]');
+ await page.locator('.refund-other-actions summary').click();const form=page.locator('[data-refund-form="close"]');
  await form.locator('[name="notes"]').fill('Customer withdrew request');await form.locator('[name="confirmed"]').check();await form.locator('button[type="submit"]').click();
  await expect(page.locator('[data-refund-form="close"]')).toHaveCount(0);
- expect(model.items[0].status).toBe('withdrawn');await page.locator('[data-refund-action="list"]').click();
+ expect(model.items[0].status).toBe('withdrawn');await page.locator('.refund-wizard-footer [data-refund-action="wizard-close"]').click();
  await expect(page.locator('[data-refund-action="new"]')).toBeEnabled();
- await expect(page.locator('.refund-simulation')).toContainText('Fictional data');expect(errors).toEqual([]);
+ await expect(page.locator('.refund-simulation')).toHaveCount(0);expect(errors).toEqual([]);
 });
 test('penalty percentage requires a literal source and rounds correctly on mobile',async({page})=>{
  const {model,errors}=await setup(page,{saved:true});await page.locator('[data-refund-action="open"]').click();
+ await page.locator('.refund-wizard-steps [data-step="1"]').click();
+ await expect(page.locator('.refund-request-summary')).toContainText('Refund requested');
+ const cite=page.locator('.refund-stage .refund-evidence details');
+ await expect(cite.locator('blockquote')).toBeHidden();
+ await cite.locator('summary').click();await expect(cite.locator('blockquote')).toBeVisible();
+ await page.locator('.refund-wizard-steps [data-step="2"]').click();
  await page.locator('[data-refund-action="edit"]').click();const form=page.locator('[data-refund-form="draft"]');
  await form.locator('[data-refund-action="add-concept"]').click();const item=form.locator('.refund-concept');
  await item.locator('[name="kind"]').selectOption('penalty');await item.locator('[name="description"]').fill('Cancellation clause');
@@ -203,8 +222,9 @@ test('penalty percentage requires a literal source and rounds correctly on mobil
  await form.locator('[name="reviewed"]').check();await form.locator('[name="reviewed"]').focus();await page.keyboard.press('Tab');
  await expect(form.locator('button[type="submit"]')).toBeFocused();
  await page.setViewportSize({width:390,height:844});expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
+ expect(await page.locator('.refund-dialog').evaluate(d=>d.scrollWidth<=d.clientWidth)).toBe(true);
  await page.screenshot({path:'/tmp/trato-refund-browser/review-proposal.png',fullPage:true});
- await form.locator('button[type="submit"]').click();await expect(page.locator('.refund-history button')).toHaveCount(1);
+ await form.locator('button[type="submit"]').click();await page.locator('.refund-wizard-steps [data-step="2"]').click();await expect(page.locator('.refund-history button')).toHaveCount(1);
  expect(model.snapshots[0].terms.adjustments[0].percentage).toEqual({base_minor:30000,basis_points:1000});
  expect(model.snapshots[0].terms.proposed_refund_minor).toBe(27000);expect(errors).toEqual([]);
 });
@@ -224,7 +244,8 @@ test('late detail cannot populate another project or a logged-out session',async
  await page.locator('[data-refund-action="open"]').click();
  await page.evaluate(project=>{const c=window.TratoCloud;c.projectId=project;c.tab='devoluciones';c.notify();},id(20));
  await expect.poll(()=>page.evaluate(()=>window.TratoCloud.refundState.project)).toBe(id(20));release();
- await expect(page.locator('.refund-list')).not.toContainText('Refund requested');
+ await expect(page.locator('.refund-empty')).toBeVisible();
+ await expect(page.locator('.refund-list > li')).toHaveCount(0);
  expect(await page.evaluate(()=>window.TratoCloud.refundState.detail)).toBe(null);
  await page.evaluate(()=>{const c=window.TratoCloud;c.reset();c.notify();});expect(await page.evaluate(()=>window.TratoCloud.refundState)).toBe(null);
  expect(errors).toEqual([]);
@@ -240,15 +261,19 @@ test('additional supporting PDF is a reference and never starts another request'
   model.documents.push({id:id(21),project_id:P,title:url.searchParams.get('title'),kind:url.searchParams.get('kind'),mime_type:'application/pdf',created_at:'2026-11-01T12:00:00Z',document_extractions:[{status:'ready'}]});
   await route.fulfill({status:202,json:{data:{}}});
  });
- await page.locator('.cloud-project-navigation [data-cloud-tab="documentos"]').click();
- await page.getByRole('button',{name:'Añadir referencia en PDF',exact:true}).click();
+ await page.locator('[data-refund-action="open"]').click();
+ await page.locator('[data-refund-action="edit"]').click();
+ await page.locator('[data-refund-action="add-concept"]').click();
+ await page.locator('.refund-concept [data-refund-action="pick"]').click();
+ await page.locator('.refund-source-picker [data-cloud-action="upload"]').click();
  const form=page.locator('dialog [data-cloud-form="upload"]');
  await expect(form.locator('[name="kind"]')).toHaveValue('reference');
  await form.locator('[name="title"]').fill('Client cancellation evidence');
  await form.locator('[name="file"]').setInputFiles({name:'cancellation.pdf',mimeType:'application/pdf',buffer:Buffer.from('%PDF-1.4 synthetic browser fixture')});
  await form.locator('button[type="submit"]').click();
- await expect(page.locator('.document-library')).toContainText('Client cancellation evidence');
- expect(uploads).toHaveLength(1);expect(uploads[0].kind).toBe('reference');expect(model.writes).toHaveLength(0);expect(errors).toEqual([]);
+ await expect(page.locator('.refund-source-picker')).toBeVisible();
+ await expect(page.locator('[data-refund-field="document"] option').last()).toHaveText('Client cancellation evidence');
+ expect(uploads).toHaveLength(1);expect(uploads[0]).toMatchObject({kind:'reference',purpose:'refund_evidence',refund_case_id:PARENT});expect(model.writes).toHaveLength(0);expect(errors).toEqual([]);
 });
 
 async function reviewedPdf(page,language='es'){
@@ -269,32 +294,27 @@ async function sendReviewed(page){
 }
 async function responseReview(page,kind){
  await page.locator('[data-refund-action="doc-sync"]').click();
- await page.locator(`[data-refund-action="doc-${kind}"]`).click();
+ await page.locator(`[data-refund-action="doc-${kind}"]`).first().click();
  const form=page.locator(`[data-refund-form="${kind}"]`);
  await form.locator('[name="response_id"]').selectOption({index:1});
  await form.locator('[name="notes"]').fill('Reviewed the response to this exact sent version.');
  await form.locator('[name="confirmed"]').check();await form.locator('button[type="submit"]').click();
 }
-test('project closure includes initial and addendum; rejects an unbalanced allocation',async({page})=>{
+test('project closure includes initial and addendum; calculates allocation across both captures',async({page})=>{
  const {model,errors}=await setup(page,{multipay:true});
  await page.locator('[data-refund-action="new"]').click();const form=page.locator('[data-refund-form="create"]');
  await form.locator('[name="scope"]').selectOption('project_closure');
  await form.locator('[name="payments_reviewed"]').check();await form.locator('[name="reason"]').fill('Close the entire project');
  await evidence(page,form);await form.locator('button[type="submit"]').click();
  await expect(page.locator('[data-refund-action="edit"]')).toBeVisible();
- let edit=await draft(page,'');
- await edit.locator(`[data-refund-allocation="${id(30)}"]`).fill('100');
- await edit.locator(`[data-refund-allocation="${PAY}"]`).fill('299');
- await edit.locator('[name="reviewed"]').check();
+ const edit=await draft(page,'');
+ await expect(edit.locator('[data-refund-preview]')).toContainText('400');
  await edit.locator('button[type="submit"]').click();
- await expect(page.locator('.refund-workspace [role="alert"]')).toContainText('reparto');
- expect(model.snapshots).toHaveLength(0);
- await edit.locator(`[data-refund-allocation="${PAY}"]`).fill('300');await edit.locator('[name="reviewed"]').check();
- await edit.locator('button[type="submit"]').click();await expect(page.locator('.refund-history button')).toHaveCount(1);
+ await expect(page.locator('[data-refund-action="doc-pdf"]')).toBeVisible();
  expect(model.writes[0].body.payment_ids).toEqual([id(30),PAY]);
  expect(model.snapshots[0].terms.allocations.map(a=>a.refund_minor)).toEqual([10000,30000]);
  await reviewedPdf(page);await sendReviewed(page);await expect(page.locator('[data-refund-action="doc-sync"]')).toBeVisible();
- await responseReview(page,'acceptance');await expect(page.locator('.refund-documents')).toContainText('financiera');
+ await responseReview(page,'acceptance');await expect(page.locator('.refund-wizard-steps [aria-current="step"]')).toHaveAttribute('data-step','5');
  expect(model.items[0].status).toBe('accepted');expect(model.payments.map(p=>p.amount_minor)).toEqual([10000,30000]);
  expect(errors).toEqual([]);
 });
@@ -302,13 +322,22 @@ test('sent v1 is immutable; feedback creates v2 with its own PDF review send and
  const {model,errors}=await setup(page,{saved:true});await page.locator('[data-refund-action="open"]').click();
  let form=await draft(page,'');await form.locator('button[type="submit"]').click();
  await reviewedPdf(page);await sendReviewed(page);await expect(page.locator('[data-refund-action="doc-sync"]')).toBeVisible();
+ await page.locator('.refund-wizard-steps [data-step="3"]').click();
+ await expect(page.locator('.refund-pdf-action')).toBeVisible();
+ const sent=page.locator('.refund-mail-entry');
+ await sent.locator('summary').click();
+ await expect(sent.locator('.refund-mail-content')).toContainText('Settlement proposal');
+ await page.locator('.refund-wizard-steps [data-step="4"]').click();
  await expect(page.locator('[data-refund-action="edit"]')).toHaveCount(0);
  await responseReview(page,'feedback');await expect(page.locator('[data-refund-action="edit"]')).toBeVisible();
- form=await draft(page,'300');await form.locator('button[type="submit"]').click();await expect(page.locator('.refund-history button')).toHaveCount(2);
+ form=await draft(page,'300');await form.locator('button[type="submit"]').click();
+ await page.locator('.refund-wizard-steps [data-step="2"]').click();
+ await expect(page.locator('.refund-history button')).toHaveCount(2);
+ await page.locator('.refund-wizard-steps [data-step="3"]').click();
  expect(model.snapshots.at(-1).version_no).toBe(2);expect(model.reviews).toHaveLength(1);
  await expect(page.locator('[data-refund-action="doc-acceptance"]')).toHaveCount(0);
  await reviewedPdf(page,'en');await sendReviewed(page);await expect(page.locator('[data-refund-action="doc-sync"]')).toBeVisible();
- await page.locator('[data-refund-action="doc-sync"]').click();await page.locator('[data-refund-action="doc-acceptance"]').click();
+ await page.locator('[data-refund-action="doc-sync"]').click();await page.locator('[data-refund-action="doc-acceptance"]').first().click();
  form=page.locator('[data-refund-form="acceptance"]');
  expect(await form.locator('[name="response_id"] option').count()).toBe(2);
  await form.locator('[name="response_id"]').selectOption({index:1});await form.locator('[name="notes"]').fill('Accepted revised zero proposal');
@@ -316,7 +345,10 @@ test('sent v1 is immutable; feedback creates v2 with its own PDF review send and
  await expect(page.locator('.refund-documents')).toContainText('sin devolución');
  expect(model.acceptances[0].snapshot_id).toBe(model.snapshots[1].id);
  expect(model.artifacts.map(a=>a.language)).toEqual(['es','en']);
- await page.locator('.refund-history button').last().click();await expect(page.locator('.refund-documents')).toContainText('es');
+ await page.locator('.refund-wizard-steps [data-step="2"]').click();
+ await page.locator('details:has(.refund-history) summary').click();
+ await page.locator('.refund-history button').last().click();
+ await expect(page.locator('.refund-documents')).toContainText('es');
  await expect(page.locator('[data-refund-action="doc-pdf"]')).toHaveCount(0);expect(errors).toEqual([]);
 });
 test('uncertain Gmail send is reconciled after reload without sending a second message',async({page})=>{
@@ -352,6 +384,27 @@ test('English document review works on mobile and accepts an explicitly reviewed
  await page.locator('[data-refund-action="doc-acceptance"]').click();const accept=page.locator('[data-refund-form="acceptance"]');
  await accept.locator('[name="document_id"]').selectOption(id(700));await accept.locator('[name="notes"]').fill('Personally reviewed the signature and exact version.');
  await accept.locator('[name="confirmed"]').check();await accept.locator('button[type="submit"]').click();
- await expect(page.locator('.refund-documents')).toContainText('financial authorization');
+ await expect(page.locator('.refund-wizard-steps [aria-current="step"]')).toHaveAttribute('data-step','5');
  expect(model.acceptances[0].evidence).toEqual({document_id:id(700),document_sha256:'b'.repeat(64)});expect(errors).toEqual([]);
+});
+
+
+test('TeTrato applies a cited suggestion to the refund editor and preserves explicit saving',async({page})=>{
+ const {model,errors}=await setup(page,{saved:true});
+ await page.locator('[data-refund-action="open"]').click();
+ await page.locator('[data-refund-assistant="proposal"]').click();
+ const assistant=page.locator('.tetrato-floating');
+ await expect(assistant).toBeVisible();
+ await expect(assistant.locator('#project-assistant-question')).toHaveValue(/propuesta de devolución/);
+ await assistant.locator('[data-project-question] button[type="submit"]').click();
+ await expect(assistant.locator('.refund-ai-next')).toContainText('Completa el importe del trabajo.');
+ await assistant.locator('[data-assistant-action="apply-refund"]').click();
+ await expect(assistant).toBeHidden();
+ const form=page.locator('[data-refund-form="draft"]');
+ await expect(form.locator('[name="description"]')).toHaveValue('Trabajo entregado');
+ await expect(form.locator('[name="amount"]')).toHaveValue('');
+ await expect(form.locator('[name="reviewed"]')).not.toBeChecked();
+ expect(model.assistantFocus).toMatchObject({settlement_id:PARENT,step:2,task:'proposal'});
+ expect(model.writes).toHaveLength(0);
+ expect(errors).toEqual([]);
 });

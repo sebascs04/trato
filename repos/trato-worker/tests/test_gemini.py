@@ -134,6 +134,21 @@ class GeminiTests(unittest.TestCase):
         self.assertNotIn('synthetic-secret', ''.join(logs.output))
         self.assertNotIn('private-provider-message', ''.join(logs.output))
 
+    def test_a_rate_limit_logs_labels_and_sizes_without_the_providers_message(self):
+        class ProviderError(Exception):
+            code = 429
+        model = GeminiLangChainModel(self.config(), client_factory=StubClient)
+        with patch.object(model._client, 'invoke', side_effect=ProviderError('429 RESOURCE_EXHAUSTED private-provider-message')):
+            with self.assertLogs('trato_worker.gemini', level='WARNING') as logs:
+                with self.assertRaises(GeminiUnavailableError) as caught:
+                    model.generate(['private-prompt'], SCHEMA)
+        output = ''.join(logs.output)
+        self.assertEqual(caught.exception.code, 'MODEL_QUOTA_EXCEEDED')
+        for expected in ('"rate_limit_hints": ["resource_exhausted"]', '"call_number": 1', '"input_chars": 14', '"status_code": 429'):
+            self.assertIn(expected, output)
+        self.assertNotIn('private-provider-message', output)
+        self.assertNotIn('private-prompt', output)
+
     def test_installed_sdk_can_construct_and_bind_schema_without_network(self):
         with patch('socket.socket.connect', side_effect=AssertionError('No network in this test')):
             model = GeminiLangChainModel(self.config())

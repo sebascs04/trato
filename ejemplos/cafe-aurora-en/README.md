@@ -62,14 +62,20 @@ Repeat these steps for deliverables 1, 2 and 3, in order. A deliverable can be c
 ## 5. Turn a scope change into a paid addendum
 
 1. Open **Changes** and click **Register client request**. Upload `03-change-request-store.pdf`.
-2. Trato's AI compares the request with the agreement and drafts **addendum v1**: an online store with ten products, USD 240 extra. Review it, save its PDF and **Send addendum**.
-3. The client asks for changes. Click **Register client feedback** and upload `04-client-adjustments-addendum-v1.pdf`. Trato drafts **addendum v2**: five products, USD 180 extra. Review it and send it.
-4. The client accepts. Click **Register received acceptance**, upload `05-client-acceptance-addendum-v2.pdf` and save the reviewed acceptance.
-5. Click **Prepare payment request →**, then **Send payment request →**.
-6. Pay as the client: use **Open test payment** or the email link, and approve with the Sandbox buyer account.
-7. Click **Verify payment ↻**. Once paid, the change becomes read-only. Any new adjustment is a separate request.
+2. Trato's AI compares the request with the agreement and drafts **addendum v1**: an online store with ten products. Review it, save its PDF and **Send addendum**.
+3. **Act as the client.** Open the email in the inbox you used for the client and follow its link. The client portal needs no Trato account. Click **Request changes**, write `Please reduce the store to five products.` and click **Send request**.
+4. Back in Trato, open the request and click **Prepare new version with TeTrato**. Review **addendum v2** and send it.
+5. **Act as the client again.** Open the new email and click **Accept addendum**. Trato records which version and document were accepted, and when.
+6. Click **Pay with PayPal** in the portal and approve with the Sandbox buyer account.
+7. Back in Trato, the change shows as paid once the backend verifies the capture. If it has not updated yet, click **Verify payment ↻**. Once paid, the change becomes read-only. Any new adjustment is a separate request.
 
-## 6. Explore the rest
+**If the client answers outside Trato:** under **Did the client answer another way?** you can check Gmail replies or register a document. To try it, upload `04-client-adjustments-addendum-v1.pdf` as the client's feedback or `05-client-acceptance-addendum-v2.pdf` as the received acceptance.
+
+## 6. See it as a client (optional)
+
+Sign up with the client's email address and choose **Client**. After you confirm that address, the agreements sent to it appear inside Trato, with the same actions as the portal.
+
+## 7. Explore the rest
 
 - **Project map:** the agreement, requests, addenda, acceptances and payments as a graph.
 - **TeTrato assistant:** ask *"What is included in deliverable 2?"* or *"How much has the client paid so far?"*. Answers cite the project's own documents.

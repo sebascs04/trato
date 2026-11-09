@@ -81,6 +81,17 @@ class BackendDouble:
             value = {'id': 'inbound-row-' + data['provider_message_id'], **deepcopy(data)}
             self.messages[key] = value
             return value
+        if action == 'mailbox_state':
+            # Same rules as private.gmail_inbox('mailbox_state'): mark, never delete; back in the thread clears the mark.
+            removed=[]
+            for message in self.messages.values():
+                if message['delivery_id']!=data['delivery_id']:continue
+                key=message['provider_message_id']
+                if key in data['present_ids']:message.pop('mailbox_removed_reason',None)
+                elif key in data['trashed_ids']:message['mailbox_removed_reason']='trash'
+                else:message['mailbox_removed_reason']='deleted'
+                if message.get('mailbox_removed_reason'):removed.append({'provider_message_id':key,'reason':message['mailbox_removed_reason']})
+            return removed
         raise AssertionError('unexpected Gmail inbox action: ' + action)
 
 
@@ -149,6 +160,33 @@ class InboundReplyWorkflowTest(unittest.TestCase):
         self.assertEqual(len(self.store.messages), 1)
         self.assertEqual([action for _, action, _ in self.store.calls].count('record'), 1)
         self.assertEqual(self.gmail.reads, [('authenticated-owner', 'thread-1'), ('authenticated-owner', 'thread-1')])
+
+    def test_sync_skips_trashed_replies_and_logs_only_diagnostic_counts(self):
+        reply = next(message for message in self.thread['messages'] if message['id'] == 'good-reply')
+        reply['labelIds'] = ['TRASH']
+        with self.assertLogs('uvicorn.error.trato.gmail_replies', level='INFO') as logs:
+            result = self.workflow.sync_gmail_replies(None, 'authenticated-owner', 'project-1')
+        self.assertEqual(result, {'synced':0})
+        self.assertFalse(self.store.messages)
+        self.assertIn('"discarded_trash": 1', logs.output[0])
+        self.assertNotIn('client@example.com', logs.output[0])
+
+    def test_saved_reply_reflects_trash_deletion_and_restore_in_the_central_mailbox(self):
+        self.workflow.sync_gmail_replies(None,'authenticated-owner','project-1')
+        saved=next(iter(self.store.messages.values()))
+        def again():
+            lock,started=self.workflow._gmail_sync_state[('authenticated-owner','project-1')]
+            self.workflow._gmail_sync_state[('authenticated-owner','project-1')]=(lock,started-31)
+            return self.workflow.sync_gmail_replies(None,'authenticated-owner','project-1')
+        reply=next(message for message in self.thread['messages'] if message['id']=='good-reply')
+        reply['labelIds']=['TRASH'];again()
+        self.assertEqual(saved.get('mailbox_removed_reason'),'trash')
+        self.thread['messages']=[m for m in self.thread['messages'] if m['id']!='good-reply'];again()
+        self.assertEqual(saved.get('mailbox_removed_reason'),'deleted')
+        reply['labelIds']=[];self.thread['messages'].append(reply);again()
+        self.assertIsNone(saved.get('mailbox_removed_reason'))
+        # The stored evidence itself is never removed or rewritten.
+        self.assertEqual(len(self.store.messages),1)
 
     def test_sync_recovers_missing_metadata_without_duplicating_known_reply(self):
         self.workflow.sync_gmail_replies(None,'authenticated-owner','project-1')

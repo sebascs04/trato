@@ -25,7 +25,9 @@ def dispute_events(dispute):
     # Waiting for one side is everyday back and forth, and PayPal reports "under review" for a moment after a message while
     # still in the inquiry stage. Only a new stage or a resolution is a milestone.
     if dispute.get('updated_at') and (stage != 'INQUIRY' or status == 'RESOLVED'):
-        events.append({'event_key': f'status:{status}:{stage}'[:120], 'kind': 'dispute_status', 'happened_at': dispute['updated_at'],
+        # One event per stage: within a stage, PayPal's status only says whose turn it is.
+        key = f'status:{status}:{stage}' if status == 'RESOLVED' else f'stage:{stage}'
+        events.append({'event_key': key[:120], 'kind': 'dispute_status', 'happened_at': dispute['updated_at'],
                        'details': {'status': status, 'stage': stage, 'outcome': dispute.get('outcome')}})
     return events
 
@@ -40,14 +42,29 @@ def record_disputes(repo, project_id, disputes):
     return True
 
 
-def record_escalation(repo, project_id, dispute_id):
-    """PayPal keeps reporting the inquiry stage after an escalation, so the record comes from the escalation PayPal just accepted."""
-    event = {'event_key': 'escalated', 'kind': 'dispute_status', 'happened_at': datetime.now(timezone.utc).isoformat(), 'details': {'escalated': True}}
+def record_step(repo, project_id, dispute_id, event_key, kind, details):
+    """A step PayPal just accepted from the freelancer. PayPal's own record does not always show it, and it has already happened,
+    so a failure here is reported and never undoes it."""
+    event = {'event_key': event_key, 'kind': kind, 'happened_at': datetime.now(timezone.utc).isoformat(), 'details': details}
     try:
         repo.rpc('record_dispute_events', {'p_project': project_id, 'p_dispute': dispute_id, 'p_events': [event]})
     except ApiError:
         return False
     return True
+
+
+def record_escalation(repo, project_id, dispute_id):
+    # PayPal keeps reporting the inquiry stage right after an escalation.
+    return record_step(repo, project_id, dispute_id, 'escalated', 'dispute_status', {'escalated': True})
+
+
+def record_evidence(repo, project_id, dispute_id, documents):
+    # Evidence can be requested more than once, so each submission is its own event.
+    return record_step(repo, project_id, dispute_id, 'evidence:' + datetime.now(timezone.utc).isoformat(), 'freelancer_message', {'evidence': True, 'documents': documents})
+
+
+def record_accepted_claim(repo, project_id, dispute_id):
+    return record_step(repo, project_id, dispute_id, 'accepted_claim', 'freelancer_message', {'accepted': True})
 
 
 def dispute_rows(repo, project_id, dispute_id=None):
@@ -70,8 +87,8 @@ def with_dispute_groups(repo, project_id, groups):
 
 
 def dispute_activity(repo, project_id, dispute_id):
-    # Stable by time; a dispute's opening comes first even when its first message carries the same timestamp.
-    rows = sorted(dispute_rows(repo, project_id, dispute_id), key=lambda row: (row['happened_at'], row['kind'] != 'dispute_opened'))
+    # Newest first, as the other history groups. The opening stays at the very start of the story even when its first message has the same time.
+    rows = sorted(dispute_rows(repo, project_id, dispute_id), key=lambda row: (row['happened_at'], row['kind'] != 'dispute_opened'), reverse=True)
     if not rows:
         raise ApiError('ACTIVITY_GROUP_NOT_FOUND', 404)
     return [{**(row.get('details') or {}), 'id': row['id'], 'kind': row['kind'], 'created_at': row['happened_at'],

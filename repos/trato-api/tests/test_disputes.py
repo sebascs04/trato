@@ -2,8 +2,9 @@ import unittest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from fastapi.responses import JSONResponse
-from trato_api.dispute_history import record_escalation
-from trato_api.disputes import build_dispute_router, DisputeReader
+from trato_api.dispute_history import record_accepted_claim, record_escalation, record_evidence
+from trato_api.disputes import build_dispute_router, DisputeReader, import_client_documents
+from paypal.client import PayPalError
 from trato_api.errors import ApiError
 
 PROJECT = '11111111-2222-4333-8444-555555555555'
@@ -37,6 +38,56 @@ class PayPal:
                 'links': [{'rel': 'self'}, {'rel': 'send_message'}, {'rel': 'escalate'}, {'rel': 'accept_claim'}]}
 
 
+class ClientDocumentImportTests(unittest.TestCase):
+    def setUp(self):
+        outer = self
+        self.fetched, self.reserved, self.recorded, self.queued, self.known, self.fail_fetch = [], [], [], [], [], False
+        class Client:
+            def get_dispute(_, dispute_id):
+                return {'messages': [{'documents': [{'url': 'buyer-pdf'}, {'url': 'buyer-png'}]}, {'documents': [{'url': 'seller-pdf'}]}]}
+            def fetch_dispute_document(_, url):
+                if outer.fail_fetch: raise PayPalError('PAYPAL_REQUEST_FAILED', status=503)
+                outer.fetched.append(url)
+                return b'%PDF-1.7 attachment', 'application/pdf'
+        class Store:
+            def rows(_, table, params):
+                self.assertEqual((table, params['role']), ('project_dispute_documents', 'eq.received'))
+                return outer.known
+            def project(_, project_id): return {'id': project_id}
+            def reserve(_, project, title, kind, filename, mime, data, key, *, context=None):
+                outer.reserved.append((title, kind, filename, mime, key))
+                return {'document': {'id': 'doc-1', 'project_id': project, 'owner_id': 'owner'}, 'extraction': {'status': 'queued'}}
+            def upload(_, document, data): outer.queued.append(('upload', data))
+            def queue_document(_, document_id): outer.queued.append(('queue', document_id)); return {'status': 'queued'}
+            def rpc(_, name, params): outer.recorded.append((name, params)); return 1
+        self.reader, self.repo = DisputeReader(Client()), Store()
+        self.disputes = [{'dispute_id': 'PP-R-1', 'messages': [
+            {'by': 'BUYER', 'at': '2026-11-08T19:47:01Z', 'documents': ['spec sheet.pdf', 'photo.png']},
+            {'by': 'SELLER', 'at': '2026-11-08T19:56:57Z', 'documents': ['mine.pdf']}]}]
+
+    def run_import(self):
+        return import_client_documents(self.reader, self.repo, None, PROJECT, self.disputes, 'en')
+
+    def test_only_the_clients_pdfs_are_copied_and_marked_as_theirs(self):
+        self.assertEqual(self.run_import(), {'imported': 1, 'saved': True})
+        self.assertEqual(self.fetched, ['buyer-pdf'])
+        title, kind, filename, mime, key = self.reserved[0]
+        self.assertEqual((title, kind, filename, mime), ('Client attachment · spec sheet.pdf', 'reference', 'spec_sheet.pdf', 'application/pdf'))
+        self.assertTrue(key.startswith('dispute-client-'))
+        self.assertEqual([step[0] for step in self.queued], ['upload', 'queue'])
+        self.assertEqual(self.recorded, [('record_dispute_received_document', {'p_project': PROJECT, 'p_dispute': 'PP-R-1', 'p_document': 'doc-1', 'p_key': '2026-11-08T19:47:01Z:0'})])
+
+    def test_an_attachment_already_copied_is_not_downloaded_again(self):
+        self.known.append({'dispute_id': 'PP-R-1', 'source_key': '2026-11-08T19:47:01Z:0'})
+        self.assertEqual(self.run_import(), {'imported': 0, 'saved': True})
+        self.assertEqual((self.fetched, self.reserved), ([], []))
+
+    def test_a_failure_is_reported_and_left_for_the_next_check(self):
+        self.fail_fetch = True
+        self.assertEqual(self.run_import(), {'imported': 0, 'saved': False})
+        self.assertEqual(self.recorded, [])
+
+
 class EscalationHistoryTests(unittest.TestCase):
     def test_the_escalation_is_recorded_once_under_a_fixed_key(self):
         calls = []
@@ -47,6 +98,19 @@ class EscalationHistoryTests(unittest.TestCase):
         name, data = calls[0]
         self.assertEqual((name, data['p_dispute'], data['p_events'][0]['event_key'], data['p_events'][0]['details']),
                          ('record_dispute_events', 'PP-R-1', 'escalated', {'escalated': True}))
+
+    def test_evidence_and_an_accepted_claim_are_the_freelancers_steps(self):
+        calls = []
+        class Saved:
+            def rpc(self, name, data):
+                calls.append(data['p_events'][0])
+        self.assertTrue(record_evidence(Saved(), PROJECT, 'PP-R-1', ['a.pdf']))
+        self.assertTrue(record_evidence(Saved(), PROJECT, 'PP-R-1', ['b.pdf']))
+        self.assertTrue(record_accepted_claim(Saved(), PROJECT, 'PP-R-1'))
+        self.assertEqual({event['kind'] for event in calls}, {'freelancer_message'}, 'a status row would hide the dispute state in the map')
+        self.assertEqual(calls[0]['details'], {'evidence': True, 'documents': ['a.pdf']})
+        self.assertNotEqual(calls[0]['event_key'], calls[1]['event_key'], 'each submission is its own event')
+        self.assertEqual((calls[2]['event_key'], calls[2]['details']), ('accepted_claim', {'accepted': True}))
 
     def test_a_failed_record_does_not_undo_the_escalation(self):
         class Broken:
@@ -226,6 +290,8 @@ class DisputeHistoryTests(unittest.TestCase):
         for change in ({'stage': 'CHARGEBACK', 'status': 'WAITING_FOR_SELLER_RESPONSE'}, {'stage': 'CHARGEBACK', 'status': 'UNDER_REVIEW'}, {'status': 'RESOLVED', 'outcome': 'RESOLVED_SELLER_FAVOUR'}):
             self.assertEqual(dispute_events({**self.dispute, **change})[-1]['kind'], 'dispute_status', change)
         self.assertNotEqual(dispute_events({**self.dispute, 'status': 'UNDER_REVIEW'})[-1]['kind'], 'dispute_status', 'a moment of review during the inquiry is not a milestone')
+        turns = {dispute_events({**self.dispute, 'stage': 'CHARGEBACK', 'status': status})[-1]['event_key'] for status in ('WAITING_FOR_SELLER_RESPONSE', 'UNDER_REVIEW')}
+        self.assertEqual(turns, {'stage:CHARGEBACK'}, 'whose turn it is within a stage is not a new stage')
 
     def test_groups_are_added_newest_first_and_a_failed_save_is_reported(self):
         from trato_api.dispute_history import with_dispute_groups, dispute_activity, record_disputes
@@ -238,7 +304,7 @@ class DisputeHistoryTests(unittest.TestCase):
         self.assertEqual([g['group_kind'] for g in groups], ['dispute', 'project'])
         self.assertEqual((groups[0]['event_count'], groups[0]['last_at']), (2, '2026-11-08T07:00:00+00:00'))
         events = dispute_activity(History(), PROJECT, 'PP-R-1')
-        self.assertEqual((events[1]['group_kind'], events[1]['group_id'], events[1]['text']), ('dispute', 'PP-R-1', 'Claim'))
+        self.assertEqual((events[0]['group_kind'], events[0]['group_id'], events[0]['text']), ('dispute', 'PP-R-1', 'Claim'), 'newest first')
         rows.insert(0, {'id': '0', 'dispute_id': 'PP-R-1', 'kind': 'client_message', 'details': {}, 'happened_at': '2026-11-08T06:00:00+00:00'})
-        self.assertEqual(dispute_activity(History(), PROJECT, 'PP-R-1')[0]['kind'], 'dispute_opened', 'the opening goes first at the same time')
+        self.assertEqual(dispute_activity(History(), PROJECT, 'PP-R-1')[-1]['kind'], 'dispute_opened', 'the opening is the oldest even at the same time')
         self.assertFalse(record_disputes(History(), PROJECT, [self.dispute]))

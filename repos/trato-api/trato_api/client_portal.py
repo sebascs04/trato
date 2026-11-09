@@ -234,6 +234,7 @@ def build_client_portal_router(settings, store=None, payments=None, require_user
     @router.get('/account/disputes')
     async def account_disputes(user=Depends(require_user)):
         # Asked apart from the agreements so PayPal's response time never delays the client's overview.
+        import json, logging, time
         from concurrent.futures import ThreadPoolExecutor
         from .disputes import DisputeReader, client_dispute
         service, reader = backend(), disputes or DisputeReader()
@@ -246,9 +247,12 @@ def build_client_portal_router(settings, store=None, payments=None, require_user
                 view = service.view(service.link_hash(user, proposal_id))
                 found = client_dispute(reader, service.capture(view['revision_id']))
                 return (proposal_id, found) if found else None
+            started = time.monotonic()
             with ThreadPoolExecutor(max_workers=4) as pool:
                 rows = [row for row in pool.map(one, paid) if row] if paid else []
-            return {proposal_id: {'dispute_id': found['dispute_id'], 'status': found['status'], 'reason': found['reason']} for proposal_id, found in rows}
+            # Timing and counts only: no business data or identifiers.
+            logging.getLogger(__name__).warning(json.dumps({'event': 'client_account_disputes', 'ms': round(1000 * (time.monotonic() - started)), 'paid_agreements': len(paid), 'disputes': len(rows)}))
+            return {proposal_id: {'dispute_id': found['dispute_id'], 'status': found['status'], 'reason': found['reason'], 'outcome': found['outcome']} for proposal_id, found in rows}
         return reply(await run_in_threadpool(read))
 
     @router.post('/account/agreements/{proposal_id}/{action}')

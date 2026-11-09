@@ -251,7 +251,7 @@ class StepTests(unittest.TestCase):
         return self.client.post(f'/api/v1/projects/{PROJECT}/disputes/{DISPUTE}/{path}', json=body)
 
     def test_each_step_reaches_paypal_with_its_input(self):
-        self.assertEqual(self.post('evidence', {'notes': 'Delivered.', 'document_ids': [DOC]}).json()['data'], {'done': True, 'documents_sent': 1, 'documents_recorded': True})
+        self.assertEqual(self.post('evidence', {'notes': 'Delivered.', 'document_ids': [DOC]}).json()['data'], {'done': True, 'documents_sent': 1, 'documents_recorded': True, 'history_saved': True})
         self.post('escalate', {'note': 'Please review.'})
         self.post('sandbox', {'action': 'require_evidence'}); self.post('sandbox', {'action': 'seller_favor'}); self.post('sandbox', {'action': 'buyer_favor'})
         self.assertEqual(self.calls, [('evidence', 'Delivered.', 1), ('escalate', 'Please review.'), ('require',), ('adjudicate', 'SELLER_FAVOR'), ('adjudicate', 'BUYER_FAVOR')])

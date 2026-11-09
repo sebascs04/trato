@@ -4,6 +4,21 @@ import {renderAIActivity,submitChatOnEnter,chatScrollPosition,restoreChatScroll}
 import {uiText,uiLanguage,uiLocale} from './i18n.mjs';
 import {icon} from './icons.mjs';
 import {documentProgressLabel} from './document-progress.mjs';
+// Sends a question the user did not type without losing what they were writing in the box.
+export function sendKeepingDraft(state,send){
+ const draft=state.draft,sent=send();
+ state.draft=draft;
+ return sent;
+}
+// Every PayPal citation points at the same read and shows the same line, so an answer lists it once.
+export function distinctPayPalCitations(value){
+ let shown=false;
+ return value.citations.filter(citation=>{
+  if(value.sources.find(source=>source.source_id===citation.source_id)?.source_kind!=='paypal')return true;
+  if(shown)return false;
+  shown=true;return true;
+ });
+}
 const text=(key,values)=>uiText(['projectAssistant',key].join('.'),values);
 const esc=value=>String(value??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 export function projectDocumentError(code){
@@ -17,7 +32,7 @@ export function validateProjectAnswer(value,projectId){
  if(value.answer_basis!==undefined&&!['documents','conversation'].includes(value.answer_basis)||value.status==='answered'&&value.answer_basis!=='conversation'&&!value.citations.length)throw Error('AI_JOB_INVALID');
  for(const citation of value.citations){
   const source=value.sources.find(s=>s.source_id===citation.source_id);
-  if(!source||!['summary','original','plan','status','refund_status'].includes(source.source_kind)||typeof source.file_id!=='string'||typeof citation.quote!=='string'||!citation.quote.trim())throw Error('AI_JOB_INVALID');
+  if(!source||!['summary','original','plan','status','paypal','refund_status'].includes(source.source_kind)||typeof source.file_id!=='string'||typeof citation.quote!=='string'||!citation.quote.trim())throw Error('AI_JOB_INVALID');
  }
  return value;
 }
@@ -120,6 +135,12 @@ export function installProjectAssistant(cloud){
   floatingPanel.element.querySelector('#project-assistant-question')?.focus();
   return state;
  }
+ // One click asks why a payment is pending: the agent only reads PayPal, so nothing needs confirming. A second click during the answer sends nothing.
+ cloud.openPaymentDetective=function(button,title){
+  const state=openFloating(button,{title});
+  void sendKeepingDraft(state,()=>ask(state,uiText('paymentDetective.prompt')));
+  renderFloating(state);
+ };
  cloud.openRefundAssistant=function(button,refund){
   const state=openFloating(button,{title:uiText(`refund.wizard.step${refund.step}`),refund});
   const key={request:'requestPrompt',proposal:'proposalPrompt',email:'emailPrompt',reply:'replyPrompt'}[refund.task];
@@ -299,8 +320,9 @@ export function installProjectAssistant(cloud){
   const keys={FILE_SUMMARY_CHANGED:'sourcesChanged',VECTOR_SOURCE_CHANGED:'sourcesChanged',AI_NOT_FOUND:'historyUnavailable',AI_INVALID_CITATION:'invalidEvidence',AI_CONTEXT_INVALID:'historyUnavailable',REFUND_REVISION_CONFLICT:'sourcesChanged',AI_JOB_INVALID:'historyUnavailable',AI_EVALUATOR_NOT_CONFIGURED:'notConfigured',AI_MEMORY_CONFLICT:'memoryConflict',AI_MEMORY_INVALID:'memoryError',AI_MEMORY_CONTEXT_LIMIT:'memoryError'};
   return projectDocumentError(code)||text(keys[code]||'error');
  }
- function citations(value){return value.citations.map(citation=>{
+ function citations(value){return distinctPayPalCitations(value).map(citation=>{
   const source=value.sources.find(s=>s.source_id===citation.source_id);
+  if(source.source_kind==='paypal')return `<article class="project-assistant-source"><span>${uiText('paymentDetective.source')}</span></article>`;
   return `<article class="project-assistant-source"><span>${text(source.source_kind==='plan'?'planLabel':source.source_kind==='status'?'statusLabel':source.source_kind==='summary'?'referenceLabel':'documentLabel')}</span><button type="button" data-assistant-action="${source.source_kind==='plan'?'plan':source.source_kind==='status'?'status':'source'}" data-document-id="${esc(source.file_id)}">${icon('file-text')}${esc(source.source_kind==='plan'?text('planLabel'):source.source_kind==='status'?text('statusLabel'):source.title||text('documentLabel'))}${icon('arrow-up-right')}</button><blockquote>${esc(citation.quote)}</blockquote>${source.locator?`<small>${text(source.locator.kind==='page'?'page':'sectionLabel')} ${esc(source.locator.page??source.locator.paragraph??source.locator.section??'')}</small>`:''}</article>`;
  }).join('');}
  function refundDetails(entry,state){
@@ -338,8 +360,9 @@ export function installProjectAssistant(cloud){
    const status=value.citations.filter(c=>value.sources.find(s=>s.source_id===c.source_id)?.source_kind==='status');
    const facts=[];for(const c of status)for(const fact of statusFacts(c.quote))if(!facts.some(f=>f[0]===fact[0]&&f[1]===fact[1]))facts.push(fact);
    const statusBlock=status.length?`<article class="project-assistant-source"><span>${text('statusLabel')}</span><button type="button" data-assistant-action="status" data-document-id="${esc(value.sources.find(s=>s.source_kind==='status').file_id)}">${icon('history')}${text('statusOpen')}${icon('arrow-up-right')}</button>${facts.length?`<dl class="assistant-status-facts">${facts.map(([label,shown])=>`<div><dt>${esc(label)}</dt><dd>${esc(shown)}</dd></div>`).join('')}</dl>`:status.map(c=>`<blockquote>${esc(c.quote)}</blockquote>`).join('')}</article>`:'';
-   return statusBlock+value.citations.filter(c=>!status.includes(c)).map(citation=>{
+   return statusBlock+distinctPayPalCitations(value).filter(c=>!status.includes(c)).map(citation=>{
    const source=value.sources.find(s=>s.source_id===citation.source_id);
+   if(source.source_kind==='paypal')return `<article class="project-assistant-source"><span>${uiText('paymentDetective.source')}</span></article>`;
    if(source.source_kind==='refund_status')return `<article class="project-assistant-source"><span>${uiText('refundAI.record')}</span></article>`;
    return `<article class="project-assistant-source"><span>${text(source.source_kind==='status'?'statusLabel':source.source_kind==='summary'?'summarySource':'originalSource')}</span><button type="button" data-assistant-action="${source.source_kind==='plan'?'plan':source.source_kind==='status'?'status':'source'}" data-document-id="${esc(source.file_id)}">${icon('file-text')}${esc(source.source_kind==='status'?text('statusLabel'):source.title)}${icon('arrow-up-right')}</button><blockquote>${esc(citation.quote)}</blockquote>${source.locator?`<small>${text(source.locator.kind==='page'?'page':'paragraph')} ${esc(source.locator[source.locator.kind])}</small>`:''}</article>`;
   }).join('');};

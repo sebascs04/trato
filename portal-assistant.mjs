@@ -17,8 +17,17 @@ export function assistantHistory(messages){
  return turns.slice(-12);
 }
 
+// Once a change request goes out, a draft is no longer something to send: it says whether it was the one sent.
+export function draftMarkup(message,index){
+ if(!message.draft)return '';
+ const next=message.sent?`<p class="portal-assistant-draft-sent" role="status">${icon('check')}<span>${t('draftSent')}</span></p>`:message.closed?'':`<button type="button" class="portal-button" data-assistant-draft="${index}">${icon('pencil')}${t('draftAction')}</button>`;
+ return `<div class="portal-assistant-draft"><strong>${t(message.sent?'draftSentTitle':'draftTitle')}</strong><p>${escape(message.draft)}</p>${next}</div>`;
+}
+export function closeDrafts(messages,usedIndex){
+ messages.forEach((message,index)=>{if(message.draft&&!message.closed){message.closed=true;message.sent=index===usedIndex;}});
+}
 export function createPortalAssistant({doc,api,onDraft,wait=ms=>new Promise(done=>doc.defaultView.setTimeout(done,ms)),newId=()=>doc.defaultView.crypto.randomUUID()}){
- const messages=[];let working=false;
+ const messages=[];let working=false,usedDraft=null;
  const dialog=doc.createElement('dialog');
  dialog.className='portal-dialog portal-side-dialog portal-assistant';
  dialog.setAttribute('aria-labelledby','portal-assistant-title');
@@ -29,12 +38,11 @@ export function createPortalAssistant({doc,api,onDraft,wait=ms=>new Promise(done
 
  function paint(){
   const log=q('[data-assistant-log]');
-  const intro=`<div class="portal-assistant-intro"><img src="/assets/mascot/trato-guide.png" alt="" width="56" height="56"><p>${t('intro')}</p></div>${messages.length?'':`<div class="portal-assistant-suggestions">${['included','change'].map(key=>`<button type="button" class="portal-link" data-assistant-suggest="${key}">${t(`suggest.${key}`)}</button>`).join('')}</div>`}`;
+  const intro=`<div class="portal-assistant-intro"><img src="/assets/mascot/trato-guide.png" alt="" width="56" height="56"><p>${t('intro')}</p></div>`;
   log.innerHTML=intro+messages.map((message,index)=>message.role==='user'
    ?`<p class="portal-assistant-bubble mine">${escape(message.text)}</p>`
-   :`<div class="portal-assistant-bubble"><p>${escape(message.text)}</p>${message.sources?.length?`<small>${t('basedOn')} ${message.sources.map(source=>t(`source.${source}`)).join(', ')}</small>`:''}${message.draft?`<div class="portal-assistant-draft"><strong>${t('draftTitle')}</strong><p>${escape(message.draft)}</p><button type="button" class="portal-button" data-assistant-draft="${index}">${icon('pencil')}${t('draftAction')}</button></div>`:''}</div>`).join('')+(working?renderAIActivity({label:t('thinking'),compact:true}):'');
-  for(const button of log.querySelectorAll('[data-assistant-suggest]'))button.onclick=()=>{q('[data-assistant-question]').value=t(`suggest.${button.dataset.assistantSuggest}Question`);q('[data-assistant-question]').focus();};
-  for(const button of log.querySelectorAll('[data-assistant-draft]'))button.onclick=()=>{dialog.close();onDraft(messages[Number(button.dataset.assistantDraft)].draft);};
+   :`<div class="portal-assistant-bubble"><p>${escape(message.text)}</p>${message.sources?.length?`<small>${t('basedOn')} ${message.sources.map(source=>t(`source.${source}`)).join(', ')}</small>`:''}${draftMarkup(message,index)}</div>`).join('')+(working?renderAIActivity({label:t('thinking'),compact:true}):'');
+  for(const button of log.querySelectorAll('[data-assistant-draft]'))button.onclick=()=>{usedDraft=Number(button.dataset.assistantDraft);dialog.close();onDraft(messages[usedDraft].draft);};
   q('[data-assistant-send]').disabled=working;
   log.scrollTop=log.scrollHeight;
  }
@@ -68,5 +76,5 @@ export function createPortalAssistant({doc,api,onDraft,wait=ms=>new Promise(done
  q('[data-assistant-form]').addEventListener('submit',submit);
  q('[data-assistant-close]').addEventListener('click',()=>dialog.close());
  dialog.addEventListener('keydown',event=>submitChatOnEnter(event,'[data-assistant-question]'));
- return {element:dialog,open(){q('[data-assistant-error]').textContent='';paint();dialog.showModal();q('[data-assistant-question]').focus();}};
+ return {element:dialog,changesSent(){closeDrafts(messages,usedDraft);usedDraft=null;},changesDismissed(){usedDraft=null;},open(){q('[data-assistant-error]').textContent='';paint();dialog.showModal();q('[data-assistant-question]').focus();}};
 }

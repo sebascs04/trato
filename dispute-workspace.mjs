@@ -36,11 +36,19 @@ export function renderDispute(d){
  const messages=d.messages.length?`<button type="button" class="text-button dispute-conversation-open" data-dispute-conversation="${esc(d.dispute_id)}" aria-haspopup="dialog">${icon('messages-square')}${t('viewConversation',{count:d.messages.length})}</button>`:`<p class="dispute-muted">${t('noMessages')}</p>`;
  return `<article class="workspace-panel dispute-card" data-dispute="${esc(d.dispute_id)}"><header><span class="dispute-icon" aria-hidden="true">${icon('shield-check')}</span><div><small>${t('case')} ${esc(d.dispute_id)}</small><h3>${esc(label('reason',d.reason,REASONS))}</h3></div><span class="badge review">${esc(label('status',d.status,STATUSES))}</span></header>
  <dl class="dispute-facts"><div><dt>${t('amount')}</dt><dd>${esc(money(d.amount.value,d.amount.currency))}</dd></div><div><dt>${t(d.outcome?'result':'stage')}</dt><dd>${esc(d.outcome?label('outcome',d.outcome,OUTCOMES):label('stage',d.stage,STAGES))}</dd></div><div><dt>${t('payment')}</dt><dd>${esc(t(d.payment.origin==='initial'?'paymentInitial':'paymentChange',{amount:paid}))}${d.payment.verified_at?` · ${esc(date(d.payment.verified_at))}`:''}</dd></div></dl>
- ${due}${messages}
- ${canDefend(d)?needsAnalysis(d)&&d.actions.some(a=>DEFENSE_ACTIONS.includes(a))?`<div class="dispute-next"><p>${t(d.actions.includes('provide_evidence')?'steps.evidenceHint':'defense.hint')}</p><button type="button" class="button" data-dispute-defense="${esc(d.dispute_id)}" aria-haspopup="dialog">${icon('sparkles')}${t('defense.open')}</button></div>`:`<div class="dispute-next"><p>${t('defense.waitingClient')}</p><button type="button" class="button secondary" data-dispute-defense="${esc(d.dispute_id)}" aria-haspopup="dialog">${t('defense.viewResponse')}</button></div>`:''}</article>`;
+ ${closedResult(d)}${due}${messages}
+ ${canDefend(d)?needsAnalysis(d)&&d.actions.some(a=>DEFENSE_ACTIONS.includes(a))?`<div class="dispute-next"><p>${t(d.actions.includes('provide_evidence')?'steps.evidenceHint':'defense.hint')}</p><button type="button" class="button" data-dispute-defense="${esc(d.dispute_id)}" aria-haspopup="dialog">${icon('sparkles')}${t('defense.open')}</button></div>`:`<div class="dispute-next"><p>${t(d.status==='UNDER_REVIEW'?(d.stage==='INQUIRY'?'defense.updating':'defense.underReview'):'defense.waitingClient')}</p><button type="button" class="button secondary" data-dispute-defense="${esc(d.dispute_id)}" aria-haspopup="dialog">${t('defense.viewResponse')}</button></div>`:''}</article>`;
 }
 const SANDBOX_ACTIONS=['require_evidence','adjudicate'];
-const canDefend=d=>d.status!=='RESOLVED'&&d.payment.origin==='change'&&d.actions.some(a=>DEFENSE_ACTIONS.includes(a)||SANDBOX_ACTIONS.includes(a));
+// During PayPal's review there may be nothing to do, but what was sent stays reachable.
+// When a dispute closes, what matters first is who won and what happens to the money.
+const WON=['RESOLVED_SELLER_FAVOUR','CANCELED_BY_BUYER','DENIED'],LOST=['RESOLVED_BUYER_FAVOUR','ACCEPTED'];
+function closedResult(d){
+ if(d.status!=='RESOLVED')return '';
+ const outcome=OUTCOMES.includes(d.outcome)?d.outcome:'OTHER',tone=WON.includes(outcome)?'good':LOST.includes(outcome)?'lost':'neutral';
+ return `<p class="dispute-result is-${tone}" role="status">${icon(tone==='good'?'check':tone==='lost'?'undo-2':'info')}<span>${t(`resultNote.${outcome}`,{amount:money(d.amount.value,d.amount.currency)})}</span></p>`;
+}
+const canDefend=d=>d.status!=='RESOLVED'&&d.payment.origin==='change'&&(d.status==='UNDER_REVIEW'||d.actions.some(a=>DEFENSE_ACTIONS.includes(a)||SANDBOX_ACTIONS.includes(a)));
 export function validateDefense(value,disputeId){
  if(!value||value.kind!=='dispute_defense'||value.dispute_id!==disputeId||!['strong','partial','weak'].includes(value.assessment)||typeof value.summary!=='string'||typeof value.response_message!=='string'||!DEFENSE_ACTIONS.includes(value.recommended_action)||!Array.isArray(value.gaps)||!Array.isArray(value.points)||value.points.some(p=>!p||typeof p.claim!=='string'||typeof p.quote!=='string'||typeof p.kind!=='string')||!Array.isArray(value.documents)||value.documents.some(d=>!d||typeof d.id!=='string'||typeof d.title!=='string'||typeof d.sendable!=='boolean'||typeof d.consulted!=='boolean'||typeof d.recommended!=='boolean'||typeof d.reason!=='string'))throw Error('AI_JOB_INVALID');
  return value;
@@ -49,11 +57,11 @@ const KINDS=['agreement','document','delivery','acceptance','payment','client_re
 const selectedCount=send=>Array.isArray(send.selected)?send.selected.length:0;
 // Whether a client message is still unanswered: the only moment TeTrato analyzes again after a reply was sent.
 export function needsAnalysis(dispute){const messages=dispute?.messages||[];return !!dispute&&(!messages.some(m=>m.by==='SELLER')||messages.at(-1)?.by==='BUYER'||!!dispute.actions?.includes('provide_evidence'));}
-function composeMarkup(send,extra){
+function composeMarkup(send){
  const busy=send.status==='sending';
- return `${send.status==='error'?`<p class="cloud-error" role="alert">${t('send.failed')}</p>`:''}<div class="dispute-send-row"><button type="button" class="button secondary dispute-docs-open" data-defense-action="documents" aria-haspopup="dialog" ${busy?'disabled':''}>${icon('paperclip')}${t('send.documents',{count:selectedCount(send)})}</button><button type="button" class="button" data-defense-action="send" aria-haspopup="dialog" ${busy?'disabled':''}>${icon('send')}${t(busy?'send.sending':send.composing||send.previous?'send.another':'send.open')}</button>${busy?'':extra}</div>`;
+ return `${send.status==='error'?`<p class="cloud-error" role="alert">${t('send.failed')}</p>`:''}<div class="dispute-send-row"><button type="button" class="button secondary dispute-docs-open" data-defense-action="documents" aria-haspopup="dialog" ${busy?'disabled':''}>${icon('paperclip')}${t('send.documents',{count:selectedCount(send)})}</button><button type="button" class="button" data-defense-action="send" aria-haspopup="dialog" ${busy?'disabled':''}>${icon('send')}${t(busy?'send.sending':send.composing||send.previous?'send.another':'send.open')}</button></div>`;
 }
-const textareaMarkup=(draft,send)=>`<label class="field" for="dispute-response">${t(send.composing?'defense.newMessage':'defense.draft')}</label><textarea class="context-box" id="dispute-response" rows="${send.composing?4:7}" maxlength="2000" data-dispute-draft ${send.status==='sending'?'readonly':''}>${esc(draft)}</textarea>`;
+const textareaMarkup=(draft,send,action='')=>`<div class="dispute-draft-head"><label class="field" for="dispute-response">${t(send.composing?'defense.newMessage':'defense.draft')}</label>${send.status==='sending'?'':action}</div><textarea class="context-box" id="dispute-response" rows="${send.composing?4:7}" maxlength="2000" data-dispute-draft ${send.status==='sending'?'readonly':''}>${esc(draft)}</textarea>`;
 // Floating confirmation before the one action that leaves Trato.
 export function renderSendConfirm(send){
  return `<header><h2 id="dispute-confirm-title">${t(send.previous||send.composing?'send.anotherTitle':'send.confirmTitle')}</h2></header><p>${selectedCount(send)?t('send.confirmWithDocs',{count:selectedCount(send)}):t('send.confirmCopy')}</p><p class="dispute-confirm-note">${t('send.reviewCarefully')}</p><footer><button type="button" class="button secondary" data-confirm-cancel>${uiText('Cancelar')}</button><button type="button" class="button" data-confirm-send>${t('send.confirm')}</button></footer>`;
@@ -63,7 +71,7 @@ export function lastSellerMessage(dispute){return [...(dispute?.messages||[])].r
 // A send interrupted by a reload has an unknown result; it must never look unsent.
 export function restoredSend(send){
  const status=send?.status==='sending'?'uncertain':send?.status==='partial'?'sent':['sent','uncertain'].includes(send?.status)?send.status:'idle';
- return {status,selected:Array.isArray(send?.selected)?send.selected.filter(i=>typeof i==='string'):[],...Object.fromEntries(['attachment','documentsSent','documentsTotal','composing','mode','notice','unrecorded'].filter(k=>send?.[k]!==undefined).map(k=>[k,send[k]]))};
+ return {status,selected:Array.isArray(send?.selected)?send.selected.filter(i=>typeof i==='string'):[],...Object.fromEntries(['attachment','documentsSent','documentsTotal','composing','mode','notice','unrecorded','evidenceNotes'].filter(k=>send?.[k]!==undefined).map(k=>[k,send[k]]))};
 }
 // Floating list of the project's documents: TeTrato suggests, the freelancer decides what the client receives.
 export function renderDocumentChoices(documents,selected,upload={}){
@@ -71,17 +79,17 @@ export function renderDocumentChoices(documents,selected,upload={}){
  return `<header><h2 id="dispute-docs-title">${t('docs.title')}</h2><button type="button" class="text-button" data-docs-close aria-label="${uiText('Cerrar')}" title="${uiText('Cerrar')}">${icon('x')}</button></header><p>${t('docs.hint')}</p>${documents.length?`<ul class="dispute-doc-list">${documents.map(row).join('')}</ul>`:`<p class="dispute-muted">${t('docs.empty')}</p>`}<section class="dispute-doc-upload"><p>${t('docs.uploadHint')}</p><label class="button secondary ${upload.busy?'is-disabled':''}">${icon('file-up')}${t(upload.busy?'docs.uploading':'docs.upload')}<input type="file" accept="application/pdf,.pdf" data-docs-upload hidden ${upload.busy?'disabled':''}></label>${upload.error?`<p class="cloud-error" role="alert">${t(`docs.error.${upload.error}`)}</p>`:''}</section><footer><button type="button" class="button" data-docs-close>${t('docs.done')}</button></footer>`;
 }
 // Closing the dispute by refunding the client is the freelancer's own decision, available as long as PayPal offers it.
-function acceptMarkup(actions=[]){
- return actions.includes('accept_claim')?`<div class="dispute-last-resort"><small>${t('steps.acceptHint')}</small><button type="button" class="text-button" data-defense-action="accept" aria-haspopup="dialog">${t('steps.accept')}</button></div>`:'';
+function acceptMarkup(actions=[],busy=false){
+ return actions.includes('accept_claim')?`<div class="dispute-last-resort"><small>${t('steps.acceptHint')}</small><button type="button" class="button secondary" data-defense-action="accept" aria-haspopup="dialog" ${busy?'disabled':''}>${t(busy?'send.sending':'steps.accept')}</button></div>`:'';
 }
 // Further steps exist only when PayPal offers their link on the dispute as it stands.
 export function actionsMarkup(send){
  const actions=send.actions||[],notice=send.notice?`<p class="${send.notice.startsWith('error')?'cloud-error':'dispute-sent'}" role="status">${t(`steps.${send.notice}`)}</p>`:'';
  const evidence=actions.includes('provide_evidence')?`<div class="dispute-next"><p>${t('steps.evidenceHint')}</p><button type="button" class="button" data-defense-action="evidence">${icon('file-up')}${t('steps.evidence')}</button></div>`:'';
- const escalate=actions.includes('escalate')?`<div class="dispute-last-resort"><small>${t('steps.lastResort')}</small><button type="button" class="text-button" data-defense-action="escalate" aria-haspopup="dialog">${t('steps.escalate')}</button></div>`:'';
+ const escalate=actions.includes('escalate')?`<div class="dispute-last-resort"><small>${t('steps.lastResort')}</small><button type="button" class="text-button" data-defense-action="escalate" aria-haspopup="dialog" ${send.status==='sending'?'disabled':''}>${t('steps.escalate')}</button></div>`:'';
  const sandbox=[actions.includes('require_evidence')?['require_evidence','steps.sandboxEvidence']:null,...(actions.includes('adjudicate')?[['seller_favor','steps.sandboxSeller'],['buyer_favor','steps.sandboxBuyer']]:[])].filter(Boolean);
- const tests=sandbox.length?`<div class="dispute-sandbox"><small>${t('steps.sandboxLabel')}</small><div class="dispute-send-row">${sandbox.map(([id,label])=>`<button type="button" class="button secondary" data-defense-action="sandbox" data-sandbox-step="${id}">${t(label)}</button>`).join('')}</div></div>`:'';
- const accept=acceptMarkup(actions);
+ const tests=sandbox.length?`<div class="dispute-sandbox"><small>${t('steps.sandboxLabel')}</small><div class="dispute-send-row">${sandbox.map(([id,label])=>`<button type="button" class="button secondary" data-defense-action="sandbox" data-sandbox-step="${id}" ${send.status==='sending'?'disabled':''}>${t(label)}</button>`).join('')}</div></div>`:'';
+ const accept=acceptMarkup(actions,send.status==='sending');
  return notice||evidence||escalate||tests||accept?`<section class="dispute-steps">${notice}${evidence}${tests}${accept}${escalate}</section>`:'';
 }
 function analysisMarkup(result){
@@ -89,24 +97,29 @@ function analysisMarkup(result){
  return `<section class="dispute-assessment is-${esc(result.assessment)}"><small>${t('defense.assessment')}</small><strong>${t(`defense.level.${result.assessment}`)}</strong><p>${esc(result.summary)}</p><p class="dispute-recommended">${t('defense.recommended')}: <strong>${t(`defense.action.${result.recommended_action}`)}</strong></p></section>${points?`<section><h3>${t('defense.points')}</h3><ol class="dispute-points">${points}</ol></section>`:''}${result.gaps.length?`<section class="dispute-gaps"><h3>${t('defense.gaps')}</h3><ul>${result.gaps.map(g=>`<li>${esc(g)}</li>`).join('')}</ul></section>`:''}`;
 }
 function evidenceForm(draft,send){
- return `<section><label class="field" for="dispute-response">${t('steps.evidenceNotes')}</label><textarea class="context-box" id="dispute-response" rows="5" maxlength="2000" data-dispute-draft ${send.status==='sending'?'readonly':''}>${esc(draft)}</textarea><div class="dispute-send">${send.status==='error'?`<p class="cloud-error" role="alert">${t('send.failed')}</p>`:''}<div class="dispute-send-row"><button type="button" class="button secondary dispute-docs-open" data-defense-action="documents" aria-haspopup="dialog">${icon('paperclip')}${t('send.documents',{count:selectedCount(send)})}</button><button type="button" class="button" data-defense-action="evidence-send" ${send.status==='sending'?'disabled':''}>${icon('send')}${t(send.status==='sending'?'send.sending':'steps.evidence')}</button></div></div></section>`;
+ return `<section><label class="field" for="dispute-response">${t('steps.evidenceNotes')}</label><textarea class="context-box" id="dispute-response" rows="5" maxlength="2000" data-dispute-draft ${send.status==='sending'?'readonly':''}>${esc(draft)}</textarea><div class="dispute-send">${send.status==='error'?`<p class="cloud-error" role="alert">${t('send.failed')}</p>`:''}<div class="dispute-send-row"><button type="button" class="button secondary dispute-docs-open" data-defense-action="documents" aria-haspopup="dialog" ${send.status==='sending'?'disabled':''}>${icon('paperclip')}${t('send.documents',{count:selectedCount(send)})}</button><button type="button" class="button" data-defense-action="evidence-send" aria-busy="${send.status==='sending'}" ${send.status==='sending'?'disabled':''}>${icon('send')}${t(send.status==='sending'?'send.sending':'steps.evidence')}</button></div></div></section>`;
 }
 export function renderDefense(result,draft,send={status:'idle',allowed:false,selected:[]}){
  const finished=['sent','uncertain'].includes(send.status);
- const prepareAgain=`<button type="button" class="button secondary" data-defense-action="again">${icon('refresh-cw')}${t('defense.again')}</button>`;
+ const prepareAgain=`<button type="button" class="text-button" data-defense-action="again-confirm" aria-haspopup="dialog">${icon('refresh-cw')}${t('defense.again')}</button>`;
  // The analysis and its draft lead until a reply goes out, and again when a new client message was analyzed.
  // When PayPal asks for evidence the analysis prepares that answer, which goes to PayPal instead of the client.
- const closedStep=['evidenceDone','acceptDone'].includes(send.notice);
+ // Once evidence went out, or PayPal's decision was simulated, no draft is pending: any later notice must not bring it back.
+ const closedStep=['evidenceDone','acceptDone','sandboxDone'].includes(send.notice)||!!send.evidenceNotes;
+ if(closedStep&&!finished){
+  const sentNotes=send.evidenceNotes?`<section><h3>${t('steps.evidenceSent')}</h3><p class="dispute-sent-text">${esc(send.evidenceNotes)}</p></section>`:'';
+  return `<div class="dispute-defense">${send.notice?.startsWith('error')?`<p class="cloud-error" role="alert">${t(`steps.${send.notice}`)}</p>`:send.notice?`<p class="dispute-sent" role="status">${icon('check')}<span>${t(`steps.${send.notice}`)}</span></p>`:''}${sentNotes}${result?`<details class="dispute-analysis-more"><summary>${t('defense.viewAnalysis')}</summary><div>${analysisMarkup(result)}</div></details>`:''}${actionsMarkup({...send,notice:null,actions:send.notice==='acceptDone'?[]:(send.actions||[]).filter(a=>send.notice!=='evidenceDone'||a!=='provide_evidence')})}</div>`;
+ }
  if(result&&!finished&&!closedStep&&(!send.previous||send.fresh)&&!send.allowed&&(send.actions||[]).includes('provide_evidence')){
   const failed=send.notice?`<p class="cloud-error" role="status">${t(`steps.${send.notice}`)}</p>`:'';
-  return `<div class="dispute-defense">${analysisMarkup(result)}${failed}${evidenceForm(draft,send)}${acceptMarkup(send.actions)}</div>`;
+  return `<div class="dispute-defense">${analysisMarkup(result)}${failed}${evidenceForm(draft,send)}${acceptMarkup(send.actions,send.status==='sending')}</div>`;
  }
- if(result&&!finished&&!closedStep&&!send.composing&&(!send.previous||send.fresh))return `<div class="dispute-defense">${analysisMarkup(result)}<section>${textareaMarkup(draft,send)}<p class="dispute-muted">${t('defense.notSent')}</p><div class="dispute-send">${send.allowed?composeMarkup(send,prepareAgain):`<p class="dispute-muted">${t('send.notAllowed')}</p>`}</div></section>${acceptMarkup(send.actions)}</div>`;
+ if(result&&!finished&&!closedStep&&!send.composing&&(!send.previous||send.fresh))return `<div class="dispute-defense">${analysisMarkup(result)}<section>${textareaMarkup(draft,send,prepareAgain)}<p class="dispute-muted">${t('defense.notSent')}</p><div class="dispute-send">${send.allowed?composeMarkup(send):`<p class="dispute-muted">${t('send.notAllowed')}</p>`}</div></section>${acceptMarkup(send.actions)}</div>`;
  if(send.mode==='evidence')return `<div class="dispute-defense">${evidenceForm(draft,send)}</div>`;
  const text=finished?draft:send.previous?.text;
  const sent=text?`<section><h3>${t(send.status==='uncertain'?'defense.attemptedMessage':'defense.sentMessage')}${send.previous?.at&&!finished?` · ${esc(date(send.previous.at,true))}`:''}</h3><p class="dispute-sent-text">${esc(text)}</p></section>`:'';
  const status=send.status==='sent'?`<p class="dispute-sent" role="status">${icon('check')}<span>${send.attachment==='sent'?t('send.doneWithDocs',{count:send.documentsSent??selectedCount(send)}):t('send.done')}</span></p>${send.unrecorded?`<p class="cloud-error" role="alert">${t('send.notRecorded')}</p>`:''}`:send.status==='uncertain'?`<p class="cloud-error" role="alert">${t('send.uncertain')}</p>`:'';
- const next=send.composing?(send.allowed?`<section>${textareaMarkup(draft,send)}<div class="dispute-send">${composeMarkup(send,'')}</div></section>`:`<p class="dispute-muted">${t('send.notAllowed')}</p>`)
+ const next=send.composing?(send.allowed?`<section>${textareaMarkup(draft,send)}<div class="dispute-send">${composeMarkup(send)}</div></section>`:`<p class="dispute-muted">${t('send.notAllowed')}</p>`)
   :send.needsAnalysis&&!finished?`<div class="dispute-next"><p>${t('defense.clientReplied')}</p><button type="button" class="button" data-defense-action="again">${icon('sparkles')}${t('defense.open')}</button></div>`
   :send.allowed?`<div class="dispute-send"><button type="button" class="button secondary" data-defense-action="send-another">${icon('send')}${t('send.another')}</button></div>`:`<p class="dispute-muted">${t('send.notAllowed')}</p>`;
  return `<div class="dispute-defense">${sent}${status}${next}${result?`<details class="dispute-analysis-more"><summary>${t('defense.viewAnalysis')}</summary><div>${analysisMarkup(result)}</div></details>`:''}${actionsMarkup(send)}</div>`;
@@ -200,8 +213,10 @@ export function installDisputeWorkspace(cloud){
  }
  const stepConfirm=(titleKey,copyKey)=>`<header><h2 id="dispute-confirm-title">${t(titleKey)}</h2></header><p>${t(copyKey)}</p><footer><button type="button" class="button secondary" data-confirm-cancel>${uiText('Cancelar')}</button><button type="button" class="button" data-confirm-send>${t('send.confirm')}</button></footer>`;
  async function runStep(state,path,body,done){
-  state.send={...state.send,notice:null};
-  try{await cloud.request(`/api/v1/projects/${encodeURIComponent(state.project)}/disputes/${encodeURIComponent(state.disputeId)}/${path}`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});state.send={...state.send,notice:done,mode:undefined,status:'idle'};if(body.notes)state.draft='';}
+  // PayPal documents no idempotency: one attempt at a time, and the screen shows it is working.
+  if(state.send.status==='sending')return;
+  state.send={...state.send,notice:null,status:'sending'};saveDefense(state);if(openDefense===state)paintDefense(state);
+  try{await cloud.request(`/api/v1/projects/${encodeURIComponent(state.project)}/disputes/${encodeURIComponent(state.disputeId)}/${path}`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});state.send={...state.send,notice:done,mode:undefined,status:'idle',evidenceNotes:body.notes??state.send.evidenceNotes};if(body.notes)state.draft='';}
   catch(error){state.send={...state.send,notice:['DISPUTE_SEND_REJECTED','DISPUTE_NOT_ACTIONABLE','DISPUTE_DOCUMENT_INVALID'].includes(error.code)?'errorRejected':'errorUncertain',status:'idle'};}
   saveDefense(state);if(openDefense===state)paintDefense(state);
   const list=states.get(key());if(list&&!list.loading)void load(list,state.project);
@@ -234,7 +249,7 @@ export function installDisputeWorkspace(cloud){
  function remember(project,data){try{cloud.storage.setItem(storageKey(project),JSON.stringify(data));}catch{}}
  async function load(state,project){
   state.loading=true;state.error='';
-  try{state.data=validateDisputes(await cloud.request(`/api/v1/projects/${encodeURIComponent(project)}/disputes`),project);remember(project,state.data);}
+  try{state.data=validateDisputes(await cloud.request(`/api/v1/projects/${encodeURIComponent(project)}/disputes`),project);remember(project,state.data);if(state.data.client_documents_imported>0)void cloud.refreshDocumentList?.().catch(()=>{});}
   catch(error){state.error=error.code==='PAYPAL_SANDBOX_NOT_CONFIGURED'?t('notConfigured'):t('error');}
   finally{state.loading=false;if(cloud.projectId===project)cloud.notify();if(openDefense?.project===project)paintDefense(openDefense);}
  }
@@ -249,7 +264,8 @@ export function installDisputeWorkspace(cloud){
   else if(!state.data.disputes.length)body=`<section class="workspace-panel dispute-empty">${icon('shield-check')}<div><h3>${t('emptyTitle')}</h3><p>${t('emptyCopy',{count:state.data.payments_checked})}</p></div></section>`;
   else body=state.data.disputes.map(renderDispute).join('');
   const unsaved=state.data?.history_saved===false&&!state.error?`<p class="cloud-error" role="alert">${t('historyNotSaved')}</p>`:'';
-  panel.innerHTML=`<section class="dispute-workspace" aria-busy="${state.loading}">${head}${unsaved}${body}</section>`;
+  const uncopied=state.data?.client_documents_saved===false&&!state.error?`<p class="cloud-error" role="alert">${t('clientDocsNotSaved')}</p>`:'';
+  panel.innerHTML=`<section class="dispute-workspace" aria-busy="${state.loading}">${head}${unsaved}${uncopied}${body}</section>`;
  };
  function openConversation(button){
   const dispute=states.get(key())?.data?.disputes.find(d=>d.dispute_id===button.dataset.disputeConversation);if(!dispute)return;
@@ -312,8 +328,14 @@ export function installDisputeWorkspace(cloud){
   if(openDefense&&action==='evidence'){openDefense.draft='';openDefense.send={...openDefense.send,mode:'evidence',status:'idle',notice:null};saveDefense(openDefense);paintDefense(openDefense);return;}
   if(openDefense&&action==='evidence-send'){
    const state=openDefense,documents=selectedIds(state);
+   if(state.send.status==='sending')return;
    if(!state.draft.trim()||!documents.length){state.send={...state.send,status:'error'};paintDefense(state);return;}
    confirmDialog(stepConfirm('steps.evidenceTitle','steps.evidenceCopy'),event.target.closest('[data-defense-action]'),()=>runStep(state,'evidence',{notes:state.draft,document_ids:documents},'evidenceDone'));return;
+  }
+  if(openDefense&&action==='again-confirm'){
+   // It reads everything again and replaces the analysis and the draft, including any edits.
+   const state=openDefense,copy=`<header><h2 id="dispute-confirm-title">${t('defense.againTitle')}</h2></header><p>${t('defense.againCopy')}</p><footer><button type="button" class="button secondary" data-confirm-cancel>${uiText('Cancelar')}</button><button type="button" class="button" data-confirm-send>${t('defense.againConfirm')}</button></footer>`;
+   confirmDialog(copy,event.target.closest('[data-defense-action]'),()=>{prepare(state,true);if(openDefense===state)paintDefense(state);});return;
   }
   if(openDefense&&action==='accept'){
    const state=openDefense;

@@ -17,7 +17,7 @@ export function proxyApiRequest(req, res, base = process.env.TRATO_API_URL || `h
     res.writeHead(403); res.end(); return;
   }
   const headers = {};
-  for (const name of ['authorization','content-type','content-length','idempotency-key','accept-language']) {
+  for (const name of ['authorization','content-type','content-length','idempotency-key','accept-language','origin']) {
     if (req.headers[name]) headers[name] = req.headers[name];
   }
   if(['/api/v1/webhooks/paypal','/api/v1/refunds/webhooks/paypal'].includes(url.pathname)){

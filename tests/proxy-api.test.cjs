@@ -6,18 +6,21 @@ const close=server=>new Promise(resolve=>{server.closeAllConnections();server.cl
 
 test('API proxy preserves user authorization and idempotency without forwarding demo cookies',async()=>{
   const {proxyApiRequest}=await import('../proxy-api.mjs');
+  const previous=process.env.WEB_ORIGIN;
+  let trustedOrigin;
   const upstream=http.createServer(async(req,res)=>{
     assert.equal(req.url,'/api/v1/payments?test=1');assert.equal(req.headers.authorization,'Bearer test-user');
     assert.equal(req.headers['idempotency-key'],'test-key');assert.equal(req.headers['accept-language'],'en');assert.equal(req.headers.cookie,undefined);
+    assert.equal(req.headers.origin,trustedOrigin);
     const chunks=[];for await(const chunk of req)chunks.push(chunk);
     res.writeHead(201,{'Content-Type':'application/json'});res.end(JSON.stringify({received:Buffer.concat(chunks).toString()}));
   });
   const base=await listen(upstream), proxy=http.createServer((req,res)=>proxyApiRequest(req,res,base));
   try {
-    const address=await listen(proxy);
-    const response=await fetch(address+'/api/v1/payments?test=1',{method:'POST',body:'payload',headers:{Authorization:'Bearer test-user','Idempotency-Key':'test-key','Accept-Language':'en',Cookie:'trato_demo=not-forwarded'}});
+    trustedOrigin=await listen(proxy);process.env.WEB_ORIGIN=trustedOrigin;
+    const response=await fetch(trustedOrigin+'/api/v1/payments?test=1',{method:'POST',body:'payload',headers:{Authorization:'Bearer test-user','Idempotency-Key':'test-key','Accept-Language':'en',Origin:trustedOrigin,Cookie:'trato_demo=not-forwarded'}});
     assert.equal(response.status,201);assert.deepEqual(await response.json(),{received:'payload'});
-  }finally{await close(proxy);await close(upstream);}
+  }finally{if(previous===undefined)delete process.env.WEB_ORIGIN;else process.env.WEB_ORIGIN=previous;await close(proxy);await close(upstream);}
 });
 
 test('API proxy rejects foreign browser origins before reaching backend',async()=>{

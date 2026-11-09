@@ -1,5 +1,6 @@
 import http from 'node:http';
 import {readFileSync} from 'node:fs';
+import {WebSocket, WebSocketServer} from 'ws';
 import {workflowEndpoint} from './workflow-bridge.mjs';
 import { extractPdfText, extractEmailFields } from './pdf-extraction.mjs';
 import { readFile } from 'node:fs/promises';
@@ -9,6 +10,21 @@ import {browserOriginAllowed} from './web-origin.mjs';
 import {textForLanguage} from './i18n.mjs';
 const localPorts = JSON.parse(readFileSync(new URL('./local-ports.json', import.meta.url), 'utf8'));
 const port = Number(process.env.PORT || localPorts.web);
+const relaySocketServer = new WebSocketServer({ noServer: true });
+const allowedMeetingOrigins = new Set([
+  'http://localhost:5173',
+  'http://127.0.0.1:5173',
+  'http://localhost:3000',
+  'http://127.0.0.1:3000'
+  , ...String(process.env.TRATO_MEETING_ALLOWED_ORIGINS || '').split(',').map(value => value.trim()).filter(Boolean)
+]);
+function meetingOriginAllowed(origin) {
+  if (allowedMeetingOrigins.has(origin)) return true;
+  try {
+    const parsed = new URL(origin);
+    return parsed.origin === origin && ['http:', 'https:'].includes(parsed.protocol) && ['localhost', '127.0.0.1'].includes(parsed.hostname);
+  } catch { return false; }
+}
 const assets = new Map([
   ['/favicon.ico',['assets/trato-icon.svg','image/svg+xml']],
   ['/assets/trato-icon.svg',['assets/trato-icon.svg','image/svg+xml']],
@@ -59,6 +75,11 @@ const assets = new Map([
   ['/graph-live.css', ['graph-live.css', 'text/css; charset=utf-8']],
   ['/graph-preview.mjs', ['graph-preview.mjs', 'text/javascript; charset=utf-8']],
   ['/graph-preview.css', ['graph-preview.css', 'text/css; charset=utf-8']],
+  ['/meeting-copilot.mjs', ['meeting-copilot.mjs', 'text/javascript; charset=utf-8']],
+  ['/auth-session.mjs', ['auth-session.mjs', 'text/javascript; charset=utf-8']],
+  ['/meeting-copilot-audio-processor.js', ['meeting-copilot-audio-processor.js', 'text/javascript; charset=utf-8']],
+  ['/meeting-copilot.css', ['meeting-copilot.css', 'text/css; charset=utf-8']],
+  ['/meeting-copilot.html', ['meeting-copilot.html', 'text/html; charset=utf-8']],
   ['/assets/fonts/manrope-variable.ttf', ['assets/fonts/manrope-variable.ttf', 'font/ttf']],
   ['/icons.mjs', ['icons.mjs', 'text/javascript; charset=utf-8']],
   ['/proposal-workspace.mjs', ['proposal-workspace.mjs', 'text/javascript; charset=utf-8']],
@@ -91,7 +112,31 @@ const demo = JSON.parse(await readFile(new URL('data/demo.json', import.meta.url
 for (const doc of demo.documents) {
   assets.set(`/data/pdfs/${doc.id}.pdf`, [`data/pdfs/${doc.id}.pdf`, 'application/pdf']);
 }
-http.createServer(async (req, res) => {
+relaySocketServer.on('connection', (socket, req) => {
+  const requestUrl = new URL(req.url, 'http://localhost');
+  const backend = process.env.TRATO_MEETING_BACKEND_URL || `http://127.0.0.1:${localPorts.api}`;
+  const upstreamUrl = new URL(`/api/v1/meeting-copilot/ws/copilot${requestUrl.search}`, backend);
+  upstreamUrl.protocol = upstreamUrl.protocol === 'https:' || upstreamUrl.protocol === 'wss:' ? 'wss:' : 'ws:';
+  const upstream = new WebSocket(upstreamUrl, {headers: {origin: req.headers.origin || ''}});
+  upstream.on('open', () => socket.readyState === WebSocket.OPEN && socket.send(JSON.stringify({type: 'status', status: 'relay-connected'})));
+  upstream.on('message', (message, isBinary) => {
+    if (socket.readyState === WebSocket.OPEN) socket.send(message, {binary: isBinary});
+  });
+  upstream.on('close', (code, reason) => {
+    if (socket.readyState === WebSocket.OPEN) socket.close(code === 1000 ? 1000 : 1011, reason.toString().slice(0, 100));
+  });
+  upstream.on('error', () => {
+    if (socket.readyState === WebSocket.OPEN) socket.close(1011, 'Copilot backend unavailable');
+  });
+  socket.on('message', (message, isBinary) => {
+    if (upstream.readyState === WebSocket.OPEN) upstream.send(message, {binary: isBinary});
+  });
+  socket.on('close', () => {
+    if (upstream.readyState === WebSocket.OPEN || upstream.readyState === WebSocket.CONNECTING) upstream.close();
+  });
+  socket.on('error', () => upstream.close());
+});
+const server = http.createServer(async (req, res) => {
   const {pathname, searchParams} = new URL(req.url, 'http://localhost');
   if(pathname==='/health'){res.writeHead(200,{'Content-Type':'application/json','Cache-Control':'no-store'});res.end(JSON.stringify({service:'trato-web',status:'ok'}));return;}
   if(process.env.TRATO_DEPLOYMENT_MODE==='connected'&&pathname.startsWith('/api/')&&!pathname.startsWith('/api/v1/')){res.writeHead(404);res.end();return;}
@@ -128,4 +173,28 @@ http.createServer(async (req, res) => {
     res.writeHead(200, { 'Content-Type': asset[1], 'Cache-Control': pathname==='/assets/fonts/manrope-variable.ttf'?'public, max-age=86400':'no-store' });
     res.end(body);
   } catch { res.writeHead(500); res.end('Unable to read asset'); }
-}).listen(port, process.env.HOST || '127.0.0.1', () => console.log(`Trato local: http://localhost:${port}`));
+});
+server.on('upgrade', (req, socket, head) => {
+  const requestUrl = new URL(req.url, 'http://localhost');
+  if (requestUrl.pathname !== '/ws/copilot') {
+    socket.write('HTTP/1.1 404 Not Found\r\n\r\n');
+    socket.destroy();
+    return;
+  }
+  const origin = req.headers.origin || '';
+  if (!meetingOriginAllowed(origin)) {
+    socket.write('HTTP/1.1 403 Forbidden\r\n\r\n');
+    socket.destroy();
+    return;
+  }
+  const ticket = requestUrl.searchParams.get('ticket') || '';
+  if (!ticket || !requestUrl.searchParams.get('sessionId')) {
+    socket.write('HTTP/1.1 401 Unauthorized\r\n\r\n');
+    socket.destroy();
+    return;
+  }
+  relaySocketServer.handleUpgrade(req, socket, head, (ws) => {
+    relaySocketServer.emit('connection', ws, req);
+  });
+});
+server.listen(port, process.env.HOST || '127.0.0.1', () => console.log(`Trato local: http://localhost:${port}`));

@@ -85,3 +85,33 @@ class PlanGraphTests(TestCase):
   for bad in ([{'request_document_id':under,'placement':'stage','stage_position':5}],[{'request_document_id':under,'placement':'new','stage_position':1}],
               [{'request_document_id':snapshot['documents'][-3]['id'],'placement':'new','stage_position':None}],[{'request_document_id':new,'placement':'new','stage_position':None}]*2):
    with self.assertRaises(JobError):build_projection(dict(snapshot,change_request_plan_placements=bad),context)
+
+
+class ClientStepsGraphTests(PlanGraphTests):
+ def test_problem_report_hangs_from_its_addendum_version_or_else_from_the_project(self):
+  context,snapshot=fixture();report,revision,request=[str(uuid4()) for _ in range(3)]
+  root="projects:"+context["project_id"]
+  snapshot["client_problem_reports"]=[{"id":report,"revision_id":revision,"request_document_id":None,"reason":"not_received","status":"open","created_at":"2026-11-09T10:00:00Z","closed_at":None}]
+  graph=build_projection(snapshot,context)
+  self.assertIn(("HAS_PROBLEM_REPORT",root,"client_problem_reports:"+report),{(e["kind"],e["source"],e["target"]) for e in graph["edges"]})
+  proposal=str(uuid4());snapshot["proposal_revisions"]=[{"id":revision,"proposal_id":proposal}]
+  snapshot["change_proposals"]=[{"id":proposal,"request_document_id":snapshot["documents"][0]["id"],"current_revision_id":None}]
+  snapshot["documents"].append({"id":request,"title":"Fix the footer","kind":"email_request"})
+  snapshot["client_problem_reports"][0].update(request_document_id=request,status="resolved",closed_at="2026-11-09T12:00:00Z")
+  graph=build_projection(snapshot,context)
+  edges={(e["kind"],e["source"],e["target"]) for e in graph["edges"]}
+  self.assertIn(("REPORTS_PROBLEM_ON","client_problem_reports:"+report,"proposal_revisions:"+revision),edges)
+  self.assertIn(("BECAME_REQUEST","client_problem_reports:"+report,"documents:"+request),edges)
+  node=next(n for n in graph["nodes"] if n["kind"]=="ProblemReport")
+  self.assertEqual((node["status"],node["reason"]),("resolved","not_received"))
+  self.assertNotIn("notes",node)
+
+ def test_client_stage_decision_hangs_from_its_stage_and_points_at_the_delivery(self):
+  context,snapshot,doc=self.plan()
+  snapshot["project_stage_reviews"]=[{"document_id":doc,"stage_position":1,"decision":"approved","created_at":"2026-11-09T11:00:00Z"}]
+  graph=build_projection(snapshot,context)
+  stage=next(n for n in graph["nodes"] if n["kind"]=="PlanStage")["entity_key"];review="project_stage_reviews:"+doc
+  edges={(e["kind"],e["source"],e["target"]) for e in graph["edges"]}
+  self.assertIn(("CLIENT_STAGE_REVIEW",stage,review),edges)
+  self.assertIn(("REVIEWS_DELIVERY",review,"documents:"+doc),edges)
+  self.assertEqual(next(n for n in graph["nodes"] if n["kind"]=="StageReview")["status"],"approved")

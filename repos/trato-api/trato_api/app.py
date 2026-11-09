@@ -27,7 +27,10 @@ from .file_processing import build_file_processing_router
 from .model_preferences import build_model_preferences_router
 from .rehearsal_routes import build_rehearsal_router
 from .section_help import build_section_help_router
+from .dispute_webhook import build_dispute_webhook_router
+from .payment_webhook import build_payment_webhook_router
 from .disputes import build_dispute_router
+from .problem_reports import build_problem_report_router
 from .graph_routes import build_graph_router
 from .reputation_routes import build_reputation_router
 from .proposals.routes import build_proposal_router
@@ -176,7 +179,10 @@ def create_app(settings=None, services=None, repository_factory=None, *, gmail_s
     app.include_router(build_model_preferences_router(require_user))
     app.include_router(build_rehearsal_router(require_user,rehearsal_service))
     app.include_router(build_section_help_router(require_user))
+    from .invoice_concept import build_invoice_concept_router
+    app.include_router(build_invoice_concept_router(settings, require_user))
     app.include_router(build_dispute_router(settings,require_user,repository_factory,replies=proposal_workflow.gmail_replies))
+    app.include_router(build_problem_report_router(settings,require_user,repository_factory))
     app.include_router(build_graph_router(settings,require_user,repository_factory,graph_reader))
     app.include_router(build_reputation_router(settings,require_user,repository_factory))
     app.include_router(build_proposal_router(settings, require_user, proposal_repository_factory, proposal_workflow))
@@ -185,6 +191,8 @@ def create_app(settings=None, services=None, repository_factory=None, *, gmail_s
     refund_confirmation=RefundConfirmation(settings,gmail_service)
     app.include_router(build_refund_financial_router(settings,require_user,refund_repository_factory,refund_finance,refund_confirmation))
     app.include_router(build_refund_webhook_router(refund_finance,refund_confirmation))
+    app.include_router(build_dispute_webhook_router(settings))
+    app.include_router(build_payment_webhook_router(settings))
 
     @app.exception_handler(ApiError)
     async def error_handler(request, error):

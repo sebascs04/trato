@@ -109,3 +109,20 @@
 .dispute-side-dialog{position:fixed;inset:0 0 0 auto;width:min(520px,100vw);height:100dvh;max-height:none;margin:0;border-radius:0;display:none;grid-template-rows:auto minmax(0,1fr);gap:14px}
 .dispute-side-dialog[open]{display:grid}
 .dispute-side-dialog .dispute-messages{align-content:start;overflow-y:auto;padding-right:4px}
+
+/* Home warning: open PayPal disputes across projects. Compact list, never a long page. */
+.cloud-home>.dispute-attention{grid-column:1/-1;padding:20px 24px;border-left:4px solid var(--purple)}
+.dispute-attention>header{display:flex;align-items:flex-start;gap:14px}
+.cloud-home .dispute-attention h2{font-size:19px}
+.cloud-home .dispute-attention header p{margin:4px 0 0;font-size:14px;line-height:1.6}
+.dispute-attention ul{list-style:none;margin:14px 0 0;padding:0;display:grid}
+.dispute-attention li{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:12px 0;border-top:1px solid var(--line)}
+.dispute-attention li>div{display:grid;gap:3px;min-width:0}
+.dispute-attention li strong{font-size:15px;font-weight:500;overflow-wrap:anywhere}
+.dispute-attention li>div>span:not(.dispute-due){font-size:14px;color:var(--muted)}
+.dispute-attention li .button{flex:none}
+.cloud-home .dispute-attention-more{margin:6px 0 0;font-size:13px}
+.cloud-home>.dispute-attention.is-error{display:flex;align-items:center;gap:12px;border-left-color:#a1322b}
+.dispute-attention.is-error>.ui-icon{width:20px;height:20px;color:#a1322b;flex:none}
+.cloud-home .dispute-attention.is-error p{margin:0;flex:1;color:var(--ink)}
+@media(max-width:640px){.dispute-attention li{flex-direction:column;align-items:stretch}.cloud-home>.dispute-attention.is-error{flex-wrap:wrap}}

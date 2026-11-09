@@ -43,6 +43,8 @@ class PaymentEmail:
     approval_url:str
     agreement:PdfAttachment|None=None
     language:str='es'
+    # A PayPal invoice: PayPal may also email it, and either email pays the same invoice.
+    invoice:bool=False
 
 
 @dataclass(frozen=True)
@@ -192,10 +194,15 @@ def add_branded_html(message, title, project, content):
         mascot, maintype='image', subtype='png', cid=f'<{MASCOT_CONTENT_ID}>', disposition='inline')
 
 
-def payment_email_content(greeting, amount, approval_url, payment_id, *, has_agreement, english=False):
+INVOICE_NOTE_EN = 'PayPal may also email you this same invoice. You can ignore that email or pay from whichever you prefer: it is one invoice and is paid only once.'
+INVOICE_NOTE_ES = 'PayPal también puede enviarte esta misma factura por correo. Puedes ignorar ese correo o pagar desde el que prefieras: es una sola factura y se paga una sola vez.'
+
+
+def payment_email_content(greeting, amount, approval_url, payment_id, *, has_agreement, english=False, invoice=False):
     intro = 'Review your project’s test payment in PayPal Sandbox.' if english else 'Revisa el cobro de prueba de tu proyecto en PayPal Sandbox.'
     amount_label = 'Test amount' if english else 'Importe de prueba'
-    button = 'Review payment in PayPal Sandbox' if english else 'Revisar pago en PayPal Sandbox'
+    button = (('Pay invoice in PayPal Sandbox' if english else 'Pagar factura en PayPal Sandbox') if invoice
+              else ('Review payment in PayPal Sandbox' if english else 'Revisar pago en PayPal Sandbox'))
     mode = 'Test mode.' if english else 'Modo de prueba.'
     sandbox = 'Use a Sandbox account. No real money is transferred.' if english else 'Usa una cuenta Sandbox, sin dinero real.'
     attachment = 'The addendum for this payment is attached.' if english else 'Adjuntamos la adenda correspondiente a este cobro.'
@@ -211,6 +218,7 @@ def payment_email_content(greeting, amount, approval_url, payment_id, *, has_agr
         '</td></tr></table>'
         f'<p><a href="{escape(approval_url, quote=True)}">{button}</a></p>'
         f'<p><strong>{mode}</strong> {sandbox}</p>'
+        + (f'<p>{INVOICE_NOTE_EN if english else INVOICE_NOTE_ES}</p>' if invoice else '')
         + (f'<p>{attachment}</p>' if has_agreement else '')
         + f'<p>{reference}: {escape(payment_id)}</p>'
     )
@@ -226,7 +234,7 @@ def build_payment_email(sender,item:PaymentEmail,notification_id):
     if url.scheme!='https' or url.hostname not in ('www.sandbox.paypal.com','sandbox.paypal.com') or url.username or url.password:raise EmailDeliveryError('INVALID_SANDBOX_PAYMENT_URL')
     if any(c in item.project_name for c in '\r\n'):raise EmailDeliveryError('INVALID_EMAIL_SUBJECT')
     english=item.language=='en'
-    title='Test payment request' if english else 'Cobro de prueba'
+    title=('PayPal invoice' if english else 'Factura PayPal') if item.invoice else ('Test payment request' if english else 'Cobro de prueba')
     hello='Hello' if english else 'Hola'
     message['Subject']=f'{title} · {item.project_name[:120]}'
     greeting=f'{hello}, {item.recipient_name}.' if item.recipient_name else f'{hello}.'
@@ -234,12 +242,14 @@ def build_payment_email(sender,item:PaymentEmail,notification_id):
         text=f'{greeting}\n\nYou have a test payment request for USD {item.amount} for {item.project_name}.\n\nReview and approve the payment in PayPal Sandbox:\n{item.approval_url}\n\nUse a Sandbox account. No real money is transferred. Opening this email does not confirm payment.\nReference: {item.payment_id}\n'
     else:
         text=f'{greeting}\n\nTienes una solicitud de pago de prueba por USD {item.amount} para {item.project_name}.\n\nRevisa y aprueba el pago en PayPal sandbox:\n{item.approval_url}\n\nEs una prueba: usa una cuenta sandbox, sin dinero real. Abrir este correo no confirma el pago.\nReferencia: {item.payment_id}\n'
+    if item.invoice:
+        text+='\n'+(INVOICE_NOTE_EN if english else INVOICE_NOTE_ES)+'\n'
     if item.agreement is not None:
         text+='\nThe addendum for this payment is attached.\n' if english else '\nAdjuntamos la adenda correspondiente a este cobro.\n'
     message.set_content(text)
     add_branded_html(message, title, item.project_name,
                       payment_email_content(greeting, item.amount, item.approval_url, item.payment_id,
-                                            has_agreement=item.agreement is not None, english=english))
+                                            has_agreement=item.agreement is not None, english=english, invoice=item.invoice))
     if item.agreement is not None:
         # The PDF is a server-authorized snapshot.
         attachment=item.agreement

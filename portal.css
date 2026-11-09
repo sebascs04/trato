@@ -65,6 +65,19 @@
 .portal-textarea{width:100%;box-sizing:border-box;margin:12px 0 0;padding:10px 12px;border:1px solid var(--line);border-radius:10px;font:inherit;resize:vertical;min-height:110px}
 .portal-textarea:focus-visible{outline:2px solid var(--purple);outline-offset:1px}
 .portal-state.waiting{background:#fff4e5;color:#8a5a00}
+/* Report a problem: same card as a change request; the reasons are one choice. */
+.portal-problem-tools{display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin-top:10px}
+/* The conversation link takes the card's own tone: red while open or unresolved, green once resolved. */
+.portal-problem .portal-link{display:inline-flex;align-items:center;gap:6px;color:#a1322b}
+.portal-problem.is-resolved .portal-link{color:var(--ok)}
+.portal-problem .portal-problem-tools svg{width:16px;height:16px;color:currentColor}
+.portal-problem .portal-problem-tools .portal-button.secondary{color:#a1322b;border-color:#a1322b40}
+.portal-problem .portal-problem-tools .portal-button.secondary:hover{background:#a1322b0d}
+.portal-problem small{display:block;margin-top:4px;color:var(--muted);font-size:13px}
+.portal-field{display:block;margin:14px 0 6px;font-size:14px;font-weight:600}
+.portal-select{width:100%;min-height:40px;box-sizing:border-box;padding:8px 12px;border:1px solid var(--line);border-radius:10px;background:var(--surface,#fff);color:var(--ink);font:inherit}
+.portal-select:focus-visible{outline:2px solid var(--purple);outline-offset:1px}
+.portal-problem-actions{margin-top:12px}
 .portal-dispute{display:grid;gap:8px;justify-items:start;margin:22px 0 0;padding:16px 18px;border:1px solid var(--line);border-radius:14px}
 .portal-dispute h2{margin:0;font-size:17px}
 .portal-dispute-result{margin:0;padding:12px 14px;border-radius:12px;font-size:14px;font-weight:600;line-height:1.5;color:var(--ink);background:var(--purple-soft,#f2eefc)}

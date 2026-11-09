@@ -376,12 +376,25 @@ export class ConnectedWorkspace {
           catch(error){console.warn('[TeTrato] plan placement failed',{request:saved.document.id,sent:placementBody,status:error.status,code:error.code});placementError=error;}
           if(epoch!==this.epoch || id!==this.projectId) return;
         }
+        // Optional follow-up for whoever opened this form (a client report registered as a request). It never undoes the saved request.
+        if(metadata.kind==='email_request'&&this.afterRequestSaved){const follow=this.afterRequestSaved;this.afterRequestSaved=null;try{await follow(saved.document.id);}catch(error){console.warn('[Trato] request follow-up failed',{code:error.code});}}
         this.uploadCommand=null; this.comparison=null; this.tab=this.planUploadProject===id?'plan':metadata.purpose?.startsWith('refund_')?'devoluciones':metadata.kind==='initial_agreement'?'acuerdo':metadata.kind==='reference'?'documentos':'solicitudes';this.planUploadProject=null; this.modal.close(); await this.loadProject();
         this.message=metadata.kind!=='email_request'?uiText("Archivo guardado."):placementError?uiText('planPlacement.savedWithoutPlace',{reason:placementError.message}):uiText("Pedido guardado."); this.notify();
       }
     });
   }
   json(data) {return {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(data)};}
+  enterSelection() {
+    this.releaseProjectMap();this.historyView='history';
+    this.documents=[]; this.events=[]; this.projectActivity=[]; this.comparison=null; this.loading=false; this.message='';
+    this.location.hash='clientes'; this.notify(); this.run(async()=>{if(this.clientId)await this.loadProjects();await this.loadProject();});
+  }
+  // Opens one section of a project from outside its client's page (the home dispute warning).
+  goToProject(clientId,projectId,tab) {
+    if(this.busy) return;
+    this.clientId=clientId; this.projectId=projectId; this.tab=tab;
+    this.enterSelection();
+  }
   click(event) {
     const target=event.target.closest('[data-cloud-action]');
     if(!target) return;
@@ -434,9 +447,7 @@ export class ConnectedWorkspace {
         const project=this.projects.find(item=>item.id===id); if(!project) return;
         this.clientId=project.client_id; this.projectId=project.id; this.tab='acuerdo';
       }
-      this.releaseProjectMap();this.historyView='history';
-      this.documents=[]; this.events=[]; this.projectActivity=[]; this.comparison=null; this.loading=false; this.message='';
-      this.location.hash='clientes'; this.notify(); this.run(async()=>{if(this.clientId)await this.loadProjects();await this.loadProject();});
+      this.enterSelection();
     }
     if(action==='text') this.run(()=>this.previewDocument(id));
     if(action==='download') this.run(async()=>{
@@ -620,17 +631,38 @@ export class ConnectedWorkspace {
     }).join('') || `<div class="cloud-clients-empty"><h3>${uiText('clients.emptyTitle')}</h3><p>${uiText('clients.emptyCopy')}</p></div>`}</div></section>`;
   }
   renderHome(workspace) {
-    const intro=`<section class="workspace-panel cloud-home-intro"><img src="/assets/mascot/trato-guide.png" alt="" width="120" height="120"><div><h2>${uiText('home.demoTitle')}</h2><p>${uiText('home.demoDescription')}</p><button type="button" class="button" data-demo-open>${uiIcon('play')}${uiText('home.demoAction')}</button></div></section>`;
     const clients=this.clients.slice(0,2).map(item=>`<button type="button" class="cloud-home-client" data-cloud-action="client-open" data-cloud-id="${escape(item.id)}"><span class="cloud-home-avatar" aria-hidden="true">${escape((item.name||item.contact_email||'').slice(0,2).toUpperCase())}</span><span class="cloud-home-client-text"><strong>${escape(item.name)}</strong>${item.contact_email?`<span>${escape(item.contact_email)}</span>`:''}</span>${uiIcon('arrow-right')}</button>`).join('');
     const clientSection=`<section class="workspace-panel cloud-home-clients"><header><h2>${uiText('home.clients')} <span class="cloud-home-count">${new Intl.NumberFormat(uiLocale()).format(this.clients.length)}</span></h2>${this.clients.length?`<button type="button" class="text-button" data-cloud-action="client">${uiIcon('plus')}${uiText('home.newClient')}</button>`:''}</header>${this.clients.length?`<div class="cloud-home-client-list">${clients}</div>${this.clients.length>2?`<button type="button" class="text-button cloud-home-all" data-cloud-action="clients">${uiText('home.allClients')}${uiIcon('arrow-right')}</button>`:''}`:`<div class="cloud-home-empty"><h3>${uiText('home.startTitle')}</h3><p>${uiText('home.noClients')}</p><button type="button" class="button" data-cloud-action="client">${uiText('home.newClient')}${uiIcon('plus')}</button></div>`}</section>`;
-    const tools=[{icon:'star',title:'home.reputationTitle',description:'home.reputationDescription',action:'home.reputationAction',href:'#reputacion',tag:'home.reputationTag'},{icon:'messages-square',title:'home.practiceTitle',description:'home.practiceDescription',action:'home.practiceAction',href:'#ensayos',tag:'home.practiceTag'}];
-    workspace.innerHTML=`<div class="cloud-home without-resume">${intro}${clientSection}<div class="cloud-home-tools">${tools.map(tool=>`<section class="workspace-panel cloud-home-tool"><div class="cloud-home-tool-heading"><span class="cloud-home-tool-icon" aria-hidden="true">${uiIcon(tool.icon)}</span><span class="eyebrow">${uiText(tool.tag)}</span></div><h2>${uiText(tool.title)}</h2><p>${uiText(tool.description)}</p><a href="${tool.href}" class="text-button">${uiText(tool.action)}${uiIcon('arrow-right')}</a></section>`).join('')}</div></div>`;
+    const tools=[{icon:'star',title:'home.reputationTitle',description:'home.reputationDescription',action:'home.reputationAction',href:'#reputacion',tag:'home.reputationTag'},{icon:'messages-square',title:'home.practiceTitle',description:'home.practiceDescription',action:'home.practiceAction',href:'#ensayos',tag:'home.practiceTag'},
+      // The example is a set of sample screens, so it sits with the tools instead of leading the page.
+      {icon:'play',title:'home.demoTitle',description:'home.demoDescription',action:'home.demoAction',tag:'home.demoTag'}];
+    const link=tool=>tool.href?`<a href="${tool.href}" class="text-button">${uiText(tool.action)}${uiIcon('arrow-right')}</a>`:`<button type="button" class="text-button" data-demo-open>${uiText(tool.action)}${uiIcon('arrow-right')}</button>`;
+    workspace.innerHTML=`<div class="cloud-home without-resume">${this.disputeAttentionMarkup?.()||''}${clientSection}<div class="cloud-home-tools">${tools.map(tool=>`<section class="workspace-panel cloud-home-tool"><div class="cloud-home-tool-heading"><span class="cloud-home-tool-icon" aria-hidden="true">${uiIcon(tool.icon)}</span><span class="eyebrow">${uiText(tool.tag)}</span></div><h2>${uiText(tool.title)}</h2><p>${uiText(tool.description)}</p>${link(tool)}</section>`).join('')}</div></div>`;
   }
   async loadClientAgreements() {
     // Every sent addendum addressed to this account's verified email, from any freelancer (checked in the database).
     this.clientNotice='';
     this.clientAgreements=await this.request('/api/v1/portal/account/agreements');
+    // Newest first in every list built from it (projects, changes, disputes and problems).
+    if(Array.isArray(this.clientAgreements))this.clientAgreements.sort((a,b)=>String(b.sent_at||'').localeCompare(String(a.sent_at||'')));
+    void this.loadClientPlans?.();
     void this.loadClientDisputes();
+    void this.loadClientProblems();
+  }
+  async loadClientProblems() {
+    // Reports made in Trato about paid addenda: the lists say so, like they say a dispute is open.
+    const epoch=this.epoch;
+    try{
+      const value=await this.request('/api/v1/portal/account/problems');
+      if(epoch!==this.epoch)return;
+      if(!value||typeof value!=='object'||Array.isArray(value))throw new Error('Invalid problems');
+      this.clientProblems=value;
+    }catch{
+      if(epoch!==this.epoch)return;
+      // Without this answer the row keeps its payment state; the addendum itself shows the report.
+      this.clientProblems=null;
+    }
+    this.notify();
   }
   async loadClientDisputes() {
     // PayPal answers in seconds: the overview is already on screen and updates when this arrives.
@@ -654,7 +686,12 @@ export class ConnectedWorkspace {
     this.notify();
   }
   clientAgreementState(item) {
-    return item.payment_status==='completed'?['paid','clientAccount.state.paid']:item.change_requested&&item.status!=='accepted'?['waiting','clientAccount.state.changesRequested']:item.status==='accepted'?(item.additional_minor>0?['pay','clientAccount.state.toPay']:['done','clientAccount.state.accepted']):['open','clientAccount.state.toReview'];
+    return item.payment_status==='completed'?['paid','clientAccount.state.paid']:item.change_requested&&item.status!=='accepted'?['waiting','clientAccount.state.changesRequested']:item.status==='accepted'?(item.additional_minor>0?['pay',item.payment_method==='invoice'?'clientAccount.state.invoiceToPay':'clientAccount.state.toPay']:['done','clientAccount.state.accepted']):['open','clientAccount.state.toReview'];
+  }
+  // The fix was registered as a new request and paid: only the client's «It's resolved» is missing, so Trato reminds them.
+  clientProblemToClose(item) {
+    const problem=item.payment_status==='completed'?this.clientProblems?.[item.proposal_id]:null;
+    return problem?.status==='open'&&problem.request_paid===true;
   }
   clientAgreementRow(item,{withProject=true}={}) {
     const money=item.additional_minor>0?new Intl.NumberFormat(uiLocale(),{style:'currency',currency:item.currency||'USD'}).format(item.additional_minor/100):uiText('portal.noCharge');
@@ -664,9 +701,16 @@ export class ConnectedWorkspace {
     // A closed dispute stays visible: the client sees it ended and whether the money comes back.
     const closed=this.clientDisputes?.[item.proposal_id]?.status==='RESOLVED'?this.clientDisputes[item.proposal_id]:null;
     const refunded=['RESOLVED_BUYER_FAVOUR','ACCEPTED'].includes(closed?.outcome);
-    const [kind,label]=inDispute?['dispute','clientAccount.state.inDispute']:checking?['waiting','clientAccount.state.checking']:refunded?['paid','clientAccount.state.disputeRefunded']:closed?['paid','clientAccount.state.disputeClosed']:this.clientAgreementState(item);
-    const title=withProject?escape(item.project_name):uiText('portal.eyebrow',{number:escape(item.revision_no)});
-    const meta=withProject?`${uiText('portal.eyebrow',{number:escape(item.revision_no)})} · ${money}`:money;
+    // A dispute in PayPal comes first; otherwise a report in Trato says how the paid addendum stands for the client.
+    const problem=item.payment_status==='completed'?this.clientProblems?.[item.proposal_id]:null;
+    const reported=this.clientProblemToClose(item)?['pay','clientAccount.state.problemToClose']:{open:['dispute','clientAccount.state.problemOpen'],unresolved:['dispute','clientAccount.state.problemUnresolved'],resolved:['paid','clientAccount.state.problemResolved']}[problem?.status];
+    const [kind,label]=inDispute?['dispute','clientAccount.state.inDispute']:checking?['waiting','clientAccount.state.checking']:refunded?['paid','clientAccount.state.disputeRefunded']:closed?['paid','clientAccount.state.disputeClosed']:reported||this.clientAgreementState(item);
+    // Inside a project, several addenda share a version number: the row names what each one changes.
+    const scope=String(item.scope_summary||'').replace(/\s+/g,' ').trim(),about=scope.length>90?scope.slice(0,90).trimEnd()+'…':scope;
+    const title=withProject?escape(item.project_name):about?escape(about):uiText('portal.eyebrow',{number:escape(item.revision_no)});
+    // When it was sent: the lists come newest first, and the date tells same-version addenda apart.
+    const sent=item.sent_at&&Number.isFinite(new Date(item.sent_at).getTime())?` · ${uiText('clientAccount.sentOn',{date:new Intl.DateTimeFormat(uiLocale(),{dateStyle:'medium',timeStyle:'short'}).format(new Date(item.sent_at))})}`:'';
+    const meta=(withProject||about?`${uiText('portal.eyebrow',{number:escape(item.revision_no)})} · ${money}`:money)+escape(sent);
     return `<li><button type="button" class="cloud-client-agreement-row" data-cloud-action="client-agreement" data-cloud-id="${escape(item.proposal_id)}"><span class="cloud-client-agreement-text"><strong>${title}</strong><small>${meta}</small></span><span class="cloud-client-agreement-state ${kind}">${uiText(label)}</span>${uiIcon('arrow-right')}</button></li>`;
   }
   renderClientAccount(workspace) {
@@ -678,7 +722,7 @@ export class ConnectedWorkspace {
     const count=kind=>items.filter(item=>this.clientAgreementState(item)[0]===kind).length;
     const disputed=this.clientDisputes?items.filter(item=>this.clientDisputes[item.proposal_id]&&this.clientDisputes[item.proposal_id].status!=='RESOLVED'):[];
     const tiles=[['open','clientAccount.summary.toReview',count('open')],['pay','clientAccount.summary.toPay',count('pay')],['done','clientAccount.summary.closed',count('paid')+count('done')],['dispute','clientAccount.summary.openDisputes',this.clientDisputes?disputed.length:null]];
-    const pending=items.filter(item=>['open','pay'].includes(this.clientAgreementState(item)[0]));
+    const pending=items.filter(item=>['open','pay'].includes(this.clientAgreementState(item)[0])||this.clientProblemToClose(item));
     const projects=new Set(items.map(item=>item.project_id)).size,freelancers=new Set(items.map(item=>item.freelancer_email)).size;
     workspace.innerHTML=`<div class="cloud-home cloud-client-account-home"><section class="workspace-panel cloud-client-summary" aria-label="${uiText('clientAccount.summaryLabel')}"><div class="cloud-client-tiles">${tiles.map(([kind,label,value])=>`<div class="cloud-client-tile ${kind}"><strong>${value===null?(this.clientDisputesFailed?'—':'…'):new Intl.NumberFormat(uiLocale()).format(value)}</strong><span>${uiText(label)}</span></div>`).join('')}</div><p class="cloud-client-summary-foot">${uiText('clientAccount.summaryFoot',{projects,freelancers})} <a href="#acuerdos" class="text-button">${uiText('clientAccount.seeProjects')}${uiIcon('arrow-right')}</a></p>${this.clientDisputesFailed?`<p class="cloud-error" role="alert">${uiText('clientAccount.disputesError')}</p>`:disputed.length?`<div class="cloud-client-agreements cloud-client-summary-disputes"><h3>${uiText('clientAccount.summary.openDisputes')}</h3><ul>${disputed.map(item=>this.clientAgreementRow(item)).join('')}</ul></div>`:''}</section>
       <section class="workspace-panel cloud-client-agreements"><h3>${uiText('clientAccount.pendingTitle')}</h3>${pending.length?`<ul>${pending.map(item=>this.clientAgreementRow(item)).join('')}</ul>`:`<p class="cloud-client-empty">${uiText('clientAccount.nothingPending')}</p>`}</section></div>`;
@@ -783,6 +827,14 @@ export class ConnectedWorkspace {
       case 'acceptance_recorded':return uiText(event.source==='client_portal'?'history.portalAcceptance':'history.acceptance',{version:event.revision_no});
       case 'client_changes_requested':return uiText('history.portalChanges',{version:event.revision_no});
       case 'payment_requested':return uiText('history.paymentRequested');
+      case 'invoice_sent':return uiText(event.invoice_number?'history.invoiceSent':'history.invoiceSentPlain',{number:event.invoice_number||''});
+      case 'problem_reported':return uiText('history.problemReported',{version:event.revision_no});
+      case 'problem_message':return uiText(event.author==='client'?'history.problemClientMessage':'history.problemYourMessage');
+      case 'problem_request_registered':return uiText('history.problemRequestRegistered',{title:event.new_request_title||''});
+      case 'problem_closed':return uiText(event.status==='resolved'?'history.problemResolved':'history.problemUnresolved');
+      case 'delivery_shared':return uiText('history.deliveryShared',{number:event.stage_position});
+      case 'stage_payment_requested':return uiText(event.invoice?(event.invoice_number?'history.stageInvoiceSent':'history.stageInvoiceSentPlain'):'history.stagePaymentRequested',{number:event.stage_position,invoice:event.invoice_number||''});
+      case 'stage_reviewed':return uiText(event.decision==='approved'?'history.stageApproved':'history.stageChangesRequested',{number:event.stage_position});
       case 'payment_completed':return uiText('history.paid',{amount:new Intl.NumberFormat(uiLocale(),{style:'currency',currency:event.currency}).format(event.amount_minor/100)});
       case 'request_closed':return uiText(event.reason==='rejected'?'history.closedRejected':event.reason==='withdrawn'?'history.closedWithdrawn':'history.closed');
       case 'refund_requested':return uiText('history.refundRequested');
@@ -824,7 +876,7 @@ export class ConnectedWorkspace {
     }catch(error){if(current())body.innerHTML=`<p class="cloud-error" role="alert">${uiText('history.groupError')}</p><button type="button" class="text-button" data-cloud-action="history-group-retry">${uiText('history.retryGroup')}</button>`;}
   }
   renderHistoryGroup(group) {
-    const icons={dispute_opened:'flag',client_message:'mail',freelancer_message:'send',paypal_message:'mail',dispute_status:'shield-check',project_created:'folder-open',initial_source_added:'file-text',plan_confirmed:'layout-dashboard',delivery_evidence_added:'file-check',stage_paid:'credit-card',plan_completed:'circle-check',request_registered:'file-text',adenda_sent:'send',acceptance_recorded:'file-text',client_changes_requested:'messages-square',payment_requested:'mail',payment_completed:'credit-card',request_closed:'x',refund_requested:'undo-2',refund_proposal_sent:'send',refund_feedback_reviewed:'file-text',refund_acceptance_recorded:'file-text',refund_financial_authorized:'credit-card',refund_completed:'credit-card',refund_closed:'check'};
+    const icons={dispute_opened:'flag',client_message:'mail',freelancer_message:'send',paypal_message:'mail',dispute_status:'shield-check',project_created:'folder-open',initial_source_added:'file-text',plan_confirmed:'layout-dashboard',delivery_evidence_added:'file-check',stage_paid:'credit-card',plan_completed:'circle-check',request_registered:'file-text',adenda_sent:'send',acceptance_recorded:'file-text',client_changes_requested:'messages-square',payment_requested:'mail',invoice_sent:'mail',problem_reported:'flag',problem_message:'messages-square',problem_request_registered:'file-text',problem_closed:'check',delivery_shared:'send',stage_reviewed:'circle-check',stage_payment_requested:'mail',payment_completed:'credit-card',request_closed:'x',refund_requested:'undo-2',refund_proposal_sent:'send',refund_feedback_reviewed:'file-text',refund_acceptance_recorded:'file-text',refund_financial_authorized:'credit-card',refund_completed:'credit-card',refund_closed:'check'};
     const dayFormat=new Intl.DateTimeFormat(uiLocale(),{dateStyle:'long',timeZone:'America/Lima'});
     const clockFormat=new Intl.DateTimeFormat(uiLocale(),{timeStyle:'short',timeZone:'America/Lima'});
     const valid=value=>value&&Number.isFinite(Date.parse(value));

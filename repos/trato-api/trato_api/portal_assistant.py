@@ -44,7 +44,8 @@ def job_owner(digest):
 
 
 def can_request_changes(view):
-    return view.get('status') == 'ready_for_review' and bool(view.get('is_current')) and not view.get('accepted_at')
+    # A request already sent stays as it is until the freelancer answers with a new version.
+    return view.get('status') == 'ready_for_review' and bool(view.get('is_current')) and not view.get('accepted_at') and not view.get('change_request')
 
 
 def agreement_context(view):

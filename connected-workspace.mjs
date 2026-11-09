@@ -29,7 +29,20 @@ export class ConnectedWorkspace {
     return this.navigationOwner&&this.session?.key?`${this.session.key}:navigation:${this.navigationOwner}`:null;
   }
   clearNavigation() {
-    try {if(this.navigationKey())this.storage.removeItem(this.navigationKey());}catch {}
+    try {if(this.navigationKey()){this.storage.removeItem(this.navigationKey());this.storage.removeItem(this.navigationKey()+':agreement');}}catch {}
+  }
+  // The addendum a client account has open, so a reload returns to it. Only an agreement this account can still see is reopened.
+  rememberClientAgreement(id) {
+    this.clientProposal=id;
+    try {const key=this.navigationKey();if(key){if(id)this.storage.setItem(key+':agreement',id);else this.storage.removeItem(key+':agreement');}}catch {}
+  }
+  restoreClientAgreement() {
+    try {
+      const key=this.navigationKey(),id=key&&this.storage.getItem(key+':agreement');
+      if(!id)return;
+      if(this.location.hash==='#acuerdos'&&this.clientAgreements?.some(item=>item.proposal_id===id))this.clientProposal=id;
+      else this.storage.removeItem(key+':agreement');
+    } catch {}
   }
   readNavigation() {
     try {
@@ -142,7 +155,7 @@ export class ConnectedWorkspace {
       if(typeof session.user_id!=='string'||!/^[a-zA-Z0-9-]{1,80}$/.test(session.user_id))throw new Error(uiText("No pudimos verificar tu sesión."));
       if(!['freelancer','client'].includes(session.role))throw new Error(uiText("No pudimos verificar tu sesión."));
       this.navigationOwner=session.user_id;this.role=session.role;
-      if(this.role==='client'){await this.loadClientAgreements();if(epoch!==this.epoch)return;}
+      if(this.role==='client'){await this.loadClientAgreements();if(epoch!==this.epoch)return;if(restoreNavigation)this.restoreClientAgreement();}
       const nav=restoreNavigation&&!['#ensayos','#reputacion'].includes(this.location.hash)?this.readNavigation():null;
       if(nav){this.clientId=nav.clientId;this.projectId=nav.projectId;this.tab=['gestion','comparar'].includes(nav.tab)?'solicitudes':nav.tab;this.requestId='';this.historyView=nav.historyView;}
       this.directoryLoading=false;
@@ -178,7 +191,8 @@ export class ConnectedWorkspace {
   async refreshDocumentList() {
     const project=this.projectId,epoch=this.epoch;if(!project)return;
     const documents=await this.request(`/api/v1/projects/${project}/documents`);
-    if(project===this.projectId&&epoch===this.epoch){this.documents=documents;this.notify();}
+    // A document added from a panel may still be processing: keep watching it, as a project load does.
+    if(project===this.projectId&&epoch===this.epoch){this.documents=documents;this.notify();this.scheduleIngestionPolling();}
   }
   async loadProject() {
     this.stopIngestionPolling();
@@ -375,8 +389,8 @@ export class ConnectedWorkspace {
     if(action==='access') {this.openAccount(); return;}
     if(action==='reconnect') {this.run(()=>this.restore()); return;}
     if(!this.active) return;
-    if(action==='client-agreement'){this.clientProposal=id;if(this.location.hash!=='#acuerdos')this.location.hash='acuerdos';else this.notify();return;}
-    if(action==='client-agreement-back'){this.clientProposal='';this.agreementView?.release();this.loadClientAgreements().then(()=>this.notify(),()=>this.notify());return;}
+    if(action==='client-agreement'){this.rememberClientAgreement(id);if(this.location.hash!=='#acuerdos')this.location.hash='acuerdos';else this.notify();return;}
+    if(action==='client-agreement-back'){this.rememberClientAgreement('');this.agreementView?.release();this.loadClientAgreements().then(()=>this.notify(),()=>this.notify());return;}
     if(action==='client') this.show(uiText("Nuevo cliente"),`<form data-cloud-form="client"><label class="field">${uiText("Nombre")}<input name="name" class="context-box" required maxlength="200"></label><label class="field">${uiText("Correo de contacto")}<input name="email" class="context-box" type="email" maxlength="254" required aria-describedby="cloud-client-email-why"></label><details class="cloud-field-why" id="cloud-client-email-why"><summary>${uiIcon('info')}${uiText('client.emailWhy')}</summary><p>${uiText('client.emailWhyDetail')}</p></details><div class="dialog-actions"><button type="submit" class="button">${uiText("Guardar cliente")}</button></div></form>`);
     if(action==='client-delete'){const client=this.clients.find(c=>c.id===id);if(client)this.show(uiText("Eliminar cliente"),`<p>${uiText("Eliminarás a")} <strong>${escape(client.name)}</strong> de tu espacio junto con sus proyectos y documentos.</p><p>${uiText("Conservaremos los registros mediante borrado lógico para permitir su recuperación.")}</p><form data-cloud-form="client-delete" data-client-id="${escape(client.id)}"><div class="dialog-actions"><button class="button cloud-delete-confirm" type="submit">${uiIcon('trash-2')}${uiText("Eliminar cliente")}</button><button class="button secondary" type="button" data-cloud-close>${uiText("Cancelar")}</button></div></form>`);}
     if(action==='project') this.openProject(id);
@@ -626,7 +640,9 @@ export class ConnectedWorkspace {
     this.clientDisputes=null;this.clientDisputesFailed=false;
     try{const saved=JSON.parse(this.storage.getItem(key));if(saved&&typeof saved==='object'&&!Array.isArray(saved))this.clientDisputes=saved;}catch{}
     try{
+      const started=Date.now();
       const value=await this.request('/api/v1/portal/account/disputes');
+      console.info('[Trato] client disputes',{ms:Date.now()-started,disputes:Object.values(value||{}).map(item=>item.status)});
       if(epoch!==this.epoch)return;
       if(!value||typeof value!=='object'||Array.isArray(value))throw new Error('Invalid disputes');
       this.clientDisputes=value;
@@ -645,7 +661,10 @@ export class ConnectedWorkspace {
     const inDispute=this.clientDisputes?.[item.proposal_id]&&this.clientDisputes[item.proposal_id].status!=='RESOLVED';
     // A paid addendum's final state depends on PayPal: nothing definitive is shown until that is known.
     const checking=item.payment_status==='completed'&&!this.clientDisputes&&!this.clientDisputesFailed;
-    const [kind,label]=inDispute?['dispute','clientAccount.state.inDispute']:checking?['waiting','clientAccount.state.checking']:this.clientAgreementState(item);
+    // A closed dispute stays visible: the client sees it ended and whether the money comes back.
+    const closed=this.clientDisputes?.[item.proposal_id]?.status==='RESOLVED'?this.clientDisputes[item.proposal_id]:null;
+    const refunded=['RESOLVED_BUYER_FAVOUR','ACCEPTED'].includes(closed?.outcome);
+    const [kind,label]=inDispute?['dispute','clientAccount.state.inDispute']:checking?['waiting','clientAccount.state.checking']:refunded?['paid','clientAccount.state.disputeRefunded']:closed?['paid','clientAccount.state.disputeClosed']:this.clientAgreementState(item);
     const title=withProject?escape(item.project_name):uiText('portal.eyebrow',{number:escape(item.revision_no)});
     const meta=withProject?`${uiText('portal.eyebrow',{number:escape(item.revision_no)})} · ${money}`:money;
     return `<li><button type="button" class="cloud-client-agreement-row" data-cloud-action="client-agreement" data-cloud-id="${escape(item.proposal_id)}"><span class="cloud-client-agreement-text"><strong>${title}</strong><small>${meta}</small></span><span class="cloud-client-agreement-state ${kind}">${uiText(label)}</span>${uiIcon('arrow-right')}</button></li>`;
@@ -691,7 +710,7 @@ export class ConnectedWorkspace {
     if(!this.active) {
       workspace.innerHTML=`<section class="workspace-panel" aria-label="${uiText("Acceso a tu espacio")}"><h2>${this.state==='loading'?uiText("Recuperando tu espacio…"):this.state==='error'?uiText("Volvamos a conectar"):uiText("Tu espacio empieza aquí")}</h2><p role="status">${escape(this.message || (this.state==='loading'?uiText("Estamos recuperando tus clientes y proyectos."):uiText("Inicia sesión para ver tus clientes y continuar con tus proyectos.")))}</p>${this.state==='loading'?'':`<button class="button" data-cloud-action="${this.state==='error'?'reconnect':'access'}">${this.state==='error'?uiText("Volver a intentar"):uiText("Iniciar sesión o crear cuenta")}</button>`}</section>`; return;
     }
-    if(this.role==='client'){this.stopIngestionPolling();if(this.projectMapPanel)this.releaseProjectMap();if(this.location.hash!=='#acuerdos')this.clientProposal='';
+    if(this.role==='client'){this.stopIngestionPolling();if(this.projectMapPanel)this.releaseProjectMap();if(this.location.hash!=='#acuerdos'&&this.clientProposal)this.rememberClientAgreement('');
       // Clients rehearse too: TeTrato plays their freelancer (practice-workspace.mjs picks the client situations from cloud.role).
       if(this.location.hash==='#ensayos'){this.renderPracticeWorkspace(workspace);return;}
       if(this.clientProposal)this.renderClientAgreement(workspace);else if(this.location.hash==='#acuerdos')this.renderClientProjects(workspace);else this.renderClientAccount(workspace);return;}
@@ -754,9 +773,9 @@ export class ConnectedWorkspace {
       case 'delivery_evidence_added':return uiText('history.deliveryEvidence',{number:event.stage_position});
       case 'dispute_opened':return uiText('history.disputeOpened');
       case 'client_message':return uiText(event.documents?.length?'history.disputeClientMessageDocs':'history.disputeClientMessage',{count:event.documents?.length||0});
-      case 'freelancer_message':return uiText(event.documents?.length?'history.disputeYourMessageDocs':'history.disputeYourMessage',{count:event.documents?.length||0});
+      case 'freelancer_message':return uiText(event.evidence?'history.disputeEvidence':event.accepted?'history.disputeAccepted':event.documents?.length?'history.disputeYourMessageDocs':'history.disputeYourMessage',{count:event.documents?.length||0});
       case 'paypal_message':return uiText('history.disputePaypalMessage');
-      case 'dispute_status':return uiText(event.outcome==='CANCELED_BY_BUYER'?'history.disputeCanceled':event.status==='RESOLVED'?'history.disputeResolved':event.escalated?'history.disputeEscalated':event.stage&&event.stage!=='INQUIRY'?'history.disputeStage':'history.disputeReview');
+      case 'dispute_status':return uiText(event.outcome==='CANCELED_BY_BUYER'?'history.disputeCanceled':event.outcome==='RESOLVED_SELLER_FAVOUR'?'history.disputeWon':event.outcome==='RESOLVED_BUYER_FAVOUR'?'history.disputeLost':event.status==='RESOLVED'?'history.disputeResolved':event.escalated?'history.disputeEscalated':event.stage&&event.stage!=='INQUIRY'?'history.disputeStage':'history.disputeReview');
       case 'stage_paid':return uiText('history.stagePaid',{number:event.stage_position,amount:new Intl.NumberFormat(uiLocale(),{style:'currency',currency:event.currency}).format(event.amount_minor/100)});
       case 'plan_completed':return uiText('history.planCompleted');
       case 'request_registered':return uiText('history.request');
@@ -893,9 +912,9 @@ export class ConnectedWorkspace {
       // A document also shown under a dispute keeps its usual group; the link adds a place, it does not move the file.
       for(const link of doc.dispute_links||[]){
         if(!disputeGroups.has(link.dispute_id))disputeGroups.set(link.dispute_id,{kind:'dispute',id:link.dispute_id,title:uiText('documentLibrary.disputeGroup',{case:link.dispute_id}),created_at:link.created_at,docs:[]});
-        const group=disputeGroups.get(link.dispute_id),documentRole=uiText(`documentLibrary.disputeRole.${link.role==='sent'?'sent':'uploaded'}`),existing=group.docs.find(item=>item.id===doc.id);
+        const group=disputeGroups.get(link.dispute_id),documentRole=uiText(`documentLibrary.disputeRole.${['sent','received'].includes(link.role)?link.role:'uploaded'}`),existing=group.docs.find(item=>item.id===doc.id);
         if(existing){if(!existing.documentRole.includes(documentRole))existing.documentRole+=` / ${documentRole}`;}
-        else group.docs.push({...doc,documentRole,documentOrder:link.role==='sent'?1:2});
+        else group.docs.push({...doc,documentRole,documentOrder:{sent:1,received:2}[link.role]??3});
       }
       if(doc.kind==='email_request')continue;
       if(doc.kind==='initial_agreement'){initial.push(doc);continue;}
@@ -936,6 +955,14 @@ export class ConnectedWorkspace {
       return `<div class="cloud-document-row"><button type="button" class="document-button" data-cloud-action="text" data-cloud-id="${escape(doc.id)}" title="${uiText("Ver")} ${escape(doc.title)}"><span class="cloud-document-file-icon" aria-hidden="true">${uiIcon('file-text')}</span><span class="cloud-document-file"><strong>${escape(doc.title)}</strong><small>${doc.documentRole?escape(doc.documentRole)+' · ':''}${doc.mime_type==='application/pdf'?'PDF':'Word'} · ${escape(date(doc.created_at))}</small>${extraction?.status!=='ready'?`<span class="cloud-document-read-status" data-document-status>${extraction?.status==='error'?uiText("Lectura pendiente"):uiText("Pendiente de lectura")}</span>`:''}</span></button>${this.documentProcessingNotice(doc)}<div class="cloud-document-actions"><button class="cloud-icon-button" data-cloud-action="download" data-cloud-id="${escape(doc.id)}" aria-label="${uiText("Descargar original")} ${escape(doc.title)}" title="${uiText("Descargar original")}">${uiIcon('download')}</button>${extraction?.status!=='ready'?`<button class="cloud-icon-button" data-cloud-action="retry" data-cloud-id="${escape(doc.id)}" aria-label="${uiText("Reintentar lectura de")} ${escape(doc.title)}" title="${uiText("Reintentar lectura")}">${uiIcon('refresh-cw')}</button>`:''}</div></div>`;
     };
     const content=sections.map(({kind,id,title,docs},index)=>`<details class="cloud-document-group" data-document-kind="${kind}" ${id?`data-document-request="${escape(id)}"`:''} ${this.documentLibraryOpenGroups?.project===this.projectId?(this.documentLibraryOpenGroups.groups.has(kind+':'+(id||''))?'open':''):index===0?'open':''}><summary><span class="cloud-document-chevron" aria-hidden="true">${uiIcon('chevron-right')}</span><span>${kind==='request'?uiText('Pedido ·')+' ':''}${escape(title)}</span><span class="cloud-document-count">${docs.length} ${docs.length===1?uiText("archivo"):uiText("archivos")}</span></summary><div class="document-list">${docs.map(row).join('')}</div></details>`).join('');
+    // The list redraws whenever a document changes: what the person opened or closed must survive it.
+    if(panel.dataset&&panel.addEventListener&&!panel.dataset.documentGroupToggle){
+      panel.dataset.documentGroupToggle='1';
+      panel.addEventListener('toggle',event=>{
+        if(!event.target.matches?.('.cloud-document-group'))return;
+        this.documentLibraryOpenGroups={project:this.projectId,groups:new Set([...panel.querySelectorAll('.cloud-document-group[open]')].map(group=>group.dataset.documentKind+':'+(group.dataset.documentRequest||'')))};
+      },true);
+    }
     panel.innerHTML=`<div class="knowledge-layout document-library"><div class="workspace-panel"><div class="library-header"><div><span class="eyebrow">${uiText("BASE DE CONOCIMIENTO")}</span><h3>${uiText("Documentos del proyecto")}</h3></div></div><div class="cloud-library-meta"><span>${this.documents.length} ${this.documents.length===1?uiText("archivo"):uiText("archivos")}</span><span>${uiText('documentLibrary.order')}</span></div><div class="cloud-doc-groups">${content || ("<p class=\"cloud-section-note\">"+uiText("Los archivos que añadas al proyecto aparecerán aquí.")+"</p>")}</div></div></div>`;
   }
 

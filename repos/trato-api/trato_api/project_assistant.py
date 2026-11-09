@@ -19,6 +19,7 @@ from .vector_contract import digest
 from .assistant_memory import AssistantMemory
 from .plan_context import PLAN_TOOL,plan_source
 from .project_status import STATUS_TOOL,status_source
+from .payment_detective import PAYMENTS_TOOL,payments_source
 from .refund_assistant import REFUND_TOOL, RefundFocus, Guidance, context as refund_context, refund_documents, materialize
 
 MEMORY_TOOL={'name':'search_conversation_history','description':'Retrieves matching messages from the current conversation archive.','when_to_use':'Use when an earlier statement or detail is needed beyond the available conversation context.','parameters':{'type':'object','additionalProperties':False,'required':['query'],'properties':{'query':{'type':'string','minLength':1,'maxLength':4096}}}}
@@ -65,7 +66,7 @@ class MemoryAnswer(Strict):
  refund:Guidance|None=None
 class Call(Strict):
  execution_id:UUID
- tool:Literal['catalog','search_document_summaries','read_document_summary','search_document_text','search_conversation_history','read_project_plan','read_project_status','read_refund_status']
+ tool:Literal['catalog','search_document_summaries','read_document_summary','search_document_text','search_conversation_history','read_project_plan','read_project_status','read_paypal_payments','read_refund_status']
  params:dict=Field(default_factory=dict)
 class Query(Strict):
  query:str=Field(min_length=1,max_length=4096)
@@ -136,7 +137,7 @@ class ProjectAssistant:
    if selected is not None:
     if not set(selected).issubset({document['id'] for document in documents}):raise ApiError('DOCUMENT_NOT_FOUND',404)
     documents=[document for document in documents if document['id'] in selected]
-   return {'workflow':'project_assistant','project_id':project['id'],'tools':([] if intake else TOOLS)+([REFUND_TOOL] if refund else [])+([MEMORY_TOOL] if data.get('memory') is not None and (not refund or refund['task']=='guide' and not refund.get('conversation_id')) else [])+([PLAN_TOOL,STATUS_TOOL] if data.get('memory') is not None and not data.get('source_document_ids') and not data.get('case_context') and not refund else []),'documents':documents,
+   return {'workflow':'project_assistant','project_id':project['id'],'tools':([] if intake else TOOLS)+([REFUND_TOOL] if refund else [])+([MEMORY_TOOL] if data.get('memory') is not None and (not refund or refund['task']=='guide' and not refund.get('conversation_id')) else [])+([PLAN_TOOL,STATUS_TOOL,PAYMENTS_TOOL] if data.get('memory') is not None and not data.get('source_document_ids') and not data.get('case_context') and not refund else []),'documents':documents,
     **({'source_scope':{'document_ids':selected,'complete_project':False}} if selected is not None else {}),
     **({'case_context':data['case_context']} if data.get('case_context') else {})}
   if item.tool=='search_conversation_history':
@@ -147,7 +148,7 @@ class ProjectAssistant:
    return {'sources':[],'messages':result['messages'],'project_id':project['id']}
   try:
    if intake and item.tool!='read_refund_status':raise ApiError('AI_TOOL_NOT_ALLOWED',422)
-   if refund and item.tool in ('read_project_plan','read_project_status'):raise ApiError('AI_TOOL_NOT_ALLOWED',422)
+   if refund and item.tool in ('read_project_plan','read_project_status','read_paypal_payments'):raise ApiError('AI_TOOL_NOT_ALLOWED',422)
    if item.tool=='read_refund_status':
     if item.params or not refund:raise ApiError('AI_TOOL_NOT_ALLOWED',422)
     record=data['intake_record'] if intake else self.refund_record(repo,owner,project,refund)[0]
@@ -159,6 +160,9 @@ class ProjectAssistant:
    elif item.tool=='read_project_status':
     if item.params or data.get('memory') is None or data.get('source_document_ids') or data.get('case_context'):raise ApiError('AI_TOOL_NOT_ALLOWED',422)
     rows=[status_source(repo,owner,project)]
+   elif item.tool=='read_paypal_payments':
+    if item.params or data.get('memory') is None or data.get('source_document_ids') or data.get('case_context'):raise ApiError('AI_TOOL_NOT_ALLOWED',422)
+    rows=[payments_source(repo,owner,project)]
    elif item.tool=='read_document_summary':
     params=Document.model_validate(item.params)
     if data.get('source_document_ids') is not None and str(params.document_id) not in data['source_document_ids']:raise ApiError('DOCUMENT_NOT_FOUND',404)
@@ -245,6 +249,10 @@ class ProjectAssistant:
     if not refund or current['source_id']!=record['source_id']:raise ApiError('AI_CONTEXT_INVALID',409)
     canonical.append({k:record[k] for k in ('source_id','file_id','title','source_kind','generation')});continue
    if refund and file_id not in allowed:raise ApiError('AI_INVALID_CITATION',502)
+   if record['source_kind']=='paypal':
+    # What PayPal answered during this execution. It can change at any moment, so it is shown as of that read and never re-compared.
+    if data.get('source_document_ids') or data.get('case_context') or refund or file_id!=project['id']:raise ApiError('AI_CONTEXT_INVALID',409)
+    canonical.append({k:record[k] for k in ('source_id','file_id','title','source_kind','generation')});continue
    if record['source_kind']=='status':
     # Business records can change between the tool call and the answer; cite only the current state.
     # Same server repository as the tool that produced the record, so both read identical business state.
@@ -374,7 +382,7 @@ def build_project_assistant_router(settings,require_user,repository_factory=None
    if set(params)!={'result','summary','summarized_through'} or not isinstance(params['summary'],str) or len(params['summary'].encode())>60000 or type(params['summarized_through']) is not int:raise ApiError('AI_MEMORY_INVALID',422)
    try:outcome=MemoryAnswer.model_validate(params['result']).model_dump(mode='json')
    except ValidationError:raise ApiError('AI_INVALID_RESPONSE',502) from None
-   if outcome['project_id']!=project['id'] or outcome['output_language']!=data['output_language'] or not outcome['answer'].strip() or any(not item.strip() or len(item)>500 for item in outcome['missing_information']) or any(tool not in {t['name'] for t in TOOLS+[MEMORY_TOOL,PLAN_TOOL,STATUS_TOOL]+([REFUND_TOOL] if data.get('refund_focus') else [])} for tool in outcome['tools_used']):raise ApiError('AI_INVALID_RESPONSE',502)
+   if outcome['project_id']!=project['id'] or outcome['output_language']!=data['output_language'] or not outcome['answer'].strip() or any(not item.strip() or len(item)>500 for item in outcome['missing_information']) or any(tool not in {t['name'] for t in TOOLS+[MEMORY_TOOL,PLAN_TOOL,STATUS_TOOL,PAYMENTS_TOOL]+([REFUND_TOOL] if data.get('refund_focus') else [])} for tool in outcome['tools_used']):raise ApiError('AI_INVALID_RESPONSE',502)
    result=await run_in_threadpool(service.validate_result,repo,row['owner'],str(job_id),outcome)
    params={'question':data['question'],'answer':result,'revision':data['memory']['revision'],'summary':params['summary'],'summarized_through':params['summarized_through']}
   elif set(params)-{'checkpoint_id','payload','writes'}:raise ApiError('AI_MEMORY_INVALID',422)

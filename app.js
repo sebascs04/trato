@@ -28,8 +28,12 @@ function setSidebarCollapsed(collapsed){
   const label=uiText(collapsed?'Mostrar barra lateral':'Ocultar barra lateral');
   toggle.setAttribute('aria-label',label);toggle.setAttribute('title',label);
 }
+const SIDEBAR_KEY='trato:sidebar-collapsed';
 document.querySelector('#sidebar-toggle').addEventListener('click',()=>{
-  setSidebarCollapsed(!document.querySelector('#trato-sidebar').hidden);
+  const collapsed=!document.querySelector('#trato-sidebar').hidden;
+  setSidebarCollapsed(collapsed);
+  try{localStorage.setItem(SIDEBAR_KEY,collapsed?'1':'0');}catch{}
 });
+try{if(localStorage.getItem(SIDEBAR_KEY)==='1')setSidebarCollapsed(true);}catch{}
 window.addEventListener('hashchange',renderView);
 cloud.attach(renderView);

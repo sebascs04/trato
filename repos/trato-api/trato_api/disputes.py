@@ -3,7 +3,10 @@
 The backend authorizes the project with the user's session (RLS), takes the captures PayPal already verified
 (project_received_payments) and asks PayPal only about those, through the official PayPal Agent Toolkit. Nothing is sent to PayPal from here."""
 import json
+import logging
 import re
+import time
+from hashlib import sha256
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
 from typing import Literal
@@ -20,8 +23,8 @@ from paypal.agent_toolkit import AgentToolkit
 from paypal.client import PayPalError, PayPalSandboxClient
 from paypal.config import SandboxSettings
 from .ai_jobs import AIJobs, PREFIX
-from .business_routes import read_bytes
-from .dispute_history import record_disputes, record_escalation
+from .business_routes import ingestion, read_bytes
+from .dispute_history import record_accepted_claim, record_disputes, record_escalation, record_evidence
 from .errors import ApiError
 from .model_preferences import ModelPreferences
 from .persistence import Repository, uuid
@@ -35,6 +38,7 @@ MAX_DOCUMENT_BYTES = 10 * 1024 * 1024 - 1  # PayPal: less than 10 MB per file.
 MAX_TOTAL_BYTES = 50 * 1024 * 1024
 MAX_DOCUMENTS = 10
 SENDABLE = {'application/pdf': 'pdf', 'image/jpeg': 'jpg', 'image/png': 'png', 'image/gif': 'gif'}
+CLIENT_ATTACHMENT_TITLE = 'Client attachment · '  # The defense prompt relies on this prefix to tell the client's word from project records.
 
 
 def text(value, limit):
@@ -93,8 +97,13 @@ class DisputeReader:
         client = self.provider()
 
         def read(payment):
+            started = time.monotonic()
             listing = client.list_disputes(payment['capture_id'])
+            listed = time.monotonic()
             values = [summarize(client.get_dispute(item.get('dispute_id')), payment) for item in listing.get('items') or [] if isinstance(item, dict)]
+            # Timing only: no business data or identifiers.
+            logging.getLogger(__name__).warning(json.dumps({'event': 'dispute_paypal_read', 'list_ms': round(1000 * (listed - started)),
+                'get_ms': round(1000 * (time.monotonic() - listed)), 'disputes': len(values)}))
             return [value for value in values if value]
         valid = [p for p in payments if isinstance(p.get('capture_id'), str) and CAPTURE.fullmatch(p['capture_id'])]
         # Each payment is its own PayPal call: in parallel, a project with many payments stays about as fast as one with few.
@@ -294,6 +303,39 @@ def message_document(reader, dispute_id, message_index, document_index):
     return content, content_type
 
 
+def import_client_documents(reader, repo, settings, project_id, disputes, language):
+    """Copies the PDFs the client attached in PayPal into the project, once each, so Documents shows them and TeTrato can read them.
+    The dispute is still shown when this fails; the next check of PayPal tries again."""
+    wanted = [(dispute['dispute_id'], m, d, name, f"{message.get('at')}:{d}") for dispute in disputes
+              for m, message in enumerate(dispute['messages']) if message['by'] == 'BUYER'
+              for d, name in enumerate(message['documents']) if name.lower().endswith('.pdf')]
+    if not wanted:
+        return {'imported': 0, 'saved': True}
+    from .file_processing import remember_options
+    try:
+        known = {(row.get('dispute_id'), row.get('source_key')) for row in repo.rows('project_dispute_documents', {
+            'select': 'dispute_id,source_key', 'project_id': 'eq.' + project_id, 'role': 'eq.received'})}
+    except ApiError:
+        return {'imported': 0, 'saved': False}
+    imported, saved = 0, True
+    for dispute_id, message_index, document_index, name, source_key in [item for item in wanted if (item[0], item[4]) not in known][:MAX_DOCUMENTS]:
+        try:
+            content, content_type = message_document(reader, dispute_id, message_index, document_index)
+            if content_type != 'application/pdf' or not content.startswith(b'%PDF-') or len(content) > MAX_DOCUMENT_BYTES:
+                saved = False
+                continue
+            filename = re.sub(r'[^A-Za-z0-9._-]', '_', name)[-120:]
+            reservation = repo.reserve(project_id, (CLIENT_ATTACHMENT_TITLE + name)[:200], 'reference', filename, 'application/pdf', content,
+                                       'dispute-client-' + sha256(f'{dispute_id}:{source_key}'.encode()).hexdigest()[:40])
+            remember_options(settings, repo, reservation['document'], language, None, {})
+            ingestion(repo, None, reservation, content)
+            repo.rpc('record_dispute_received_document', {'p_project': project_id, 'p_dispute': dispute_id, 'p_document': reservation['document']['id'], 'p_key': source_key})
+            imported += 1
+        except (ApiError, PayPalError):
+            saved = False
+    return {'imported': imported, 'saved': saved}
+
+
 def document_response(content, content_type):
     return Response(content, media_type=content_type, headers={'Cache-Control': 'no-store', 'Referrer-Policy': 'no-referrer',
                                                                'X-Content-Type-Options': 'nosniff', 'Content-Disposition': 'inline'})
@@ -314,7 +356,8 @@ def provide_evidence(reader, repo, project_id, dispute_id, item):
     files = documents_to_send(repo, project_id, item.document_ids)
     client = reader.writer()
     return {**paypal_action(lambda: client.provide_dispute_evidence(dispute_id, item.notes.strip(), files)), 'documents_sent': len(files),
-            'documents_recorded': record_documents(repo, project_id, dispute_id, item.document_ids, 'sent')}
+            'documents_recorded': record_documents(repo, project_id, dispute_id, item.document_ids, 'sent'),
+            'history_saved': record_evidence(repo, project_id, dispute_id, [f[0] for f in files])}
 
 
 def escalate(reader, repo, project_id, dispute_id, item):
@@ -331,7 +374,7 @@ def accept_claim(reader, repo, project_id, dispute_id, item):
         raise ApiError('AI_INVALID_INPUT', 422)
     current_dispute(reader, repo, project_id, dispute_id, 'accept_claim')
     client = reader.writer()
-    return paypal_action(lambda: client.accept_dispute_claim(dispute_id, item.note.strip()))
+    return {**paypal_action(lambda: client.accept_dispute_claim(dispute_id, item.note.strip())), 'history_saved': record_accepted_claim(repo, project_id, dispute_id)}
 
 
 def sandbox_step(reader, repo, project_id, dispute_id, item):
@@ -403,9 +446,13 @@ def client_dispute(reader, capture_id):
     if not isinstance(capture_id, str) or not CAPTURE.fullmatch(capture_id):
         return None
     client = reader.provider()
+    started = time.monotonic()
     found = [summarize(client.get_dispute(item.get('dispute_id')), {'capture_id': capture_id})
              for item in client.list_disputes(capture_id).get('items') or [] if isinstance(item, dict)]
     found = [value for value in found if value]
+    # Timing and state only: no business data or identifiers.
+    logging.getLogger(__name__).warning(json.dumps({'event': 'client_dispute_read', 'paypal_ms': round(1000 * (time.monotonic() - started)),
+        'disputes': len(found), 'statuses': sorted({value['status'] for value in found if value['status']})}))
     if not found:
         return None
     current = next((d for d in found if d['status'] != 'RESOLVED'), found[0])
@@ -426,8 +473,18 @@ def build_dispute_router(settings, require_user, repository_factory=None, reader
     async def project_disputes(project_id: UUID, request: Request, owner=Depends(require_user)):
         def read():
             repo = repository(request)
+            started = time.monotonic()
             data = reader.project_disputes(repo, str(project_id))
-            return {**data, 'history_saved': record_disputes(repo, str(project_id), data['disputes'])}
+            read_done = time.monotonic()
+            language = 'en' if request.headers.get('accept-language', '').lower().startswith('en') else 'es'
+            copied = import_client_documents(reader, repo, settings, str(project_id), data['disputes'], language)
+            copied_done = time.monotonic()
+            saved = record_disputes(repo, str(project_id), data['disputes'])
+            # Timing only: no business data or identifiers.
+            logging.getLogger(__name__).warning(json.dumps({'event': 'dispute_check_timing', 'paypal_ms': round(1000 * (read_done - started)),
+                'copy_documents_ms': round(1000 * (copied_done - read_done)), 'history_ms': round(1000 * (time.monotonic() - copied_done)),
+                'payments': data['payments_checked'], 'disputes': len(data['disputes']), 'documents_copied': copied['imported']}))
+            return {**data, 'history_saved': saved, 'client_documents_imported': copied['imported'], 'client_documents_saved': copied['saved']}
         data = await run_in_threadpool(read)
         return JSONResponse({'data': data}, headers={'Cache-Control': 'no-store'})
 

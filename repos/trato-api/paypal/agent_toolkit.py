@@ -9,7 +9,7 @@ from threading import Lock, Thread
 
 from .client import PayPalError
 
-READ_ONLY_TOOLS = frozenset({'list_disputes', 'get_dispute'})
+READ_ONLY_TOOLS = frozenset({'list_disputes', 'get_dispute', 'get_order_details'})
 TOKEN_SECONDS = 1800  # PayPal tokens last hours; the toolkit asks for a new one on every call, which costs ~1 s each.
 _shared_lock = Lock()
 _shared_api = {}
@@ -75,6 +75,9 @@ class AgentToolkit:
 
     def list_disputes(self, transaction_id):
         return self._run('list_disputes', {'disputed_transaction_id': transaction_id})
+
+    def get_order(self, order_id):
+        return self._run('get_order_details', {'order_id': order_id})
 
     def get_dispute(self, dispute_id):
         return self._run('get_dispute', {'dispute_id': dispute_id})

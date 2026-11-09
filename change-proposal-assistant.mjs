@@ -16,6 +16,11 @@ export function priceFor(rate_minor,hoursInput){const hours=String(hoursInput).t
  const total=(BigInt(rate_minor)*hundredths+50n)/100n;if(total>99999999999n)throw Error('INVALID_AMOUNT');return {additional_minor:Number(total),currency:'USD',rate_minor,confirmed_hours:hours};}
 // What the form shows while the user types rate and hours: the price and the amount written into «Adicional».
 export function livePrice(result,rate,hours){const price=priceFor(rateMinor(rate),hours);return {price,amount:draftFields(result,price).amount};}
+// The date the client asked for in their reply, ready for the freelancer to confirm. Never a past date, which the form rejects.
+export function requestedDeadline(result,mode,today){
+ const value=result?.suggested_deadline;
+ return mode==='revise'&&typeof value==='string'&&/^\d{4}-\d{2}-\d{2}$/.test(value)&&value>=today?value:null;
+}
 export function draftFields(result,price){if(result?.kind!=='change_proposal'||result.status!=='ready'||!Number.isSafeInteger(price?.additional_minor)||price.additional_minor<0||price.currency!=='USD')throw Error('AI_INVALID_RESPONSE');for(const key of ['scope_summary','conditions','description'])if(typeof result[key]!=='string')throw Error('AI_INVALID_RESPONSE');return {scope:result.scope_summary,conditions:result.conditions,description:result.description,amount:(price.additional_minor/100).toFixed(2)};}
 export function installChangeProposalAssistant(cloud){
  if(cloud.openChangeProposalAssistant)return;
@@ -84,7 +89,7 @@ export function installChangeProposalAssistant(cloud){
   else if(s.sourcesLoading||s.reusing||s.pending?.mode==='draft')html=renderAIActivity({label:t('thinking'),compact:true});
   else if(s.sourceError||s.error&&(s.failedMode==='draft'||!result))html=`<p class="cloud-error" role="alert">${s.sourceError?t('documentsError'):projectDocumentError(s.error)||(s.error==='AI_INVALID_CITATION'?uiText('projectAssistant.invalidEvidence'):t('error'))}</p><button type="button" class="button secondary" data-change-auto="retry">${t('retry')}</button>`;
   else if(result?.status==='ready'){
-   if(!s.filled){s.filled=true;for(const [name,key] of [['scope','scope_summary'],['conditions','conditions'],['description','description']])if(typeof result[key]==='string')setField(s,name,result[key],{onlyEmpty:s.formState.mode!=='revise'});}
+   if(!s.filled){s.filled=true;for(const [name,key] of [['scope','scope_summary'],['conditions','conditions'],['description','description']])if(typeof result[key]==='string')setField(s,name,result[key],{onlyEmpty:s.formState.mode!=='revise'});const requested=requestedDeadline(result,s.formState.mode,new Intl.DateTimeFormat('en-CA',{timeZone:'America/Lima'}).format(new Date()));if(requested)setField(s,'deadline',requested);}
    html=`<div class="plan-reasoning change-reasoning"><div class="plan-reasoning-summary"><img src="/assets/mascot/trato-guide.png" alt="" width="84" height="84"><p>${t('readyIntro')}</p></div><button type="button" class="plan-recommendation-open" data-change-auto="detail" aria-haspopup="dialog">${uiIcon('file-text')}<strong>${t('openProposal')}</strong>${uiIcon('arrow-up-right')}</button><p class="change-auto-note">${t('autoFilled')}</p></div>`;
    if(priceHost)priceHost.innerHTML=`<div class="change-auto-price"><label class="field">${t('rate')}<input class="context-box" name="auto_rate" inputmode="decimal" value="${esc(s.rate)}" ${s.pricing?'disabled':''}></label><label class="field">${t('hours')}<input class="context-box" name="auto_hours" inputmode="decimal" value="${esc(s.hours)}" ${s.pricing?'disabled':''}></label>${s.pricing?renderAIActivity({label:t('calculating'),compact:true}):''}</div>${s.error?`<p class="cloud-error" role="alert">${projectDocumentError(s.error)||t('error')}</p>`:''}`;
   }else if(result)html=`<p>${esc(result.reasoning)}</p>${result.missing_information?.length?`<p>${esc(result.missing_information.join(' '))}</p>`:''}`;

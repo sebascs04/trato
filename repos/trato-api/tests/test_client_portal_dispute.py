@@ -77,7 +77,7 @@ class AccountDisputeTests(unittest.TestCase):
     def test_only_paid_agreements_of_this_account_are_checked(self):
         data = self.client(Listing()).get('/api/v1/portal/account/disputes').json()['data']
         self.assertEqual(self.store.links, [('client-1', 'paid-1')])
-        self.assertEqual(data, {'paid-1': {'dispute_id': 'PP-R-VHD-10197086', 'status': 'WAITING_FOR_SELLER_RESPONSE', 'reason': 'MERCHANDISE_OR_SERVICE_NOT_AS_DESCRIBED'}})
+        self.assertEqual(data, {'paid-1': {'dispute_id': 'PP-R-VHD-10197086', 'status': 'WAITING_FOR_SELLER_RESPONSE', 'reason': 'MERCHANDISE_OR_SERVICE_NOT_AS_DESCRIBED', 'outcome': None}})
 
     def test_without_disputes_the_answer_is_empty(self):
         class Empty(PayPal):

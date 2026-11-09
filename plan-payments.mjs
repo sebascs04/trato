@@ -132,7 +132,7 @@ export function installPlanPayments(cloud){
   const step=stagePaymentStep(pay);
   if(step==='paid')return '';
   if(step==='send_email')return `<div class="plan-payment-mail-actions"><span class="plan-payment-status">${t('readyToSend')}</span><button class="button" type="button" data-plan-pay="email">${icon('mail')}${t('reviewEmail')}</button></div>${sandboxCheckout(pay)}`;
-  if(step==='await_payment')return `<div class="plan-payment-pending"><span class="plan-payment-status">${t('awaitingClientPayment')}</span><button class="button secondary" type="button" data-plan-pay="verify">${t('verify')}</button></div>${sandboxCheckout(pay)}`;
+  if(step==='await_payment')return `<div class="plan-payment-pending"><span class="plan-payment-status">${t('awaitingClientPayment')}</span><button class="button secondary" type="button" data-plan-pay="detective">${icon('messages-square')}${uiText('paymentDetective.ask')}</button><button class="button secondary" type="button" data-plan-pay="verify">${t('verify')}</button></div>${sandboxCheckout(pay)}`;
   if(step==='prepare_order')return `<div class="plan-payment-pending"><span class="plan-payment-status">${t('preparingOrder')}</span><button class="button secondary" type="button" data-plan-pay="verify">${t('checkPreparation')}</button></div>`;
   return `<div class="plan-payment-pending"><span class="plan-payment-status">${t(step==='sending_email'?'sendingEmail':'emailUnconfirmed')}</span><button class="text-button" type="button" data-plan-pay="reload">${t('checkEmailStatus')}</button></div>`;
  }
@@ -165,6 +165,7 @@ export function installPlanPayments(cloud){
  });
  doc.addEventListener('click',async event=>{
   const button=event.target.closest('[data-plan-pay]'),state=modalState;if(!button||!state||!valid(state)||state.busy)return;
+  if(button.dataset.planPay==='detective'){cloud.openPaymentDetective?.(button,uiText('paymentDetective.focus'));return;}
   const action=button.dataset.planPay;state.readGeneration++;state.busy=true;state.error='';paint(state);
   try{
    if(action==='remove-evidence'){

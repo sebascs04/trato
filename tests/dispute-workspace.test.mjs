@@ -92,11 +92,44 @@ test('after a reply only the sent message and the way to write another remain; t
  assert.ok(asked.includes('data-defense-action="evidence-send"'));assert.ok(asked.includes('For the reviewer'));assert.ok(!asked.includes('data-defense-action="send"'));
  const submitted=renderDefense(defense,'',{status:'idle',allowed:false,selected:[],previous,fresh:true,actions:[],notice:'evidenceDone'});
  assert.ok(!submitted.includes('data-dispute-draft'),'after the evidence goes out the form closes');
+ const shown=renderDefense(defense,'',{status:'idle',allowed:false,selected:[],previous,fresh:true,actions:['provide_evidence'],notice:'evidenceDone',evidenceNotes:'What I sent to PayPal'});
+ assert.ok(shown.includes('What I sent to PayPal'),'it leads with what was sent');assert.ok(!shown.includes('My reply'),'not with the older message');assert.ok(!shown.includes('data-defense-action="evidence"'),'and cannot be sent again at once');
+ const simulated=renderDefense(defense,'',{status:'idle',allowed:false,selected:[],previous,fresh:true,actions:[],notice:'sandboxDone',evidenceNotes:'What I sent to PayPal'});
+ assert.ok(!simulated.includes('data-dispute-draft'),'a simulated decision does not bring back the draft');assert.ok(simulated.includes('What I sent to PayPal'));assert.ok(simulated.includes('dispute-analysis-more'),'the analysis stays collapsed');
+ const onlySimulated=renderDefense(defense,'',{status:'idle',allowed:false,selected:[],previous,fresh:true,actions:[],notice:'sandboxDone'});
+ assert.ok(!onlySimulated.includes('data-dispute-draft'));
+ const asked_again=renderDefense(defense,'',{status:'idle',allowed:false,selected:[],previous,fresh:true,actions:['provide_evidence'],notice:'sandboxDone',evidenceNotes:'Earlier'});
+ assert.ok(asked_again.includes('data-defense-action="evidence"'),'if PayPal asks again the evidence button returns');
+ const pending=renderDefense(defense,'A draft I edited',{status:'idle',allowed:true,selected:[],actions:['send_message']});
+ assert.match(pending,/data-defense-action="again-confirm" aria-haspopup="dialog"/,'analyzing again asks first because it replaces the draft');assert.doesNotMatch(pending,/data-defense-action="again"/);
+ const sending=renderDefense(defense,'For the reviewer',{status:'sending',allowed:false,selected:[],previous,fresh:true,actions:['provide_evidence','accept_claim']});
+ assert.match(sending,/data-dispute-draft readonly/);assert.match(sending,/data-defense-action="evidence-send" aria-busy="true" disabled/);assert.match(sending,/data-defense-action="accept"[^>]*disabled/);
  assert.ok(asked.includes('data-defense-action="evidence-send"')&&!asked.includes('data-defense-action="accept"'),'accepting appears only when PayPal offers it');
  const refundable=renderDefense(defense,'x',{status:'idle',allowed:true,selected:[],actions:['send_message','accept_claim']});
  assert.ok(refundable.includes('data-defense-action="accept"'));
  const accepted=renderDefense(defense,'',{status:'idle',allowed:false,selected:[],previous,fresh:true,actions:[],notice:'acceptDone'});
+ const stillOffered=renderDefense(defense,'',{status:'idle',allowed:false,selected:[],previous,fresh:true,actions:['accept_claim','escalate'],notice:'acceptDone'});
+ assert.doesNotMatch(stillOffered,/data-defense-action="(accept|escalate)"/,'nothing else can be done once the claim is accepted, even before the list refreshes');
  assert.ok(!accepted.includes('data-dispute-draft'),'accepting closes the draft');
+});
+
+test('while PayPal reviews, the card does not say the client has to write back',async()=>{
+ const {renderDispute}=await import('../dispute-workspace.mjs');
+ const dispute={dispute_id:'PP-R-1',status:'UNDER_REVIEW',stage:'CHARGEBACK',amount:{value:'120.00',currency:'USD'},messages:[{by:'BUYER',text:'x'},{by:'SELLER',text:'y'}],actions:[],payment:{origin:'change',amount_minor:12000,currency:'USD'}};
+ const translated=renderDispute(dispute);
+ assert.ok(translated.includes('data-dispute-defense'));
+ assert.doesNotMatch(translated,/client writes back|cliente vuelva a escribir/);
+ const moment=renderDispute({...dispute,stage:'INQUIRY'});
+ assert.doesNotMatch(moment,/will decide the outcome|decidirá el resultado/,'a moment of review during the inquiry is not PayPal deciding');
+});
+
+test('a closed dispute says who won and what happens to the money',async()=>{
+ const {renderDispute}=await import('../dispute-workspace.mjs');
+ const closed=outcome=>renderDispute({dispute_id:'PP-R-1',status:'RESOLVED',outcome,stage:'CHARGEBACK',amount:{value:'120.00',currency:'USD'},messages:[],actions:[],payment:{origin:'change',amount_minor:12000,currency:'USD'}});
+ assert.match(closed('RESOLVED_SELLER_FAVOUR'),/dispute-result is-good/);assert.match(closed('CANCELED_BY_BUYER'),/dispute-result is-good/);
+ assert.match(closed('RESOLVED_BUYER_FAVOUR'),/dispute-result is-lost/);assert.match(closed('ACCEPTED'),/dispute-result is-lost/);
+ assert.match(closed('SOMETHING_NEW'),/dispute-result is-neutral/,'an unknown result never claims who won');
+ assert.match(closed('RESOLVED_SELLER_FAVOUR'),/120/);
 });
 
 test('the card only offers the conversation, which opens in a side panel',async()=>{

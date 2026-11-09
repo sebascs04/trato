@@ -64,6 +64,9 @@ class DisputeDefenseTests(unittest.TestCase):
         self.assertIn('None of these proves the work was delivered', PROMPT)
         self.assertIn('You may read any document in the project', PROMPT)
         self.assertIn('address response_message to the PayPal reviewer', PROMPT)
+        self.assertIn("treat what it says as the client's word", PROMPT)
+        self.assertIn('an acceptance is not a signature', PROMPT)
+        self.assertIn('does not show that work is happening', PROMPT)
 
     def test_agent_reads_project_documents_and_cites_their_original_passages(self):
         runtime = Runtime()

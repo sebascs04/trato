@@ -7,6 +7,17 @@ import {createPortalAssistant} from './portal-assistant.mjs';
 const t=(key,values)=>uiText(`portal.${key}`,values);
 const escape=value=>String(value??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 
+// When a dispute closes, the client reads first who won and what happens to the money.
+// A request already sent is the freelancer's turn: the client decides again on the new version.
+export const canDecide=(accepted,view)=>!accepted&&!view?.change_request;
+export const refundedByDispute=item=>item?.status==='RESOLVED'&&['RESOLVED_BUYER_FAVOUR','ACCEPTED'].includes(item.outcome);
+export function closedResult(item){
+ if(item.status!=='RESOLVED')return '';
+ const outcome=['RESOLVED_BUYER_FAVOUR','RESOLVED_SELLER_FAVOUR','CANCELED_BY_BUYER','RESOLVED_WITH_PAYOUT','ACCEPTED','DENIED'].includes(item.outcome)?item.outcome:'OTHER';
+ const value=Number(item.amount?.value);
+ const amount=Number.isFinite(value)&&/^[A-Z]{3}$/.test(item.amount?.currency||'')?new Intl.NumberFormat(uiLocale(),{style:'currency',currency:item.amount.currency}).format(value):'';
+ return `<p class="portal-dispute-result" role="status">${t(`dispute.resultNote.${outcome}`,{amount})}</p>`;
+}
 export function mountAgreement(root,{api,linkMode=false,inDisputeHint=false}){
  // The hint comes from the list the client just saw, so the state is right at once; PayPal then confirms it.
  let view=null,pdfUrl='',disputeUrl='',dispute=null,disputeError=false,disputeLoading=false,disputeHint=inDisputeHint,conversationHtml='';
@@ -36,6 +47,8 @@ export function mountAgreement(root,{api,linkMode=false,inDisputeHint=false}){
   // Paid only when PayPal confirms it (the return page captures and verifies the order).
   if(view.payment_status==='completed'){
    if(disputeLoading&&!disputeHint)return `<section class="portal-payment" role="status"><div><strong>${t('dispute.checking')}</strong></div></section>`;
+   // The payment happened, but it did not stay: saying only "paid" would contradict the refund below.
+   if(refundedByDispute(dispute))return `<section class="portal-payment paid">${icon('undo-2')}<div><strong>${t('refundedTitle')}</strong><p>${t('refundedCopy',{amount})}</p></div></section>`;
    const open=dispute?dispute.status!=='RESOLVED':disputeHint;
    return `<section class="portal-payment paid ${open?'in-dispute':''}">${icon(open?'flag':'circle-check')}<div><strong>${t(open?'paidInDisputeTitle':'paidTitle')}</strong><p>${t(open?'paidInDisputeCopy':'paidCopy',{amount})}</p></div></section>`;
   }
@@ -50,11 +63,12 @@ export function mountAgreement(root,{api,linkMode=false,inDisputeHint=false}){
   const item=(m,index)=>`<li class="is-${m.by==='BUYER'?'mine':'theirs'}"><small>${t(`dispute.by.${known(['BUYER','SELLER','ARBITER'],m.by)}`)}${m.at?` · ${escape(when(m.at))}`:''}</small><p>${escape(m.text)}</p>${m.documents?.length?`<button type="button" class="portal-link portal-dispute-docs" data-dispute-docs="${index}">${icon('paperclip')}${t('dispute.documentsAttached',{count:m.documents.length})}</button>`:''}</li>`;
   const messages=dispute.messages||[];
   conversationHtml=`<ol class="portal-dispute-messages">${messages.map((m,i)=>item(m,i)).join('')}</ol>`;
-  return `<section class="portal-dispute"><span class="portal-eyebrow">${t('dispute.eyebrow')}</span><h2>${t(`dispute.reason.${known(['MERCHANDISE_OR_SERVICE_NOT_RECEIVED','MERCHANDISE_OR_SERVICE_NOT_AS_DESCRIBED'],dispute.reason)}`)}</h2><p class="portal-dispute-status">${t(`dispute.status.${known(['WAITING_FOR_BUYER_RESPONSE','WAITING_FOR_SELLER_RESPONSE','UNDER_REVIEW','RESOLVED'],dispute.status)}`)}${dispute.outcome?` · ${t(`dispute.outcome.${known(['RESOLVED_BUYER_FAVOUR','RESOLVED_SELLER_FAVOUR','CANCELED_BY_BUYER','RESOLVED_WITH_PAYOUT','ACCEPTED','DENIED'],dispute.outcome)}`)}`:''} · ${t('dispute.case')} ${escape(dispute.dispute_id)}</p>${messages.length?`<button type="button" class="portal-link portal-dispute-conversation" data-dispute-conversation aria-haspopup="dialog">${icon('messages-square')}${t('dispute.conversation',{count:messages.length})}</button>`:''}${dispute.reply_url?`<a class="portal-button secondary" href="${escape(dispute.reply_url)}" target="_blank" rel="noopener noreferrer">${icon('arrow-up-right')}${t('dispute.reply')}</a><p class="portal-note">${t('dispute.replyNote')}</p>`:''}</section>`;
+  return `<section class="portal-dispute"><span class="portal-eyebrow">${t('dispute.eyebrow')}</span><h2>${t(`dispute.reason.${known(['MERCHANDISE_OR_SERVICE_NOT_RECEIVED','MERCHANDISE_OR_SERVICE_NOT_AS_DESCRIBED'],dispute.reason)}`)}</h2><p class="portal-dispute-status">${t(`dispute.status.${known(['WAITING_FOR_BUYER_RESPONSE','WAITING_FOR_SELLER_RESPONSE','UNDER_REVIEW','RESOLVED'],dispute.status)}`)}${dispute.outcome?` · ${t(`dispute.outcome.${known(['RESOLVED_BUYER_FAVOUR','RESOLVED_SELLER_FAVOUR','CANCELED_BY_BUYER','RESOLVED_WITH_PAYOUT','ACCEPTED','DENIED'],dispute.outcome)}`)}`:''} · ${t('dispute.case')} ${escape(dispute.dispute_id)}</p>${refundedByDispute(dispute)?'':closedResult(dispute)}${messages.length?`<button type="button" class="portal-link portal-dispute-conversation" data-dispute-conversation aria-haspopup="dialog">${icon('messages-square')}${t('dispute.conversation',{count:messages.length})}</button>`:''}${dispute.reply_url?`<a class="portal-button secondary" href="${escape(dispute.reply_url)}" target="_blank" rel="noopener noreferrer">${icon('arrow-up-right')}${t('dispute.reply')}</a><p class="portal-note">${t('dispute.replyNote')}</p>`:''}</section>`;
  }
  async function loadDispute(){
   if(view?.payment_status!=='completed')return;
-  try{dispute=await api('dispute',{});disputeError=false;}catch{dispute=null;disputeError=true;}
+  const started=Date.now();
+  try{dispute=await api('dispute',{});disputeError=false;console.info('[Trato] addendum dispute',{ms:Date.now()-started,status:dispute?.status??null,outcome:dispute?.outcome??null});}catch(error){dispute=null;disputeError=true;console.info('[Trato] addendum dispute failed',{ms:Date.now()-started,code:error?.code??null});}
   disputeLoading=false;disputeHint=false;render();
  }
  function render(){
@@ -62,14 +76,14 @@ export function mountAgreement(root,{api,linkMode=false,inDisputeHint=false}){
   if(superseded&&!accepted)return message('superseded');
   const amount=view.additional_minor>0?money(view.additional_minor):t('noCharge');
   const state=accepted?`<p class="portal-state accepted">${icon('circle-check')}<span>${t('acceptedOn',{date:day(view.accepted_at)})}</span></p>`:view.change_request?`<p class="portal-state waiting">${icon('history')}<span>${t('changesWaiting')}</span></p>`:`<p class="portal-state">${icon('info')}<span>${t('pending')}</span></p>`;
-  card.innerHTML=`<span class="portal-eyebrow">${t('eyebrow',{number:view.revision_no})}</span><h1>${escape(view.project_name)}</h1><p class="portal-for">${t('forClient',{name:escape(view.client_name)})}</p>${state}
+  card.innerHTML=`<div class="portal-card-head"><div class="portal-card-title"><span class="portal-eyebrow">${t('eyebrow',{number:view.revision_no})}</span><h1>${escape(view.project_name)}</h1><p class="portal-for">${t('forClient',{name:escape(view.client_name)})}</p></div><div class="portal-card-tools" role="group" aria-label="${t('actions.learn')}"><button type="button" class="portal-button secondary" data-open-pdf>${icon('file-text')}${t('viewPdf')}</button><button type="button" class="portal-button secondary" data-ask-assistant aria-haspopup="dialog">${icon('sparkles')}${t('assistant.open')}</button></div></div>${state}
   <dl class="portal-facts"><div><dt>${t('amount')}</dt><dd>${amount}</dd></div><div><dt>${t('deadline')}</dt><dd>${day(view.deadline)}</dd></div><div><dt>${t('version')}</dt><dd>v${escape(view.revision_no)}</dd></div></dl>
   <section class="portal-scope"><h2>${t('scope')}</h2><p class="portal-scope-text" data-scope>${escape(view.scope_summary)}</p><button type="button" class="portal-link" data-scope-more hidden>${t('showMore')}</button>${view.conditions?`<button type="button" class="portal-link" data-open-conditions aria-haspopup="dialog">${t('viewConditions')}</button>`:''}</section>
   ${accepted&&view.payment_required?payment(amount):''}
   ${disputeMarkup()}
   ${!accepted&&view.change_request?`<section class="portal-request">${icon('messages-square')}<div><strong>${t('changesSent',{date:day(view.change_request.requested_at)})}</strong><p>${escape(view.change_request.notes)}</p><small>${t('changesNext')}</small></div></section>`:''}
-  <div class="portal-actions"><div class="portal-actions-group" aria-label="${t('actions.learn')}"><button type="button" class="portal-button secondary" data-open-pdf>${icon('file-text')}${t('viewPdf')}</button><button type="button" class="portal-button secondary" data-ask-assistant aria-haspopup="dialog">${icon('sparkles')}${t('assistant.open')}</button></div>${accepted?'':`<div class="portal-actions-group portal-actions-decide" aria-label="${t('actions.decide')}"><button type="button" class="portal-button secondary" data-request-changes>${icon('pencil')}${t(view.change_request?'changesEdit':'changesAction')}</button><button type="button" class="portal-button" data-accept>${icon('check')}${t('accept')}</button></div>`}</div>
-  ${accepted?(view.payment_required?'':`<p class="portal-next">${t('acceptedNoPayment')}</p>`):`<p class="portal-note">${t('acceptNote')}</p>`}
+  ${!canDecide(accepted,view)?'':`<div class="portal-actions" role="group" aria-label="${t('actions.decide')}"><button type="button" class="portal-button secondary" data-request-changes>${icon('pencil')}${t('changesAction')}</button><button type="button" class="portal-button" data-accept>${icon('check')}${t('accept')}</button></div>`}
+  ${accepted?(view.payment_required?'':`<p class="portal-next">${t('acceptedNoPayment')}</p>`):canDecide(accepted,view)?`<p class="portal-note">${t('acceptNote')}</p>`:''}
   ${linkMode?`<p class="portal-save"><span aria-hidden="true">${icon('user-round')}</span><span>${t('accountHint')}</span></p>`:''}`;
   const scope=card.querySelector('[data-scope]'),more=card.querySelector('[data-scope-more]');
   if(scope.scrollHeight>scope.clientHeight+4){more.hidden=false;more.onclick=()=>{scope.classList.toggle('open');more.textContent=t(scope.classList.contains('open')?'showLess':'showMore');};}
@@ -85,7 +99,7 @@ export function mountAgreement(root,{api,linkMode=false,inDisputeHint=false}){
    q('[data-conversation]').showModal();
   };
   card.querySelector('[data-pay]')?.addEventListener('click',pay);
-  card.querySelector('[data-request-changes]')?.addEventListener('click',()=>{q('[data-changes-notes]').value=view.change_request?.notes||'';q('[data-changes-error]').textContent='';q('[data-changes]').showModal();});
+  card.querySelector('[data-request-changes]')?.addEventListener('click',()=>{assistant.changesDismissed();q('[data-changes-notes]').value=view.change_request?.notes||'';q('[data-changes-error]').textContent='';q('[data-changes]').showModal();});
   card.querySelector('[data-accept]')?.addEventListener('click',()=>{q('[data-confirm-copy]').textContent=t('confirmCopy',{number:view.revision_no,amount});q('[data-confirm-error]').textContent='';q('[data-confirm]').showModal();});
  }
  async function pay(){
@@ -131,9 +145,9 @@ export function mountAgreement(root,{api,linkMode=false,inDisputeHint=false}){
   q('[data-changes-error]').textContent='';
   if(!notes){q('[data-changes-error]').textContent=t('changesRequired');return;}
   button.disabled=true;
-  try{view=await api('request-changes',{notes});q('[data-changes]').close();render();}
+  try{view=await api('request-changes',{notes});assistant.changesSent();q('[data-changes]').close();render();}
   catch(error){
-   if(['PROPOSAL_REVISION_CONFLICT','PROPOSAL_ALREADY_ACCEPTED'].includes(error.code||error.message)){q('[data-changes]').close();return load();}
+   if(['PROPOSAL_REVISION_CONFLICT','PROPOSAL_ALREADY_ACCEPTED','CHANGE_REQUEST_PENDING'].includes(error.code||error.message)){q('[data-changes]').close();return load();}
    q('[data-changes-error]').textContent=t(error.status===404?'expiredCopy':'changesError');
   }finally{button.disabled=false;}
  });
@@ -141,7 +155,7 @@ export function mountAgreement(root,{api,linkMode=false,inDisputeHint=false}){
   const button=q('[data-confirm-accept]');button.disabled=true;q('[data-confirm-error]').textContent='';
   try{view=await api('accept',{revision_id:view.revision_id,addendum_sha256:view.addendum_sha256});q('[data-confirm]').close();render();}
   catch(error){
-   if(['PROPOSAL_REVISION_CONFLICT','ADDENDUM_CHANGED'].includes(error.code||error.message)){q('[data-confirm]').close();return load();}
+   if(['PROPOSAL_REVISION_CONFLICT','ADDENDUM_CHANGED','CHANGE_REQUEST_PENDING'].includes(error.code||error.message)){q('[data-confirm]').close();return load();}
    q('[data-confirm-error]').textContent=t(error.status===404?'expiredCopy':'acceptError');
   }finally{button.disabled=false;}
  });

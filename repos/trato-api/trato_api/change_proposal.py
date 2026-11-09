@@ -1,4 +1,5 @@
 """Read-only drafting assistance; human-reviewed terms use existing business commands."""
+from datetime import date
 from decimal import Decimal, ROUND_HALF_UP
 from typing import Literal
 from uuid import UUID, uuid5, NAMESPACE_URL
@@ -20,9 +21,11 @@ class Draft(Strict):
     conditions: str = Field(max_length=12000)
     description: str = Field(max_length=1000)
     estimated_hours: str | None = Field(pattern=r'^\d{1,5}(\.\d{1,2})?$', default=None)
-    suggested_deadline: None = None
+    # Only the date the client explicitly asked for in a reply; the freelancer confirms it in the form.
+    suggested_deadline: str | None = Field(pattern=r'^\d{4}-\d{2}-\d{2}$', default=None)
     @model_validator(mode='after')
     def hours(self):
+        if self.suggested_deadline is not None: date.fromisoformat(self.suggested_deadline)
         if self.estimated_hours is not None and not Decimal('0') < Decimal(self.estimated_hours) <= Decimal('10000'):
             raise ValueError('Invalid effort')
         return self
@@ -146,7 +149,7 @@ class ChangeProposalService:
             raise ApiError('AI_INVALID_CITATION',502)
         job['result']={'kind':'change_proposal','project_id':data['project_id'],'request_document_id':bound['request_document_id'],
             'proposal_id':bound['proposal_id'],'revision_id':bound['revision_id'],'status':'ready' if ready else 'insufficient_evidence',
-            **draft.model_dump(),'citations':result['citations'],'sources':result['sources'],
+            **draft.model_dump(),'suggested_deadline':draft.suggested_deadline if bound.get('feedback_document_id') or bound.get('feedback_portal_request_id') else None,'citations':result['citations'],'sources':result['sources'],
             **({'feedback_notes':revision_feedback_notes(bound,result['answer'])} if bound.get('feedback_document_id') or bound.get('feedback_portal_request_id') else {}),
             'missing_information':result['missing_information'],'reasoning':result['answer'],
             **({'source_scope':result['source_scope']} if 'source_scope' in result else {})}

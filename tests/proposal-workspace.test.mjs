@@ -118,3 +118,12 @@ test('Gmail PDF preview reads the attachment without importing it into the proje
  assert.match(frame.src,/^blob:/);
  URL.revokeObjectURL(cloud.previewUrl);
 });
+
+test('the freelancer sees that PayPal confirmed the payment, only once it did',async()=>{
+ const {paidBadge,paymentRecord}=await import('../proposal-workspace.mjs');
+ assert.match(paidBadge({status:'completed',amount_minor:100,currency:'USD'}),/proposal-paid-badge[\s\S]*1\.00/);
+ for(const payment of [{status:'pending_approval',amount_minor:100},null])assert.equal(paidBadge(payment),'');
+ const paid=paymentRecord({status:'completed',amount_minor:100,currency:'USD',updated_at:'2026-11-09T05:25:00Z'},value=>value);
+ assert.match(paid,/1\.00/);assert.match(paid,/2026-11-09T05:25:00Z/);
+ for(const payment of [{status:'pending_approval',amount_minor:100,currency:'USD'},null,undefined])assert.equal(paymentRecord(payment,value=>value),'');
+});

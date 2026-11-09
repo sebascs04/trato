@@ -24,6 +24,10 @@
 .dispute-messages p{margin:4px 0 0;font-size:14px;line-height:1.7;white-space:pre-wrap;overflow-wrap:anywhere}
 .dispute-muted{margin:0;color:var(--muted);font-size:14px}
 .dispute-next{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;padding:12px 14px;border-radius:12px;background:var(--purple-soft)}
+.dispute-result{display:flex;align-items:flex-start;gap:10px;margin:0;padding:12px 14px;border-radius:12px;font-size:14px;font-weight:600;line-height:1.5;color:var(--ink);background:var(--purple-soft)}
+.dispute-result svg{flex:none;width:18px;height:18px;margin-top:2px}
+.dispute-result.is-good{color:#22633c;background:#e8f5ed}
+.dispute-result.is-lost{color:#8a4b12;background:#fbf1e4}
 .dispute-next p{flex:1 1 260px;margin:0;font-size:14px;line-height:1.6;color:var(--ink)}
 .dispute-next .button{display:inline-flex;align-items:center;gap:8px}
 .dispute-empty{display:flex;align-items:flex-start;gap:14px}
@@ -52,6 +56,10 @@
 .dispute-previous{display:grid;gap:6px;width:100%;box-sizing:border-box;padding:12px 14px;border-radius:12px;background:var(--purple-soft);font-size:14px}
 .dispute-previous blockquote{margin:0;color:var(--muted);font-size:13px;line-height:1.6;white-space:pre-wrap;overflow-wrap:anywhere}
 .dispute-send-row{display:flex;flex-wrap:wrap;align-items:center;gap:8px}
+.dispute-draft-head{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:8px}
+.dispute-draft-head .field{margin:0}
+.dispute-draft-head .text-button{display:inline-flex;align-items:center;gap:6px;min-height:32px;font-size:13px}
+.dispute-draft-head .text-button svg{width:14px;height:14px}
 .dispute-docs-dialog{width:min(560px,calc(100vw - 32px));max-height:calc(100dvh - 64px);padding:24px;box-sizing:border-box;border:1px solid var(--line);border-radius:18px;background:var(--surface,#fff);color:var(--ink);font:inherit;box-shadow:0 24px 90px #30234235}
 .dispute-docs-dialog::backdrop{background:#30234266}
 .dispute-docs-dialog>header{display:flex;align-items:center;justify-content:space-between;gap:16px}

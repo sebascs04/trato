@@ -48,6 +48,16 @@ class StagePaymentInput(BaseModel):
         if value is not True:raise ValueError('Explicit review required')
         return value
 
+class InvoiceInput(BaseModel):
+    model_config=ConfigDict(extra='forbid')
+    concept:str=Field(min_length=1,max_length=200)
+    confirmed:bool=Field(strict=True)
+    @field_validator('confirmed')
+    @classmethod
+    def reviewed(cls,value):
+        if value is not True:raise ValueError('Explicit send required')
+        return value
+
 def build_initial_payment_router(settings,require_user,*,workflow=None,repository_factory=None,gmail=None):
     router=APIRouter(prefix='/api/v1');service=workflow or InitialPayments(settings,gmail)
     def repo(request:Request,user=Depends(require_user)):
@@ -108,6 +118,56 @@ def build_initial_payment_router(settings,require_user,*,workflow=None,repositor
     @router.post('/projects/{project_id}/stages/{position}/checkout/reconcile')
     def stage_reconcile(project_id:str,position:int,repository=Depends(repo),owner=Depends(require_user)):
         return reply(stage_service(position).reconcile(repository,owner,uuid(project_id)))
+    def latest_delivery(repository,project,position):
+        rows=repository.rows('document_upload_contexts',{'select':'document_id','project_id':'eq.'+project,
+            'stage_position':'eq.'+str(position),'purpose':'eq.delivery_evidence','order':'created_at.desc','limit':20})
+        if not rows:return None
+        live={d['id'] for d in repository.rows('documents',{'select':'id','id':'in.('+','.join(r['document_id'] for r in rows)+')','deleted_at':'is.null'})}
+        return next((r['document_id'] for r in rows if r['document_id'] in live),None)
+    @router.get('/projects/{project_id}/stage-client-status')
+    def stage_client_status(project_id:str,repository=Depends(repo),owner=Depends(require_user)):
+        # Per deliverable: the last delivery sent to the client and their answer to it, for the plan list.
+        project=uuid(project_id);repository.project(project)
+        shares=repository.rows('project_stage_delivery_shares',{'select':'document_id,stage_position,shared_at','project_id':'eq.'+project,'order':'shared_at.desc'})
+        reviews={r['document_id']:r for r in repository.rows('project_stage_reviews',{'select':'document_id,decision,created_at','project_id':'eq.'+project})}
+        result={}
+        for share in shares:
+            key=str(share['stage_position'])
+            if key in result:continue
+            review=reviews.get(share['document_id'])
+            result[key]={'shared_at':share['shared_at'],'decision':review['decision'] if review else None}
+        return reply(result)
+    @router.get('/projects/{project_id}/stages/{position}/client-delivery')
+    def stage_client_delivery(project_id:str,position:int,repository=Depends(repo),owner=Depends(require_user)):
+        # Whether the latest uploaded delivery was sent to the client for review, and when.
+        if not 1<=position<=8:raise ApiError('PLAN_STAGE_INVALID',422)
+        project=uuid(project_id);repository.project(project)
+        document=latest_delivery(repository,project,position)
+        if not document:return reply(None)
+        shared=repository.rows('project_stage_delivery_shares',{'select':'shared_at','document_id':'eq.'+document})
+        return reply({'document_id':document,'shared_at':shared[0]['shared_at'] if shared else None})
+    @router.post('/projects/{project_id}/stages/{position}/client-delivery')
+    def stage_send_delivery(project_id:str,position:int,repository=Depends(repo),owner=Depends(require_user)):
+        # Sending is explicit: the client sees the delivery only after the freelancer sends it.
+        if not 1<=position<=8:raise ApiError('PLAN_STAGE_INVALID',422)
+        project=uuid(project_id);repository.project(project)
+        from ..proposals.workflow import BackendStore
+        value=BackendStore(settings).repo.rpc('stage_delivery_share',{'p_owner':owner,'p_project':project,'p_position':position})
+        return reply({'document_id':value['document_id'],'shared_at':value['shared_at']})
+    @router.get('/projects/{project_id}/stages/{position}/client-review')
+    def stage_client_review(project_id:str,position:int,repository=Depends(repo),owner=Depends(require_user)):
+        # The client's latest answer to this deliverable's delivery (approved or changes requested), read under the owner's session.
+        if not 1<=position<=8:raise ApiError('PLAN_STAGE_INVALID',422)
+        repository.project(uuid(project_id))
+        rows=repository.rows('project_stage_reviews',{'select':'document_id,decision,notes,created_at','project_id':'eq.'+uuid(project_id),
+            'stage_position':'eq.'+str(position),'order':'created_at.desc','limit':1})
+        return reply(rows[0] if rows else None)
+    @router.post('/projects/{project_id}/stages/{position}/checkout/invoice')
+    async def stage_invoice(project_id:str,position:int,request:Request,repository=Depends(repo),owner=Depends(require_user)):
+        # TeTrato issues the deliverable's PayPal invoice only after the freelancer confirms it.
+        data=await read(request,InvoiceInput);service=stage_service(position)
+        await run_in_threadpool(service.invoices().send,repository,owner,uuid(project_id),data['concept'])
+        return reply(service.get(repository,owner,uuid(project_id)))
     @router.get('/projects/{project_id}/stages/{position}/checkout/email-preview')
     def stage_preview(project_id:str,position:int,repository=Depends(repo),owner=Depends(require_user)):
         return reply(stage_service(position).preview(repository,owner,uuid(project_id))[2])

@@ -89,6 +89,16 @@ class Send(Input):
         if value is not True:raise ValueError('Explicit send is required')
         return value
 
+class SendInvoice(Input):
+    concept:Annotated[str,StringConstraints(strip_whitespace=True,min_length=1,max_length=200)]
+    confirmed:bool=Field(strict=True)
+
+    @field_validator('confirmed')
+    @classmethod
+    def explicit_send(cls,value):
+        if value is not True:raise ValueError('Explicit send is required')
+        return value
+
 class Accept(Review):
     review_notes:Annotated[str,StringConstraints(strip_whitespace=True,min_length=1,max_length=4000)]
 
@@ -222,6 +232,13 @@ def build_proposal_router(settings,require_user,repository_factory=None,workflow
         @router.post('/proposals/{proposal_id}/revisions/{revision_id}/payment')
         def payment(proposal_id:str,revision_id:str,repo=Depends(repository),user=Depends(require_user)):
             return reply(workflow.public_payment(workflow.prepare_payment(repo,user,uuid(proposal_id),uuid(revision_id))))
+        @router.post('/proposals/{proposal_id}/revisions/{revision_id}/invoice')
+        async def invoice(proposal_id:str,revision_id:str,request:Request,repo=Depends(repository),user=Depends(require_user)):
+            # TeTrato issues the PayPal invoice only after the freelancer confirms it in Trato.
+            from ..business_routes import read_model
+            value=await read_model(request,SendInvoice)
+            result=await run_in_threadpool(workflow.invoices().send,repo,user,uuid(proposal_id),uuid(revision_id),value.concept)
+            return reply(workflow.public_payment(result))
         @router.post('/proposals/{proposal_id}/revisions/{revision_id}/reconcile')
         def reconcile(proposal_id:str,revision_id:str,repo=Depends(repository)):
             snapshot=repo.get_revision(uuid(proposal_id),uuid(revision_id),collections=())

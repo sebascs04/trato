@@ -316,7 +316,10 @@ class Repository:
             'acceptances':('proposal_acceptances',{'select':'id,proposal_id,revision_id,method,created_at'}),
             'portal_requests':('client_portal_change_requests',{'select':'id,proposal_id,revision_id,created_at'}),
             'payments':('proposal_payments',{'select':'id,proposal_id,revision_id,amount_minor,currency,updated_at','status':'eq.completed'}),
-            'closures':('request_closures',{'select':'request_document_id,reason,closed_at','order':'request_document_id.asc'})}
+            'closures':('request_closures',{'select':'request_document_id,reason,closed_at','order':'request_document_id.asc'}),
+            # The client's problem reports on an addendum, and which addenda are charged with a PayPal invoice.
+            'problems':('client_problem_reports',{'select':'id,proposal_id,revision_id,reason,status,created_at,closed_at,request_document_id'}),
+            'invoices':('proposal_payments',{'select':'revision_id,invoice_number','method':'eq.invoice'})}
         from .refunds.activity import QUERIES,milestones
         queries.update(QUERIES)
         def all_rows(table,params):
@@ -347,11 +350,14 @@ class Repository:
             if proposal is None or revision is None:raise ApiError('ACTIVITY_CONTEXT_MISSING',502)
             return proposal['request_document_id'],revision['revision_no']
         for row in data['requests']:add('request-'+row['id'],'request_registered','Pedido registrado',row['created_at'],row['id'])
+        invoiced={row['revision_id']:row for row in data['invoices']}
         for row in data['deliveries']:
             request_id,version=context(row)
-            kind='adenda_sent' if row['kind']=='adenda' else 'payment_requested'
-            title=f'Adenda v{version} enviada' if row['kind']=='adenda' else 'Solicitud de pago enviada'
-            add('email-'+row['id'],kind,title,row['updated_at'],request_id,revision_no=version)
+            invoice=invoiced.get(row['revision_id']) if row['kind']!='adenda' else None
+            # The payment email of an invoice-charged addendum carries the PayPal invoice: same event, named for what it sends.
+            kind='adenda_sent' if row['kind']=='adenda' else 'invoice_sent' if invoice else 'payment_requested'
+            title=f'Adenda v{version} enviada' if row['kind']=='adenda' else 'Factura PayPal enviada' if invoice else 'Solicitud de pago enviada'
+            add('email-'+row['id'],kind,title,row['updated_at'],request_id,revision_no=version,**({'invoice_number':invoice.get('invoice_number')} if invoice else {}))
         for row in data['acceptances']:
             request_id,version=context(row)
             portal=row.get('method')=='client_portal'
@@ -364,6 +370,27 @@ class Repository:
             add('payment-'+row['id'],'payment_completed',f'Pago confirmado · {row["currency"]} {minor//100}.{minor%100:02d}',row['updated_at'],request_id,revision_no=version,amount_minor=minor,currency=row['currency'])
         for row in data['closures']:
             add('closure-'+row['request_document_id'],'request_closed','Pedido cerrado · '+('Rechazado' if row['reason']=='rejected' else 'Retirado'),row['closed_at'],row['request_document_id'],reason=row['reason'])
+        # A problem the client reported in Trato before going to PayPal: the report, each reply and how it was closed.
+        reports={row['id']:row for row in data['problems']}
+        for row in reports.values():
+            request_id,version=context(row)
+            add('problem-'+row['id'],'problem_reported',f'Problema reportado por el cliente · v{version}',row['created_at'],request_id,revision_no=version,reason=row['reason'],source='client_portal')
+            if row.get('closed_at'):
+                add('problem-closed-'+row['id'],'problem_closed','Problema cerrado',row['closed_at'],request_id,revision_no=version,status=row['status'])
+        # The freelancer registered the report as a new change request: that request has its own group; this marks when.
+        linked=sorted({row['request_document_id'] for row in reports.values() if row.get('request_document_id')})
+        if linked:
+            created={doc['id']:doc for doc in self.rows('documents',{'select':'id,title,created_at','kind':'eq.email_request','deleted_at':'is.null','id':'in.('+','.join(linked)+')',**common})}
+            for row in reports.values():
+                doc=created.get(row.get('request_document_id'))
+                if doc:
+                    request_id,version=context(row)
+                    add('problem-request-'+row['id'],'problem_request_registered','Registrado como pedido nuevo',doc['created_at'],request_id,revision_no=version,new_request_title=doc['title'],new_request_id=doc['id'])
+        if reports:
+            messages=self.rows('client_problem_messages',{'select':'id,report_id,author,created_at','report_id':'in.('+','.join(sorted(reports))+')','order':'created_at.asc','limit':1000})
+            for row in messages:
+                request_id,version=context(reports[row['report_id']])
+                add('problem-message-'+row['id'],'problem_message','Mensaje sobre el problema',row['created_at'],request_id,revision_no=version,author=row['author'])
         # Project start: its creation and the initial sources it was set up with.
         def start(id,kind,timestamp,**extra):
             if not timestamp:raise ApiError('ACTIVITY_TIMESTAMP_MISSING',502)
@@ -384,12 +411,23 @@ class Repository:
                 for row in contexts:
                     doc=delivered.get(row['document_id'])
                     if doc:start('delivery-'+doc['id'],'delivery_evidence_added',doc['created_at'],stage_position=row['stage_position'],title=doc['title'],document_id=doc['id'])
+                # The delivery shown to the client, and the client's decision on it: evidence as strong as an accepted addendum.
+                for row in self.rows('project_stage_delivery_shares',{'select':'document_id,stage_position,shared_at',**common,'order':'shared_at.asc'}):
+                    doc=delivered.get(row['document_id'])
+                    if doc:start('delivery-shared-'+doc['id'],'delivery_shared',row['shared_at'],stage_position=row['stage_position'],title=doc['title'],document_id=doc['id'])
+                for row in self.rows('project_stage_reviews',{'select':'document_id,stage_position,decision,created_at',**common,'order':'created_at.asc'}):
+                    doc=delivered.get(row['document_id'])
+                    if doc:start('stage-review-'+doc['id'],'stage_reviewed',row['created_at'],stage_position=row['stage_position'],decision=row['decision'],title=doc['title'],document_id=doc['id'])
                 progress=self.rpc('project_plan_progress',{'p_project':project['id']}) or {}
                 for row in progress.get('stages') or []:
                     stage=stages.get(row.get('position'))
                     if row.get('status')=='completed' and row.get('paid_at') and stage:
                         start('stage-paid-'+str(row['payment_id']),'stage_paid',row['paid_at'],stage_position=row['position'],stage_title=stage['title'],
                               amount_minor=minor(stage['amount']),currency=plan['currency'],**({'document_id':row['evidence_document_id']} if row.get('evidence_document_id') else {}))
+                # Each stage payment email, named for what it carried: the PayPal order or the PayPal invoice.
+                for row in self.rpc('project_stage_payment_emails',{'p_project':project['id']}) or []:
+                    start('stage-payment-email-'+str(row['id']),'stage_payment_requested',row['sent_at'],stage_position=row['stage_position'],
+                          invoice=bool(row.get('invoice')),**({'invoice_number':row['invoice_number']} if row.get('invoice_number') else {}))
                 if progress.get('completed_at'):start('plan-completed-'+project['id'],'plan_completed',progress['completed_at'])
         events.extend(milestones(data))
         events.sort(key=lambda event:datetime.fromisoformat(event['created_at'].replace('Z','+00:00')),reverse=True)

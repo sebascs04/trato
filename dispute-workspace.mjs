@@ -6,6 +6,7 @@ import {icon} from './icons.mjs';
 import {createAgentPanel,agentShell} from './agent-panel.mjs';
 import {AIJobClient} from './ai-jobs.mjs';
 import {renderAIActivity} from './ai-activity.mjs';
+import {installProblemReports,validateProblemAttention,problemAttentionRows,problemAttentionHeading,closedSection} from './problem-reports.mjs';
 const t=(key,values)=>uiText(['disputes',key].join('.'),values);
 const esc=value=>String(value??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const REASONS=['MERCHANDISE_OR_SERVICE_NOT_RECEIVED','MERCHANDISE_OR_SERVICE_NOT_AS_DESCRIBED','UNAUTHORISED','CREDIT_NOT_PROCESSED','DUPLICATE_TRANSACTION','INCORRECT_AMOUNT','PAYMENT_BY_OTHER_MEANS','CANCELED_RECURRING_BILLING','PROBLEM_WITH_REMITTANCE'];
@@ -49,6 +50,30 @@ function closedResult(d){
  return `<p class="dispute-result is-${tone}" role="status">${icon(tone==='good'?'check':tone==='lost'?'undo-2':'info')}<span>${t(`resultNote.${outcome}`,{amount:money(d.amount.value,d.amount.currency)})}</span></p>`;
 }
 const canDefend=d=>d.status!=='RESOLVED'&&d.payment.origin==='change'&&(d.status==='UNDER_REVIEW'||d.actions.some(a=>DEFENSE_ACTIONS.includes(a)||SANDBOX_ACTIONS.includes(a)));
+// Home warning: open disputes on any project, so the freelancer learns of one without opening Disputes. Facts come from PayPal via the backend.
+export function validateAttention(value){
+ if(!value||!Array.isArray(value.disputes)||!Number.isInteger(value.payments_checked))throw new Error('Invalid disputes');
+ const text=v=>typeof v==='string';
+ if(value.disputes.some(d=>!d||!text(d.project_id)||!text(d.client_id)||!text(d.project_name)||!/^PP-[A-Z0-9-]{4,40}$/.test(d.dispute_id||'')||typeof d.your_turn!=='boolean'||!d.amount||typeof d.amount!=='object'))throw new Error('Invalid disputes');
+ return value;
+}
+const ATTENTION_SHOWN=4;
+export function renderDisputeAttention(attention){
+ if(!attention||attention.loading&&!attention.data)return '';
+ if(attention.error)return `<section class="workspace-panel dispute-attention is-error" role="alert">${icon('flag')}<p>${t(attention.error)}</p><button type="button" class="text-button" data-dispute-attention-retry ${attention.loading?'disabled':''}>${icon('refresh-cw')}${t('attention.retry')}</button></section>`;
+ // The client's reports in Trato share this warning: one place to learn that a client is unhappy.
+ const items=attention.data?.disputes||[],problems=attention.problems?.reports||[];
+ const problemsFailed=attention.problemsError?`<p class="cloud-error" role="alert">${uiText('problems.attention.error')}</p>`:'';
+ if(!items.length&&!problems.length)return problemsFailed?`<section class="workspace-panel dispute-attention is-error">${problemsFailed}</section>`:'';
+ if(!items.length){const h=problemAttentionHeading(problems);return `<section class="workspace-panel dispute-attention" aria-labelledby="dispute-attention-title"><header><span class="dispute-icon" aria-hidden="true">${icon('flag')}</span><div><h2 id="dispute-attention-title">${h.title}</h2><p>${h.copy}</p></div></header><ul>${problemAttentionRows(problems.slice(0,ATTENTION_SHOWN))}</ul></section>`;}
+ const yours=items.filter(d=>d.your_turn).length;
+ const row=d=>{const left=daysLeft(d.response_due),urgent=d.your_turn&&left!==null&&left<=5;
+  const due=d.your_turn&&d.response_due?`${t('dueBy',{date:date(d.response_due)})}${left!==null&&left>=0?` · ${t('daysLeft',{count:left})}`:''}`:label('status',d.status,STATUSES);
+  return `<li><div><strong>${esc(d.project_name)}</strong><span>${esc(label('reason',d.reason,REASONS))}${money(d.amount.value,d.amount.currency)?` · ${money(d.amount.value,d.amount.currency)}`:''}</span><span class="dispute-due ${urgent?'is-urgent':''}">${icon('history')}${esc(due)}</span></div><button type="button" class="button ${d.your_turn?'':'secondary'}" data-dispute-attention-open="${esc(d.dispute_id)}" aria-label="${esc(t('attention.openFor',{project:d.project_name}))}">${t('attention.open')}${icon('arrow-right')}</button></li>`;};
+ const more=items.length-ATTENTION_SHOWN;
+ return `<section class="workspace-panel dispute-attention" aria-labelledby="dispute-attention-title"><header><span class="dispute-icon" aria-hidden="true">${icon('flag')}</span><div><h2 id="dispute-attention-title">${t(items.length===1?'attention.titleOne':'attention.titleMany',{count:items.length})}</h2><p>${t(!yours?'attention.copyWaiting':items.length===1?'attention.copyYourTurnOne':'attention.copyYourTurn',{count:yours})}</p></div></header><ul>${items.slice(0,ATTENTION_SHOWN).map(row).join('')}${problemAttentionRows(problems.slice(0,ATTENTION_SHOWN))}</ul>${more>0?`<p class="dispute-attention-more">${t('attention.more',{count:more})}</p>`:''}${problemsFailed}</section>`;
+}
+
 export function validateDefense(value,disputeId){
  if(!value||value.kind!=='dispute_defense'||value.dispute_id!==disputeId||!['strong','partial','weak'].includes(value.assessment)||typeof value.summary!=='string'||typeof value.response_message!=='string'||!DEFENSE_ACTIONS.includes(value.recommended_action)||!Array.isArray(value.gaps)||!Array.isArray(value.points)||value.points.some(p=>!p||typeof p.claim!=='string'||typeof p.quote!=='string'||typeof p.kind!=='string')||!Array.isArray(value.documents)||value.documents.some(d=>!d||typeof d.id!=='string'||typeof d.title!=='string'||typeof d.sendable!=='boolean'||typeof d.consulted!=='boolean'||typeof d.recommended!=='boolean'||typeof d.reason!=='string'))throw Error('AI_JOB_INVALID');
  return value;
@@ -126,7 +151,8 @@ export function renderDefense(result,draft,send={status:'idle',allowed:false,sel
 }
 
 export function installDisputeWorkspace(cloud){
- const states=new Map(),defenses=new Map();let panel=null,openDefense=null;
+ installProblemReports(cloud);
+ const states=new Map(),defenses=new Map(),views=new Map();let panel=null,openDefense=null;
  function defenseState(disputeId){
   const id=`${cloud.navigationOwner}:${disputeId}`;if(defenses.has(id))return defenses.get(id);
   const state={disputeId,project:cloud.projectId,draft:'',draftFor:null,send:{status:'idle',selected:[]},key:`${cloud.session?.key}:dispute-defense-ui:${cloud.navigationOwner}:${disputeId}`};
@@ -257,16 +283,57 @@ export function installDisputeWorkspace(cloud){
   const project=cloud.projectId;if(!project)return;
   let state=states.get(key());
   if(!state){state={loading:false,data:remembered(project),error:''};states.set(key(),state);void load(state,project);}
-  const head=`<header class="dispute-head"><div><h2>${t('title')}</h2><p>${t('intro')}</p></div><button type="button" class="button secondary" data-dispute-refresh ${state.loading?'disabled':''}>${icon('refresh-cw')}<span ${state.loading?'role="status"':''}>${t(state.loading?'loading':'refresh')}</span></button></header>`;
+  // Two views of one tab: PayPal disputes, and the problems the client reported in Trato. One is shown at a time.
+  const problems=cloud.problemReportsSummary?.(project)||{count:0,yourTurn:false};
+  if(!views.has(key()))views.set(key(),problems.yourTurn&&!state.data?.disputes?.some(d=>d.status==='WAITING_FOR_SELLER_RESPONSE')?'problems':'paypal');
+  const view=views.get(key());
+  const disputeCount=state.data?.disputes?.filter(d=>d.status!=='RESOLVED').length??0,disputeTurn=!!state.data?.disputes?.some(d=>d.status==='WAITING_FOR_SELLER_RESPONSE');
+  const choice=(value,label,count,turn)=>`<button type="button" data-dispute-view="${value}" aria-pressed="${view===value}">${label}${count?`<span class="dispute-switch-count">${count}</span>`:''}${turn?`<span class="dispute-switch-dot" aria-label="${uiText('problems.badgeYourTurn')}"></span>`:''}</button>`;
+  const switcher=`<div class="dispute-switch" role="group" aria-label="${uiText('disputes.nav')}">${choice('paypal',t('title'),disputeCount,disputeTurn)}${choice('problems',uiText('problems.tab'),problems.count,problems.yourTurn)}</div>`;
+  if(view==='problems'){
+   panel.innerHTML=`<section class="dispute-workspace">${switcher}<header class="dispute-head"><div><p>${uiText('problems.intro')}</p></div></header>${cloud.problemReportsMarkup?.(project)||''}</section>`;
+   return;
+  }
+  const head=`${switcher}<header class="dispute-head"><div><p>${t('intro')}</p></div><button type="button" class="button secondary" data-dispute-refresh ${state.loading?'disabled':''}>${icon('refresh-cw')}<span ${state.loading?'role="status"':''}>${t(state.loading?'loading':'refresh')}</span></button></header>`;
   let body;
   if(state.loading&&!state.data)body='';
   else if(state.error)body=`<p class="cloud-error" role="alert">${esc(state.error)}</p>`;
   else if(!state.data.disputes.length)body=`<section class="workspace-panel dispute-empty">${icon('shield-check')}<div><h3>${t('emptyTitle')}</h3><p>${t('emptyCopy',{count:state.data.payments_checked})}</p></div></section>`;
-  else body=state.data.disputes.map(renderDispute).join('');
+  else{
+   const open=state.data.disputes.filter(d=>d.status!=='RESOLVED'),closed=state.data.disputes.filter(d=>d.status==='RESOLVED');
+   body=(open.length?open.map(renderDispute).join(''):`<p class="dispute-muted">${uiText('problems.noneOpenDisputes')}</p>`)+closedSection(closed,views.get(key()+':closed')===true,renderDispute,'data-dispute-closed-toggle');
+  }
   const unsaved=state.data?.history_saved===false&&!state.error?`<p class="cloud-error" role="alert">${t('historyNotSaved')}</p>`:'';
   const uncopied=state.data?.client_documents_saved===false&&!state.error?`<p class="cloud-error" role="alert">${t('clientDocsNotSaved')}</p>`:'';
   panel.innerHTML=`<section class="dispute-workspace" aria-busy="${state.loading}">${head}${unsaved}${uncopied}${body}</section>`;
  };
+ // Checked again on each visit to the home page after a short pause; a failed check is shown, never hidden.
+ const ATTENTION_FRESH_MS=120000;let attention=null;
+ async function loadAttention(){
+  const epoch=cloud.epoch,owner=cloud.navigationOwner,current=attention;
+  current.loading=true;
+  // Read in parallel, each with its own error: a PayPal failure never hides the client's reports, nor the reverse.
+  const problems=cloud.request('/api/v1/problem-reports/attention').then(value=>{current.problems=validateProblemAttention(value);current.problemsError=false;},()=>{current.problemsError=true;});
+  try{current.data=validateAttention(await cloud.request('/api/v1/disputes/attention'));current.error='';}
+  catch(error){current.error=error.code==='PAYPAL_SANDBOX_NOT_CONFIGURED'?'notConfigured':'attention.error';}
+  finally{await problems;current.loading=false;current.at=Date.now();if(attention===current&&epoch===cloud.epoch&&owner===cloud.navigationOwner&&['','#inicio'].includes(cloud.location.hash))cloud.notify();}
+ }
+ cloud.disputeAttentionMarkup=function(){
+  if(!attention||attention.epoch!==cloud.epoch||attention.owner!==cloud.navigationOwner)attention={epoch:cloud.epoch,owner:cloud.navigationOwner,at:0,loading:false,data:null,error:''};
+  if(!attention.loading&&Date.now()-attention.at>ATTENTION_FRESH_MS)void loadAttention();
+  return renderDisputeAttention(attention);
+ };
+ function openAttention(disputeId){
+  const item=attention?.data?.disputes.find(d=>d.dispute_id===disputeId);if(!item)return;
+  states.delete(`${cloud.navigationOwner}:${item.project_id}`);  // The Disputes tab reads PayPal again instead of an older list.
+  cloud.goToProject(item.client_id,item.project_id,'disputas');
+ }
+ function openProblemAttention(reportId){
+  const item=attention?.problems?.reports.find(r=>r.report_id===reportId);if(!item)return;
+  cloud.forgetProblemReports?.(item.project_id);  // The tab reads the conversation again.
+  views.set(`${cloud.navigationOwner}:${item.project_id}`,'problems');
+  cloud.goToProject(item.client_id,item.project_id,'disputas');
+ }
  function openConversation(button){
   const dispute=states.get(key())?.data?.disputes.find(d=>d.dispute_id===button.dataset.disputeConversation);if(!dispute)return;
   const dialog=cloud.document.createElement('dialog');dialog.className='dispute-docs-dialog dispute-side-dialog';dialog.setAttribute('aria-labelledby','dispute-conversation-title');
@@ -350,7 +417,15 @@ export function installDisputeWorkspace(cloud){
    confirmDialog(stepConfirm('steps.sandboxTitle','steps.sandboxCopy'),event.target.closest('[data-defense-action]'),()=>runStep(state,'sandbox',{action:step},'sandboxDone'));return;
   }
   if(openDefense&&action==='send-another'){openDefense.draft='';openDefense.send={status:'idle',selected:[],composing:true};saveDefense(openDefense);paintDefense(openDefense);return;}
+  const attentionOpen=event.target.closest?.('[data-dispute-attention-open]');
+  if(attentionOpen){views.set(`${cloud.navigationOwner}:${attention?.data?.disputes.find(d=>d.dispute_id===attentionOpen.dataset.disputeAttentionOpen)?.project_id}`,'paypal');openAttention(attentionOpen.dataset.disputeAttentionOpen);return;}
+  const viewButton=event.target.closest?.('[data-dispute-view]');
+  if(viewButton&&cloud.projectId){views.set(key(),viewButton.dataset.disputeView);cloud.notify();return;}
+  if(event.target.closest?.('[data-dispute-closed-toggle]')&&cloud.projectId){views.set(key()+':closed',views.get(key()+':closed')!==true);cloud.notify();return;}
+  const problemOpen=event.target.closest?.('[data-problem-attention-open]');
+  if(problemOpen){openProblemAttention(problemOpen.dataset.problemAttentionOpen);return;}
+  if(event.target.closest?.('[data-dispute-attention-retry]')){if(attention&&!attention.loading){void loadAttention();cloud.notify();}return;}
   if(!event.target.closest?.('[data-dispute-refresh]')||!cloud.projectId)return;
-  const state=states.get(key());if(!state||state.loading)return;void load(state,cloud.projectId);cloud.notify();
+  const state=states.get(key());if(!state||state.loading)return;cloud.forgetProblemReports?.(cloud.projectId);void load(state,cloud.projectId);cloud.notify();
  });
 }

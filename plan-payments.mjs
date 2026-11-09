@@ -1,11 +1,37 @@
 import {uiText,uiLocale,uiLanguage} from './i18n.mjs';
 import {icon} from './icons.mjs';
+import {renderAIActivity} from './ai-activity.mjs';
 const t=(key,values)=>uiText(['planPayment',key].join('.'),values);
 const esc=value=>String(value??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const money=value=>new Intl.NumberFormat(uiLocale(),{style:'currency',currency:'USD'}).format(Number(value));
+// TeTrato drafts the invoice concept (addendum or deliverable) from facts the backend reads; the freelancer reviews it.
+// If it fails, the error is shown and the field stays editable, with a retry: nothing is filled in silently.
+export async function draftInvoiceConcept(cloud,body,wait=ms=>new Promise(resolve=>setTimeout(resolve,ms))){
+ const job=await cloud.request('/api/v1/ai/invoice-concepts',{method:'POST',headers:{'Content-Type':'application/json','Idempotency-Key':crypto.randomUUID()},body:JSON.stringify({...body,output_language:uiLanguage()})});
+ let current=job;const until=Date.now()+90000;
+ while(['queued','running'].includes(current.status)){
+  if(Date.now()>until)throw Error(uiText('invoice.conceptFailed'));
+  await wait(1500);current=await cloud.request(`/api/v1/ai/jobs/${encodeURIComponent(job.id)}`);
+ }
+ if(current.status!=='completed'||typeof current.result?.concept!=='string'||!current.result.concept.trim())throw Error(uiText('invoice.conceptFailed'));
+ return current.result.concept;
+}
+export function fillInvoiceConcept(cloud,form,body){
+ const input=form.querySelector('[name="concept"]'),status=form.querySelector('[data-invoice-concept-status]');if(!input||!status)return;
+ // While TeTrato writes, only TeTrato is shown; the invoice form appears whole once the concept is ready.
+ const waiting=form.ownerDocument.createElement('div');form.before(waiting);
+ const run=async()=>{
+  form.hidden=true;status.innerHTML='';waiting.innerHTML=renderAIActivity({label:uiText('invoice.conceptDrafting'),compact:true});
+  try{const concept=await draftInvoiceConcept(cloud,body);if(!form.isConnected)return;input.value=concept.slice(0,200);status.innerHTML=`<p class="field-help">${icon('sparkles')}${uiText('invoice.conceptDrafted')}</p>`;}
+  catch(error){if(!form.isConnected)return;status.innerHTML=`<p class="cloud-error" role="alert">${esc(error.message)}</p><button type="button" class="text-button" data-invoice-concept-retry>${uiText('invoice.conceptRetry')}</button>`;status.querySelector('[data-invoice-concept-retry]').addEventListener('click',run);}
+  finally{if(form.isConnected){waiting.innerHTML='';form.hidden=false;input.focus();}}
+ };
+ void run();
+}
 export function stagePaymentEmailMarkup(value,checkoutUrl){
  let trustedLink=false;
- try{const url=new URL(checkoutUrl);trustedLink=['https:','http:'].includes(url.protocol)&&!url.username&&!url.password&&url.pathname==='/initial-payment.html'&&/^[A-Za-z0-9_-]{43}$/.test(url.searchParams.get('checkout')||'');}catch{}
+ try{const url=new URL(checkoutUrl);trustedLink=['https:','http:'].includes(url.protocol)&&!url.username&&!url.password&&url.pathname==='/initial-payment.html'&&/^[A-Za-z0-9_-]{43}$/.test(url.searchParams.get('checkout')||'')
+  ||url.protocol==='https:'&&url.hostname==='www.sandbox.paypal.com'&&url.pathname==='/invoice/p/'&&!url.username&&!url.password;}catch{}
  const body=String(value.body).split('\n').filter(line=>line.trim()).map(line=>{
   if(trustedLink&&line.trim()===checkoutUrl)return `<p class="plan-mail-cta"><a href="${esc(checkoutUrl)}" target="_blank" rel="noopener noreferrer">${t('paymentLinkLabel')}${icon('arrow-up-right')}</a></p>`;
   return `<p${/^USD \d/.test(line)?' class="plan-mail-amount"':''}>${esc(line)}</p>`;
@@ -14,7 +40,8 @@ export function stagePaymentEmailMarkup(value,checkoutUrl){
 }
 export function stagePaymentStep(pay){
  if(pay.status==='completed')return 'paid';
- if(!pay.order_id)return 'prepare_order';
+ if(pay.method==='invoice'&&!pay.invoice_url)return 'finish_invoice';
+ if(!pay.order_id&&pay.method!=='invoice')return 'prepare_order';
  if(pay.mail_status==='sent')return 'await_payment';
  if(pay.mail_status==='sending')return 'sending_email';
  if(pay.mail_status==='uncertain')return 'check_email';
@@ -50,8 +77,8 @@ export function installPlanPayments(cloud){
  const scope=()=>cloud.active?`${cloud.navigationOwner}:${cloud.projectId}`:null;
  const valid=state=>scope()===state.scope&&modalState===state&&cloud.modal.open&&cloud.modal.querySelector('[data-plan-payment-content]')?.dataset.planScope===state.scope;
  const endpoint=(project,position,tail='')=>`/api/v1/projects/${project}/stages/${position}/checkout${tail}`;
- const message=error=>t(({PLAN_PREVIOUS_STAGE_UNPAID:'previousUnpaid',PLAN_EVIDENCE_REQUIRED:'evidenceRequired',PLAN_EVIDENCE_NOT_READY:'evidencePending',PLAN_EVIDENCE_INVALID:'evidenceInvalid',PLAN_EVIDENCE_PROTECTED:'evidenceProtected',PLAN_STAGE_REQUIRED:'stageRequired',PLAN_LEGACY_PAYMENT_REQUIRES_REVIEW:'legacyReview',INITIAL_PAYER_MISMATCH:'payerMismatch'})[error.code]||'error');
- const originalReset=cloud.reset.bind(cloud);cloud.reset=function(){clearTimeout(timer);modalState=null;revision++;progressLoader.clear();return originalReset();};
+ const message=error=>t(({PLAN_PREVIOUS_STAGE_UNPAID:'previousUnpaid',PLAN_EVIDENCE_REQUIRED:'evidenceRequired',PLAN_EVIDENCE_NOT_READY:'evidencePending',PLAN_EVIDENCE_INVALID:'evidenceInvalid',PLAN_EVIDENCE_PROTECTED:'evidenceProtected',PLAN_STAGE_REQUIRED:'stageRequired',PLAN_LEGACY_PAYMENT_REQUIRES_REVIEW:'legacyReview',PLAN_STAGE_ALREADY_REQUESTED:'alreadyRequested',INITIAL_PAYER_MISMATCH:'payerMismatch'})[error.code]||'error');
+ const originalReset=cloud.reset.bind(cloud);cloud.reset=function(){clearTimeout(timer);modalState=null;revision++;progressLoader.clear();cloud.clientPlans=undefined;cloud.clientPlansFailed=false;cloud.clientDisputesSettled=false;cloud.clientProblemsSettled=false;return originalReset();};
  // Last progress per project: a re-render repaints it at once and refreshes quietly, without a loading line.
  const lastProgress=new Map();
  function paintProgress(host,plan,value,project,region,overview){
@@ -67,7 +94,16 @@ export function installPlanPayments(cloud){
     const position=stage.position??i+1,row=host.querySelector(`[data-plan-stage-row="${position}"]`);if(!row)continue;
     const state=value.stages.find(s=>s.position===position),allowed=value.stages.filter(s=>s.position<position).every(s=>s.status==='completed');
     const button=doc.createElement('button');button.type='button';button.className='text-button plan-stage-pay';button.textContent=t(state?.status==='completed'?'paid':allowed?'deliveryAndPayment':'locked');button.disabled=!allowed;
-    button.addEventListener('click',()=>open(project,position,stage,value));row.append(button);
+    // What the client did with the last delivery sent, so the freelancer sees it without opening the deliverable.
+    const client=value.client?.[String(position)];
+    // Shown as the deliverable's own button text, so the row keeps its columns.
+    // The same tag the client sees, inside a plain button that still opens the deliverable.
+    const tag=state?.status==='completed'?['paid','clientPlan.paid']:client&&allowed?(client.decision==='changes_requested'?['waiting','clientAccount.state.changesRequested']:client.decision==='approved'?['done','clientPlan.approved']:['open','clientPlan.rowWaiting']):null;
+    button.addEventListener('click',()=>open(project,position,stage,value));
+    // The colored state is the button itself: a border, an arrow and the hand cursor say it opens the deliverable.
+    if(tag){button.className=`plan-stage-pay cloud-client-agreement-state ${tag[0]}`;button.style.cssText='border:1px solid currentColor;cursor:pointer;display:inline-flex;align-items:center;gap:6px;padding:5px 14px;font:inherit;font-size:12px;font-weight:600';
+     button.textContent=uiText(tag[1]);button.insertAdjacentHTML('beforeend',icon('arrow-right'));const arrow=button.querySelector('svg');if(arrow){arrow.setAttribute('width','14');arrow.setAttribute('height','14');}}
+    row.append(button);
     // A deliverable without checkout or delivery evidence has not started: its wording can still be corrected.
     if(!value.completed_at&&!state?.payment_id&&!state?.evidence_document_id&&cloud.openPlanStageEdit){const edit=doc.createElement('button');edit.type='button';edit.className='icon-button proposal-edit plan-stage-edit-open';edit.innerHTML=icon('pencil');edit.setAttribute('aria-label',uiText('planEdit.title',{number:position}));edit.title=uiText('planEdit.title',{number:position});edit.addEventListener('click',()=>cloud.openPlanStageEdit(position));
       // Pencil next to the deliverable's name, in the same grid cell, like the addendum card's edit button.
@@ -81,13 +117,126 @@ export function installPlanPayments(cloud){
   if(overview||known===undefined){region=doc.createElement('div');region.className='plan-payment-progress';region.setAttribute('role','status');region.textContent=t('loading');(overview?host.querySelector('.cloud-agreement')||host:host).append(region);}
   if(known!==undefined)paintProgress(host,plan,known,project,region,overview);
   try{
-   const value=await progressLoader.load(key,project);
+   // The plan's payments and the client's answers are read together, so each row is painted once.
+   const [loaded,client]=await Promise.all([progressLoader.load(key,project),overview?null:cloud.request(`/api/v1/projects/${project}/stage-client-status`).catch(()=>null)]);
+   const value=loaded&&{...loaded,client};
    if(scope()!==key||!host.isConnected||generation!==revision)return;
    const changed=known===undefined||JSON.stringify(known)!==JSON.stringify(value);lastProgress.set(key,value);
    if(changed)paintProgress(host,plan,value,project,region,overview);
   }catch(error){if(scope()===key&&host.isConnected){if(!region){region=doc.createElement('div');region.className='plan-payment-progress';region.setAttribute('role','status');(overview?host.querySelector('.cloud-agreement')||host:host).append(region);}region.textContent=message(error);const retry=doc.createElement('button');retry.className='text-button';retry.textContent=t('retry');retry.addEventListener('click',()=>{region.remove();void progress(host,plan,overview);});region.append(retry);}}
  }
  cloud.renderPlanPayments=(host,plan)=>{if(plan)void progress(host,plan);};
+ // Client account: how each project goes. Read-only deliverables with their amount and payment state; an invoice or
+ // checkout already sent can be paid from here (the same link the client received).
+ cloud.loadClientPlans=async function(){
+  const epoch=this.epoch;
+  try{const value=await this.request('/api/v1/portal/account/plans');if(epoch!==this.epoch)return;if(!Array.isArray(value))throw Error('Invalid plans');this.clientPlans=value;this.clientPlansFailed=false;}
+  catch{if(epoch!==this.epoch)return;this.clientPlans=null;this.clientPlansFailed=true;}
+  this.notify();
+ };
+ // Client: what needs their answer in a deliverable — review its delivery, or pay what was already sent.
+ const stageNeedsReview=item=>item.delivery_document_id&&!item.review_decision&&item.payment_status!=='completed';
+ const stagePending=item=>stageNeedsReview(item)||!!item.pay_url&&item.payment_status!=='completed';
+ const badge=count=>count?` <span class="cloud-client-count" aria-label="${uiText('clientPlan.pendingCount',{count})}">(${count})</span>`:'';
+ function clientStageState(item){
+  const invoice=item.payment_method==='invoice'&&item.pay_url,done=item.payment_status==='completed';
+  return done?['paid','clientPlan.paid']:stageNeedsReview(item)?['open','clientPlan.reviewDelivery']:item.review_decision==='changes_requested'?['waiting','clientAccount.state.changesRequested']:invoice?['pay','clientAccount.state.invoiceToPay']:item.pay_url?['pay','clientAccount.state.toPay']:item.review_decision==='approved'?['done','clientPlan.approved']:['open','clientPlan.upcoming'];
+ }
+ // The list stays short: one row per deliverable; its delivery, decision and payment open in their own view.
+ function clientStageRow(item){
+  const [kind,label]=clientStageState(item);
+  return `<li><button type="button" class="cloud-client-agreement-row" data-client-plan="stage" data-project="${esc(item.project_id)}" data-position="${item.position}"><span class="cloud-client-agreement-text"><strong>${t('deliverable',{number:item.position})} · ${esc(item.title)}</strong><small>${money(item.amount)}</small></span><span class="cloud-client-agreement-state ${kind}">${uiText(label)}</span>${icon('arrow-right')}</button></li>`;
+ }
+ function clientStageView(item){
+  const [kind,label]=clientStageState(item),invoice=item.payment_method==='invoice'&&item.pay_url,done=item.payment_status==='completed';
+  const data=`data-project="${esc(item.project_id)}" data-position="${item.position}" data-document="${esc(item.delivery_document_id||'')}"`;
+  const delivery=item.delivery_document_id?`<article class="plan-evidence-file"><span>${icon('file-text')}${esc(item.delivery_title||uiText('clientPlan.viewDelivery'))}</span><button type="button" class="text-button" data-client-plan="delivery" ${data}>${uiText('clientPlan.viewDelivery')}${icon('arrow-up-right')}</button></article>`:`<p class="plan-evidence-help">${uiText('clientPlan.noDelivery')}</p>`;
+  const note=item.review_decision==='changes_requested'&&item.review_notes?`<div class="cloud-notice" role="status"><strong>${uiText('clientPlan.yourRequest')}</strong><p>${esc(item.review_notes)}</p></div>`:'';
+  // Asking for changes here fixes what was agreed for this deliverable; new work is a change to the agreement.
+  const review=stageNeedsReview(item)?`<p class="plan-evidence-help">${uiText('clientPlan.scopeHint')}</p><footer class="dialog-actions"><button type="button" class="button secondary" data-client-plan="changes" ${data}>${uiText('clientPlan.requestChanges')}</button><button type="button" class="button" data-client-plan="approve" ${data}>${icon('check')}${uiText('clientPlan.approve')}</button></footer>`:'';
+  const pay=!done&&item.pay_url?`<footer class="dialog-actions"><a class="button" href="${esc(item.pay_url)}" target="_blank" rel="noopener">${icon(invoice?'file-text':'wallet')}${uiText(invoice?'portal.invoiceAction':'portal.payAction')}${icon('arrow-up-right')}</a></footer>`:'';
+  return `<section class="plan-delivery-payment"><header><div><span class="eyebrow">${t('deliverable',{number:item.position})}</span><h3>${esc(item.title)}</h3></div><strong>${money(item.amount)}</strong></header><p><span class="cloud-client-agreement-state ${kind}">${uiText(label)}</span></p>${item.payment_condition?`<p class="plan-evidence-help">${esc(item.payment_condition)}</p>`:''}${delivery}${note}${review}${pay}</section>`;
+ }
+ function clientProjects(){
+  const projects=new Map();
+  const add=(id,name,email)=>{if(!projects.has(id))projects.set(id,{id,name,email,stages:[],items:[]});return projects.get(id);};
+  for(const item of cloud.clientAgreements||[])add(item.project_id,item.project_name,item.freelancer_email).items.push(item);
+  for(const stage of cloud.clientPlans||[])add(stage.project_id,stage.project_name,stage.freelancer_email).stages.push(stage);
+  for(const project of projects.values()){
+   project.planPending=project.stages.filter(stagePending).length;
+   project.changesPending=project.items.filter(item=>['open','pay'].includes(cloud.clientAgreementState(item)[0])).length;
+  }
+  return projects;
+ }
+ const remember=(key,value)=>{try{value?cloud.storage.setItem(key,value):cloud.storage.removeItem(key);}catch{}};
+ const recall=key=>{try{return cloud.storage.getItem(key)||'';}catch{return '';}};
+ for(const [method,flag] of [['loadClientDisputes','clientDisputesSettled'],['loadClientProblems','clientProblemsSettled']]){
+  const original=cloud[method]?.bind(cloud);if(!original)continue;
+  cloud[method]=async function(){this[flag]=false;try{return await original();}finally{this[flag]=true;this.notify();}};
+ }
+ cloud.renderClientProjects=function(workspace){
+  // Plans arrive after the agreements: wait for them so a project never opens on the wrong tab and then reorders.
+  if(this.clientPlans===undefined&&!this.clientPlansFailed){workspace.innerHTML=`<section class="workspace-panel cloud-initial-loading">${this.renderSkeleton('list',uiText('clientPlan.loading'))}</section>`;return;}
+  const projects=clientProjects();
+  if(!projects.size){workspace.innerHTML=`<section class="workspace-panel cloud-home-intro"><img src="/assets/mascot/trato-guide.png" alt="" width="120" height="120"><div><h2>${uiText('clientAccount.emptyTitle')}</h2><p>${uiText('clientAccount.emptyCopy')}</p></div></section>`;return;}
+  const open=projects.get(recall('trato:client-project'));
+  if(!open){
+   // One card per project: who it is with, how it goes and how many things wait for the client.
+   workspace.innerHTML=`<div class="cloud-client-projects">${[...projects.values()].map(project=>{const paid=project.stages.filter(s=>s.payment_status==='completed').length,pending=project.planPending;
+    return `<section class="workspace-panel cloud-client-freelancer"><button type="button" class="cloud-client-agreement-row" data-client-plan="open" data-project="${esc(project.id)}"><span class="cloud-client-agreement-text"><strong>${esc(project.name)}${badge(pending)}</strong><small>${uiText('clientAccount.freelancer')}: ${esc(project.email)}${project.stages.length?' · '+uiText('clientPlan.progress',{paid,total:project.stages.length}):''}</small></span>${icon('arrow-right')}</button></section>`;}).join('')}</div>`;return;
+  }
+  const dispute=item=>this.clientDisputes?.[item.proposal_id],problem=item=>item.payment_status==='completed'?this.clientProblems?.[item.proposal_id]:null;
+  const disputed=open.items.filter(dispute),reported=open.items.filter(problem);
+  // Tabs stay put while each one loads its own data: a paid addendum is what can carry a dispute or a reported problem.
+  const saved=recall('trato:client-project-tab'),available={plan:open.stages.length>0,changes:open.items.length>0,issues:open.items.some(item=>item.payment_status==='completed')};
+  const tab=available[saved]?saved:available.plan?'plan':available.changes?'changes':'issues';
+  const paid=open.stages.filter(s=>s.payment_status==='completed').length;
+  const tabs=[['plan','wallet','clientPlan.title',open.planPending,available.plan],['changes','git-compare-arrows','clientPlan.changes',0,available.changes],['issues','shield-check','clientPlan.issues',0,available.issues]].filter(([, , , ,shown])=>shown);
+  const nav=`<nav class="cloud-project-navigation" aria-label="${uiText('Secciones del proyecto')}">${tabs.map(([id,glyph,title,count])=>`<button type="button" data-client-plan="tab" data-tab="${id}" ${tab===id?'aria-current="page"':''}>${icon(glyph)}<span><strong>${uiText(title)}${badge(count)}</strong><small>${uiText(id==='plan'?'clientPlan.planHint':id==='changes'?'clientPlan.changesHint':'clientPlan.issuesHint')}</small></span></button>`).join('')}</nav>`;
+  const plan=this.clientPlansFailed?`<p class="cloud-error" role="alert">${uiText('clientPlan.error')}</p>`:`<section class="workspace-panel cloud-client-plan"><h3>${uiText('clientPlan.title')} · ${uiText('clientPlan.progress',{paid,total:open.stages.length})}</h3><ul class="cloud-client-agreements-list">${open.stages.map(clientStageRow).join('')}</ul></section>`;
+  // Addenda grouped by what they mean for the client: what waits for them, what has an open issue, what is closed.
+  const rows=items=>`<ul class="cloud-client-agreements-list">${items.map(item=>this.clientAgreementRow(item,{withProject:false})).join('')}</ul>`;
+  const blocks=list=>list.filter(([,items])=>items.length).map(([title,items])=>`<h4>${uiText(title)}</h4>${rows(items)}`).join('');
+  const waiting=item=>['open','pay','waiting'].includes(this.clientAgreementState(item)[0]);
+  const changes=`<section class="workspace-panel cloud-client-plan"><h3>${uiText('clientPlan.changes')}</h3>${blocks([['clientPlan.groupPending',open.items.filter(waiting)],['clientPlan.groupClosed',open.items.filter(item=>!waiting(item)&&!dispute(item)&&!problem(item))]])}</section>`;
+  // Same split as the freelancer's Disputes tab: claims opened in PayPal, and problems reported in Trato.
+  const issues=`<section class="workspace-panel cloud-client-plan"><h3>${uiText('clientPlan.issues')}</h3>${blocks([['clientPlan.paypalDisputes',disputed],['clientPlan.problemsReported',reported]])||`<p class="cloud-client-empty">${uiText('clientPlan.noIssues')}</p>`}</section>`;
+  workspace.innerHTML=`<div class="cloud-breadcrumb"><button class="text-button" data-client-plan="back">${uiText('portal.backToProjects')}</button></div><div class="client-banner"><span class="client-avatar">${esc((open.email||'').slice(0,2).toUpperCase())}</span><div><span class="eyebrow">${uiText('clientAccount.freelancer')}: ${esc(open.email)}</span><h2>${esc(open.name)}</h2></div></div>${nav}${tab==='plan'?plan:!this.clientDisputesSettled||!this.clientProblemsSettled?`<section class="workspace-panel cloud-initial-loading">${this.renderSkeleton('list',uiText('clientPlan.loading'))}</section>`:tab==='changes'?changes:issues}`;
+ };
+ async function showDelivery(project,position){
+  const blob=await cloud.request(`/api/v1/portal/account/projects/${encodeURIComponent(project)}/stages/${position}/delivery`,{},true);
+  if(blob.type.split(';')[0]!=='application/pdf')throw Error(uiText('clientPlan.deliveryError'));
+  // Back to the deliverable, where the client approves it or asks for changes after reading it.
+  cloud.show(uiText('clientPlan.viewDelivery'),`<div class="cloud-preview-toolbar"><button type="button" class="text-button" data-client-plan="stage" data-project="${esc(project)}" data-position="${position}">← ${t('deliverable',{number:position})}</button></div><iframe class="cloud-pdf-frame" title="${uiText('clientPlan.viewDelivery')}"></iframe>`);
+  cloud.modal.classList.add('cloud-document-preview');cloud.releasePreview?.();cloud.previewUrl=URL.createObjectURL(blob);
+  cloud.modal.querySelector('iframe').src=cloud.previewUrl+'#view=FitH';
+ }
+ doc.addEventListener('click',async event=>{
+  const button=event.target.closest('[data-client-plan]');if(!button||cloud.role!=='client')return;
+  const action=button.dataset.clientPlan,project=button.dataset.project,position=Number(button.dataset.position);
+  if(action==='open'){remember('trato:client-project',project);remember('trato:client-project-tab','');cloud.notify();return;}
+  if(action==='back'){remember('trato:client-project','');cloud.notify();return;}
+  if(action==='tab'){remember('trato:client-project-tab',button.dataset.tab);cloud.notify();return;}
+  if(action==='stage'){
+   const item=(cloud.clientPlans||[]).find(stage=>stage.project_id===project&&stage.position===position);if(!item)return;
+   cloud.show(t('deliverable',{number:position}),clientStageView(item));return;
+  }
+  if(action==='delivery'){try{await showDelivery(project,position);}catch(error){cloud.show(uiText('clientPlan.viewDelivery'),`<p class="cloud-error" role="alert">${esc(error.message)}</p>`);}return;}
+  if(action==='approve'||action==='changes'){
+   // Same decision as an addendum: approve what was delivered, or say what to change. Recorded once per delivery.
+   const approve=action==='approve';
+   cloud.show(uiText(approve?'clientPlan.approveTitle':'clientPlan.changesTitle'),`<form data-client-plan-review data-project="${esc(project)}" data-position="${position}" data-document="${esc(button.dataset.document)}" data-decision="${approve?'approved':'changes_requested'}"><p>${uiText(approve?'clientPlan.approveCopy':'clientPlan.changesCopy')}</p>${approve?'':`<label class="field">${uiText('clientPlan.changesLabel')}<textarea class="context-box" name="notes" required maxlength="4000"></textarea></label>`}<p class="cloud-error" role="alert" data-client-plan-error></p><div class="dialog-actions"><button type="button" class="button secondary" data-cloud-close>${uiText('Volver')}</button><button type="submit" class="button">${uiText(approve?'clientPlan.approveConfirm':'clientPlan.changesConfirm')}</button></div></form>`);
+  }
+ });
+ doc.addEventListener('submit',async event=>{
+  const form=event.target.closest?.('[data-client-plan-review]');if(!form)return;event.preventDefault();
+  form.querySelectorAll('button').forEach(b=>b.disabled=true);
+  try{
+   const notes=form.elements.notes?.value||null;
+   cloud.clientPlans=await cloud.request(`/api/v1/portal/account/projects/${encodeURIComponent(form.dataset.project)}/stages/${form.dataset.position}/review`,cloud.json({document_id:form.dataset.document,decision:form.dataset.decision,notes}));
+   cloud.modal.close();cloud.notify();
+  }catch(error){form.querySelector('[data-client-plan-error]').textContent=error.message;form.querySelectorAll('button').forEach(b=>b.disabled=false);}
+ });
  const renderAgreement=cloud.renderAgreement.bind(cloud);cloud.renderAgreement=function(host){renderAgreement(host);void progress(host,null,true);};
  async function open(project,position,stage,progressValue){
   clearTimeout(timer);const state={scope:scope(),project,position,stage,progress:progressValue,view:'payment',busy:false,upload:null,pay:null,files:[],ready:[],withdrawals:[],readGeneration:0,error:'',uploadKeys:new Map()};modalState=state;
@@ -99,8 +248,16 @@ export function installPlanPayments(cloud){
   try{
    const {pay,evidence}=await loadStagePayment(path=>cloud.request(path),state.project,state.position,()=>valid(state)&&run===state.readGeneration);
    if(!valid(state)||run!==state.readGeneration)return;
+   // The client's answer to this delivery, from their account: shown to the freelancer next to the deliverable.
+   const base=endpoint(state.project,state.position).replace('/checkout','');
+   [state.review,state.sent]=await Promise.all([cloud.request(base+'/client-review').catch(()=>state.review||null),cloud.request(base+'/client-delivery').catch(()=>state.sent||null)]);
+   if(!valid(state)||run!==state.readGeneration)return;
    state.pay=pay;state.error='';
-   if(pay){paint(state);scheduleStateRead(state);return;}
+   if(pay&&!state.checked&&pay.status!=='completed'&&stagePaymentStep(pay)==='await_payment'){
+    state.checked=true;
+    try{const fresh=await cloud.request(endpoint(state.project,state.position,'/reconcile'),cloud.json({}));if(valid(state)&&run===state.readGeneration)state.pay=fresh;}catch{}
+   }
+   if(state.pay){paint(state);scheduleStateRead(state);return;}
    if(!Array.isArray(evidence.documents)||!Array.isArray(evidence.files)||!Array.isArray(evidence.withdrawals))throw Error('Invalid stage evidence');
    state.withdrawals=evidence.withdrawals;
    state.files=evidence.documents.map(d=>({...d,vector_status:evidence.files.find(f=>f.id===d.id)?.status,vector_error:evidence.files.find(f=>f.id===d.id)?.error_code}));
@@ -123,22 +280,60 @@ export function installPlanPayments(cloud){
   if(!state.pay&&!state.files.some(file=>evidenceStatus(state,file)==='processing'))return;
   timer=setTimeout(()=>{if(!valid(state))return;if(state.busy){scheduleStateRead(state);return;}void load(state);},3500);
  }
- // Sandbox only: lets the freelancer open the same checkout the client receives by email. Payment is still verified by the backend.
- function sandboxCheckout(pay){
-  if(pay?.sandbox!==true||typeof pay.checkout_url!=='string'||!/^https?:\/\//.test(pay.checkout_url))return '';
-  return `<aside class="sandbox-checkout" role="note">${icon('info')}<div><strong>${t('sandboxTitle')}</strong><p>${t('sandboxHelp')}</p></div><a class="button secondary" href="${esc(pay.checkout_url)}" target="_blank" rel="noopener">${t('sandboxOpen')}${icon('arrow-up-right')}</a></aside>`;
+ // TeTrato can collect the deliverable with a PayPal invoice instead of the checkout, while nobody can have paid the order.
+ function invoiceActions(pay){
+  if(pay.method==='invoice')return pay.invoice_url?`<div class="plan-payment-pending"><a class="button secondary" href="${esc(pay.invoice_url)}" target="_blank" rel="noopener">${icon('file-text')}${uiText('invoice.open')}${icon('arrow-up-right')}</a></div>`:'';
+  return ['pending_approval','failed','cancelled'].includes(pay.status)?`<div class="plan-payment-pending"><button class="button secondary" type="button" data-plan-pay="invoice">${icon('sparkles')}${uiText('invoice.send')}</button></div>`:'';
+ }
+ // The payment email is the usual way to charge; a formal PayPal invoice is TeTrato's follow-up while it stays unpaid.
+ function invoiceFollowUp(pay){
+  if(pay.method==='invoice'||!['pending_approval','failed','cancelled'].includes(pay.status))return '';
+  return `<article class="plan-upload-pending" role="note"><span class="plan-upload-icon" aria-hidden="true">${icon('sparkles')}</span><div><strong>${uiText('invoice.followUpTitle')}</strong><small>${uiText('invoice.followUpCopy')}</small><div class="plan-payment-pending"><button class="text-button" type="button" data-plan-pay="detective">${icon('messages-square')}${uiText('paymentDetective.ask')}</button><button class="button secondary" type="button" data-plan-pay="invoice">${icon('sparkles')}${uiText('invoice.send')}</button></div></div></article>`;
+ }
+ // A sent invoice: one card with what was sent and when, and the two things to do while it is unpaid.
+ function invoiceSent(pay){
+  const sent=(pay.events||[]).filter(e=>e.kind==='email_sent').map(e=>e.created_at).sort().pop();
+  const when=sent?new Intl.DateTimeFormat(uiLocale(),{dateStyle:'medium',timeStyle:'short'}).format(new Date(sent)):'';
+  return `<article class="plan-upload-pending" role="status"><span class="plan-upload-icon" aria-hidden="true">${icon('file-text')}</span><div><strong>${uiText('invoice.sentTitle',{number:pay.invoice_number||''})}</strong><small>${when?esc(when)+' · ':''}${uiText('invoice.waitingPayment')}</small><div class="plan-payment-pending"><button class="text-button" type="button" data-plan-pay="detective">${icon('messages-square')}${uiText('paymentDetective.ask')}</button>${pay.invoice_url?`<a class="button secondary" href="${esc(pay.invoice_url)}" target="_blank" rel="noopener">${uiText('invoice.open')}${icon('arrow-up-right')}</a>`:''}</div></div></article>`;
+ }
+ function emailSentOn(pay){
+  const sent=(pay.events||[]).filter(e=>e.kind==='email_sent').map(e=>e.created_at).sort().pop();
+  return sent?uiText('invoice.emailSentOn',{date:new Intl.DateTimeFormat(uiLocale(),{dateStyle:'medium',timeStyle:'short'}).format(new Date(sent))}):t('awaitingClientPayment');
  }
  function paymentActions(pay){
   const step=stagePaymentStep(pay);
   if(step==='paid')return '';
-  if(step==='send_email')return `<div class="plan-payment-mail-actions"><span class="plan-payment-status">${t('readyToSend')}</span><button class="button" type="button" data-plan-pay="email">${icon('mail')}${t('reviewEmail')}</button></div>${sandboxCheckout(pay)}`;
-  if(step==='await_payment')return `<div class="plan-payment-pending"><span class="plan-payment-status">${t('awaitingClientPayment')}</span><button class="button secondary" type="button" data-plan-pay="detective">${icon('messages-square')}${uiText('paymentDetective.ask')}</button><button class="button secondary" type="button" data-plan-pay="verify">${t('verify')}</button></div>${sandboxCheckout(pay)}`;
+  if(step==='finish_invoice')return `<div class="plan-payment-pending"><button class="button" type="button" data-plan-pay="invoice">${uiText('invoice.retry')}</button></div>`;
+  if(step==='send_email')return `<div class="plan-payment-mail-actions"><span class="plan-payment-status">${t('readyToSend')}</span><button class="button" type="button" data-plan-pay="email">${icon('mail')}${pay.method==='invoice'?uiText('invoice.email'):t('reviewEmail')}</button></div>${pay.method==='invoice'?invoiceActions(pay):''}`;
+  if(step==='await_payment')return pay.method==='invoice'?invoiceSent(pay):`<p class="plan-payment-status">${esc(emailSentOn(pay))}</p>${invoiceFollowUp(pay)}`;
   if(step==='prepare_order')return `<div class="plan-payment-pending"><span class="plan-payment-status">${t('preparingOrder')}</span><button class="button secondary" type="button" data-plan-pay="verify">${t('checkPreparation')}</button></div>`;
   return `<div class="plan-payment-pending"><span class="plan-payment-status">${t(step==='sending_email'?'sendingEmail':'emailUnconfirmed')}</span><button class="text-button" type="button" data-plan-pay="reload">${t('checkEmailStatus')}</button></div>`;
  }
+ // Order of a deliverable: send the delivery, the client reviews it, and only an approved delivery is charged.
+ function clientReview(review){
+  if(!review)return '';
+  const when=new Intl.DateTimeFormat(uiLocale(),{dateStyle:'medium',timeStyle:'short'}).format(new Date(review.created_at));
+  if(review.decision==='approved')return `<p class="plan-payment-confirmation">${icon('circle-check')}${uiText('clientPlan.freelancerApproved',{date:when})}</p>`;
+  return `<div class="cloud-notice" role="status"><strong>${uiText('clientPlan.freelancerChanges',{date:when})}</strong><p>${esc(review.notes||'')}</p></div>`;
+ }
  function paint(state){
-  if(!valid(state))return;const pay=state.pay,paid=pay?.status==='completed';
-  cloud.modal.querySelector('[data-plan-payment-content]').innerHTML=`<section class="plan-delivery-payment"><header><div><span class="eyebrow">${t('deliverable',{number:state.position})}</span><h3>${esc(state.stage.title)}</h3></div><strong>${money(state.stage.amount)}</strong></header>${paid?`<p class="plan-payment-confirmation">${icon('circle-check')}${t('verifiedPaid')}</p>`:!pay?`<p class="plan-evidence-help">${t('uploadHelp')}</p>`:''}${state.upload?`<article class="plan-upload-pending" role="status" aria-live="polite"><span class="plan-upload-icon ${state.upload.phase!=='unconfirmed'?'is-loading':''}" aria-hidden="true">${icon(state.upload.phase==='unconfirmed'?'file-text':'refresh-cw')}</span><div><strong>${esc(state.upload.name)}</strong><small>${t(state.upload.phase==='checking'?'checkingFile':state.upload.phase==='uploading'?'uploadingFile':state.upload.phase==='unconfirmed'?'uploadUnconfirmed':'processing')}</small></div></article>`:''}${state.files.length?`<div class="plan-evidence-list">${state.files.map(d=>`<article class="plan-evidence-file"><span>${icon('file-text')}${esc(d.title)}</span><small>${t(evidenceStatus(state,d))}</small>${!pay?`<button type="button" class="text-button plan-evidence-remove" data-plan-pay="remove-evidence" data-plan-remove-id="${esc(d.id)}" aria-label="${t('removeEvidenceNamed',{name:d.title})}">${t('removeEvidence')}</button>`:''}</article>`).join('')}</div>`:''}${state.withdrawals.length?`<section class="plan-withdrawal-pending" role="status"><p>${t('cleanupPending')}</p>${state.withdrawals.map(item=>`<button type="button" class="text-button" data-plan-pay="remove-evidence" data-plan-remove-id="${esc(item.file_id)}">${t('retryCleanup')} · ${esc(item.title)}</button>`).join('')}</section>`:''}${!pay?`<label class="plan-evidence-upload" tabindex="0" role="button"><span class="plan-evidence-upload-icon" aria-hidden="true">${icon('file-up')}</span><span><strong>${t('uploadEvidence')}</strong><small>${t('pdfLimit')}</small></span><input type="file" accept=".pdf,application/pdf" data-plan-evidence-file hidden></label><footer class="plan-evidence-next"><span>${t(state.ready.length?'readyToCharge':state.files.length?'waitForEvidence':'evidenceRequired')}</span><button type="button" class="button" data-plan-pay="prepare" ${!state.ready.length?'disabled':''}>${t('preparePayment')}${icon('arrow-right')}</button></footer>${state.files.some(file=>evidenceStatus(state,file)==='processing')?`<button type="button" class="text-button" data-plan-pay="background">${t('continueWorking')}</button>`:''}`:!paid?`${paymentActions(pay)}`:''}${state.error?`<div class="plan-payment-error"><p class="cloud-error" role="alert">${esc(state.error)}</p><button type="button" class="text-button" data-plan-pay="reload">${t('retry')}</button></div>`:''}<p role="status" data-plan-pay-notice></p></section>`;
+  if(!valid(state))return;const pay=state.pay,paid=pay?.status==='completed',sent=state.sent;
+  // The client's answer counts only for the delivery that was sent last.
+  const review=sent?.shared_at&&state.review?.document_id===sent.document_id?state.review:null;
+  const approved=review?.decision==='approved',waiting=!!sent?.shared_at&&!review&&!state.pendingFile;
+  const when=value=>new Intl.DateTimeFormat(uiLocale(),{dateStyle:'medium',timeStyle:'short'}).format(new Date(value));
+  const upload=state.upload?`<article class="plan-upload-pending" role="status" aria-live="polite"><span class="plan-upload-icon ${!['unconfirmed','ready'].includes(state.upload.phase)?'is-loading':''}" aria-hidden="true">${icon(['unconfirmed','ready'].includes(state.upload.phase)?'file-text':'refresh-cw')}</span><div><strong>${esc(state.upload.name)}</strong><small>${state.upload.phase==='ready'?uiText('clientPlan.fileReady'):t(state.upload.phase==='checking'?'checkingFile':state.upload.phase==='uploading'?'uploadingFile':state.upload.phase==='unconfirmed'?'uploadUnconfirmed':'processing')}</small></div></article>`:'';
+  const files=state.files.length?`<div class="plan-evidence-list">${state.files.map(d=>`<article class="plan-evidence-file"><span>${icon('file-text')}${esc(d.title)}</span><small>${t(evidenceStatus(state,d))}</small>${!pay&&!sent?.shared_at?`<button type="button" class="text-button plan-evidence-remove" data-plan-pay="remove-evidence" data-plan-remove-id="${esc(d.id)}" aria-label="${t('removeEvidenceNamed',{name:d.title})}">${t('removeEvidence')}</button>`:''}</article>`).join('')}</div>`:'';
+  const withdrawals=state.withdrawals.length?`<section class="plan-withdrawal-pending" role="status"><p>${t('cleanupPending')}</p>${state.withdrawals.map(item=>`<button type="button" class="text-button" data-plan-pay="remove-evidence" data-plan-remove-id="${esc(item.file_id)}">${t('retryCleanup')} · ${esc(item.title)}</button>`).join('')}</section>`:'';
+  const chooser=`<label class="plan-evidence-upload" tabindex="0" role="button"><span class="plan-evidence-upload-icon" aria-hidden="true">${icon('file-up')}</span><span><strong>${t('uploadEvidence')}</strong><small>${t('pdfLimit')}</small></span><input type="file" accept=".pdf,application/pdf" data-plan-evidence-file hidden></label>`;
+  const send=!pay&&state.pendingFile||sent&&!sent.shared_at?`<footer class="plan-evidence-next"><span>${uiText(state.pendingFile?'clientPlan.fileReady':'clientPlan.notSent')}</span><button type="button" class="button" data-plan-pay="send-delivery">${icon('send')}${uiText('clientPlan.send')}</button></footer>`:'';
+  let body='';
+  if(paid)body=`<p class="plan-payment-confirmation">${icon('circle-check')}${t('verifiedPaid')}</p>${clientReview(review)}`;
+  else if(approved)body=clientReview(review)+(!pay?`${files}<footer class="plan-evidence-next"><span>${t(state.ready.length?'readyToCharge':'waitForEvidence')}</span><button type="button" class="button" data-plan-pay="prepare" ${!state.ready.length?'disabled':''}>${t('preparePayment')}${icon('arrow-right')}</button></footer>`:paymentActions(pay));
+  // Same card as an upload in progress: what happened, when, and what comes next.
+  else if(waiting)body=`${files}<article class="plan-upload-pending" role="status"><span class="plan-upload-icon" aria-hidden="true">${icon('send')}</span><div><strong>${uiText('clientPlan.sentTitle')}</strong><small>${esc(when(sent.shared_at))} · ${uiText('clientPlan.waitingReview')}</small></div></article>`;
+  else body=`${clientReview(review)}<p class="plan-evidence-help">${t(pay?'sendPreparedHelp':'uploadHelp')}</p>${pay?'':upload}${files}${withdrawals}${pay?'':chooser}${send}`;
+  cloud.modal.querySelector('[data-plan-payment-content]').innerHTML=`<section class="plan-delivery-payment"><header><div><span class="eyebrow">${t('deliverable',{number:state.position})}</span><h3>${esc(state.stage.title)}</h3></div><strong>${money(state.stage.amount)}</strong></header>${body}${state.error?`<div class="plan-payment-error"><p class="cloud-error" role="alert">${esc(state.error)}</p><button type="button" class="text-button" data-plan-pay="reload">${t('retry')}</button></div>`:''}<p role="status" data-plan-pay-notice></p></section>`;
   if(state.busy)cloud.modal.querySelector('[data-plan-payment-content]').querySelectorAll('button,input').forEach(el=>el.disabled=true);
   scheduleStateRead(state);
  }
@@ -148,21 +343,27 @@ export function installPlanPayments(cloud){
    event.preventDefault();if(modalState&&valid(modalState)&&!modalState.busy)target.querySelector('input')?.click();
   }
  });
+ // Choosing the PDF keeps it in the browser; it is uploaded, read by Trato and shown to the client only when sent.
  doc.addEventListener('change',async event=>{
   const input=event.target;if(!input.matches('[data-plan-evidence-file]'))return;const state=modalState;if(!state||!valid(state)||state.busy)return;
   const file=input.files?.[0];if(!file)return;
-  state.readGeneration++;state.busy=true;state.error='';state.upload={name:file.name,phase:'checking',id:null};paint(state);
-  try{
-   if(!file.name.toLowerCase().endsWith('.pdf')||file.size>10485760||!file.size||(await file.slice(0,5).text())!=='%PDF-')throw Error(t('pdfError'));
-   if(!valid(state))return;
-   state.upload.phase='uploading';paint(state);
-   const identity=JSON.stringify([file.name,file.size,file.lastModified]);if(!state.uploadKeys.has(identity))state.uploadKeys.set(identity,crypto.randomUUID());
-   const query=new URLSearchParams({filename:file.name,title:t('evidenceTitle',{number:state.position}),kind:'delivery',purpose:'delivery_evidence',stage_position:state.position});
-   const uploaded=await cloud.request(`/api/v1/projects/${state.project}/documents?${query}`,{method:'POST',body:file,headers:{'Content-Type':'application/pdf','Accept-Language':uiLanguage(),'Idempotency-Key':state.uploadKeys.get(identity)}});
-   if(valid(state)){state.upload.phase='processing';state.upload.id=uploaded.document?.id;paint(state);await load(state);}
-  }catch(error){if(valid(state)){if(state.upload)state.upload.phase='unconfirmed';state.error=error.code?message(error):error.message;}}
-  finally{state.busy=false;if(valid(state))paint(state);}
+  state.error='';
+  if(!file.name.toLowerCase().endsWith('.pdf')||file.size>10485760||!file.size||(await file.slice(0,5).text())!=='%PDF-'){state.error=t('pdfError');paint(state);return;}
+  if(!valid(state))return;
+  state.pendingFile=file;state.upload={name:file.name,phase:'ready',id:null};paint(state);
  });
+ // The freelancer's click sends it: Trato builds the payment email from the reviewed request and sends it at once.
+ async function sendPaymentEmail(state){
+  const mail=await cloud.request(endpoint(state.project,state.position,'/email-preview'));if(!valid(state))return;
+  state.pay=await cloud.request(endpoint(state.project,state.position,'/email'),cloud.json({digest:mail.digest,confirmed:true}));
+ }
+ async function uploadEvidence(state,file){
+  state.upload={name:file.name,phase:'uploading',id:null};paint(state);
+  const identity=JSON.stringify([file.name,file.size,file.lastModified]);if(!state.uploadKeys.has(identity))state.uploadKeys.set(identity,crypto.randomUUID());
+  const query=new URLSearchParams({filename:file.name,title:t('evidenceTitle',{number:state.position}),kind:'delivery',purpose:'delivery_evidence',stage_position:state.position});
+  const uploaded=await cloud.request(`/api/v1/projects/${state.project}/documents?${query}`,{method:'POST',body:file,headers:{'Content-Type':'application/pdf','Accept-Language':uiLanguage(),'Idempotency-Key':state.uploadKeys.get(identity)}});
+  state.pendingFile=null;state.upload={name:file.name,phase:'processing',id:uploaded.document?.id};
+ }
  doc.addEventListener('click',async event=>{
   const button=event.target.closest('[data-plan-pay]'),state=modalState;if(!button||!state||!valid(state)||state.busy)return;
   if(button.dataset.planPay==='detective'){cloud.openPaymentDetective?.(button,uiText('paymentDetective.focus'));return;}
@@ -180,13 +381,38 @@ export function installPlanPayments(cloud){
     if(!state.ready.length)throw {code:state.files.length?'PLAN_EVIDENCE_NOT_READY':'PLAN_EVIDENCE_REQUIRED'};
     const key=`trato:stage-payment:${state.scope}:${state.position}`;let id=cloud.storage.getItem(key);if(!id){id=crypto.randomUUID();cloud.storage.setItem(key,id);}
     state.pay=await cloud.request(endpoint(state.project,state.position),{...cloud.json({evidence_document_id:state.ready[0].id,output_language:uiLanguage(),confirmed:true}),headers:{'Content-Type':'application/json','Idempotency-Key':id}});
+    // One click: the payment request is prepared and emailed to the client in the same step.
+    if(valid(state)&&state.pay&&stagePaymentStep(state.pay)==='send_email')await sendPaymentEmail(state);
    }
    if(action==='verify'){state.pay=await cloud.request(endpoint(state.project,state.position,'/reconcile'),cloud.json({}));}
-   if(action==='email'){
-    const value=await cloud.request(endpoint(state.project,state.position,'/email-preview'));if(!valid(state))return;state.email=value;state.view='email';clearTimeout(timer);
-    cloud.modal.querySelector('[data-plan-payment-content]').innerHTML=stagePaymentEmailMarkup(value,state.pay.checkout_url);return;
+   if(action==='send-delivery'){
+    if(state.pendingFile&&!state.pay){try{await uploadEvidence(state,state.pendingFile);}catch(error){if(state.upload)state.upload.phase='unconfirmed';throw error;}}
+    if(!valid(state))return;
+    state.sent=await cloud.request(endpoint(state.project,state.position).replace('/checkout','/client-delivery'),cloud.json({}));state.review=null;
+    await load(state);
    }
-  }catch(error){if(valid(state))state.error=message(error);}finally{state.busy=false;if(valid(state)&&(action!=='email'||state.error)){paint(state);}}
+   if(action==='invoice'){
+    // The freelancer confirms what TeTrato will send: amount and recipient come from the plan and the client.
+    clearTimeout(timer);state.view='invoice';
+    cloud.modal.querySelector('[data-plan-payment-content]').innerHTML=`<form data-plan-stage-invoice class="plan-mail-form"><header class="plan-mail-heading"><span class="plan-mail-heading-icon" aria-hidden="true">${icon('sparkles')}</span><div><h3>${uiText('invoice.title')}</h3><p>${uiText('invoice.intro')}</p></div></header><dl class="proposal-summary-terms"><div><dt>${uiText('invoice.stageAmount')}</dt><dd>${esc(money(state.stage.amount))}</dd></div></dl><label class="field">${uiText('invoice.concept')}<input class="context-box" name="concept" required maxlength="200"></label><div data-invoice-concept-status></div><p class="field-help">${uiText('invoice.stageOneWay')}</p><footer class="dialog-actions"><button type="button" class="button secondary" data-plan-pay="reload">${uiText('Volver')}</button><button type="submit" class="button">${icon('send')}${uiText('invoice.confirm')}</button></footer><div data-invoice-sending></div><p class="cloud-error" role="alert" data-plan-invoice-error></p></form>`;
+    fillInvoiceConcept(cloud,cloud.modal.querySelector('[data-plan-stage-invoice]'),{target:'stage',project_id:state.project,position:state.position});return;
+   }
+   if(action==='email')await sendPaymentEmail(state);
+  }catch(error){if(valid(state))state.error=message(error);}finally{state.busy=false;if(valid(state)&&(action!=='invoice'||state.error)){paint(state);}}
+ });
+ doc.addEventListener('submit',async event=>{
+  if(!event.target.matches('[data-plan-stage-invoice]'))return;event.preventDefault();const state=modalState;if(!state||!valid(state)||state.busy)return;
+  const form=event.target,concept=new FormData(form).get('concept');state.busy=true;form.querySelectorAll('button,input,textarea').forEach(b=>b.disabled=true);
+  form.querySelector('[data-invoice-sending]').innerHTML=`<div style="margin-top:20px">${renderAIActivity({label:uiText('invoice.sending'),compact:true})}</div>`;
+  try{
+   state.pay=await cloud.request(endpoint(state.project,state.position,'/invoice'),cloud.json({concept,confirmed:true}));
+   if(!valid(state))return;
+   // PayPal Sandbox does not email real inboxes: Trato's own payment email carries the invoice link, sent in the same step.
+   try{const mail=await cloud.request(endpoint(state.project,state.position,'/email-preview'));state.pay=await cloud.request(endpoint(state.project,state.position,'/email'),cloud.json({digest:mail.digest,confirmed:true}));}
+   catch{state.error=uiText('invoice.emailFailed');}
+   if(!valid(state))return;state.view='payment';await load(state);
+  }catch(error){if(valid(state)&&form.isConnected){form.querySelector('[data-invoice-sending]').innerHTML='';form.querySelector('[data-plan-invoice-error]').textContent=error.code?message(error):error.message;}}
+  finally{state.busy=false;if(form.isConnected)form.querySelectorAll('button,input,textarea').forEach(b=>b.disabled=false);}
  });
  doc.addEventListener('submit',async event=>{
   if(!event.target.matches('[data-plan-stage-email]'))return;event.preventDefault();const state=modalState;if(!state||!valid(state)||state.busy)return;

@@ -72,3 +72,48 @@ class AIQueueTests(unittest.TestCase):
             self.assertEqual(jobs.get('owner',id)['status'],'failed')
             self.assertEqual(jobs.get('owner',id)['error_code'],'AI_INTERRUPTED')
             self.assertNotIn('completed_at',self.redis.hgetall(PREFIX+id))
+    def enqueue_owned_by_a_dead_consumer(self,seconds_since_heartbeat):
+        # The dead consumer read the entry and claimed the job, then stopped without finishing it.
+        from trato_api.ai_jobs import AIJobs,PREFIX
+        import time
+        jobs=AIJobs(self.redis);id=str(uuid4())
+        AIConsumer(self.redis,None,Model(OUTPUT)).setup();self.redis.set('trato:ai:consumer:ready','1',ex=30)
+        jobs.enqueue('owner',id,{'workflow':'reputation','output_language':'es','reviews':[REVIEW]})
+        self.redis.xreadgroup('trato-business-ai','dead',{STREAM:'>'},count=1)
+        self.redis.hset(PREFIX+id,mapping={'status':'running','started_at':time.time()-seconds_since_heartbeat,'execution_id':'dead'})
+        return jobs,id
+    def test_a_job_whose_owner_died_is_interrupted_within_minutes(self):
+        import time
+        from trato_worker import ai_jobs
+        with patch.dict(os.environ,{'TRATO_AI_WORKFLOWS_ENABLED':'true'}),patch.object(ai_jobs,'RECOVERY_IDLE_MS',100):
+            jobs,id=self.enqueue_owned_by_a_dead_consumer(ai_jobs.STALE_SECONDS+5)
+            model=Model(OUTPUT);time.sleep(.2)
+            self.assertTrue(AIConsumer(self.redis,None,model).process_once())
+            self.assertEqual(jobs.get('owner',id)['status'],'failed')
+            self.assertEqual(jobs.get('owner',id)['error_code'],'AI_INTERRUPTED')
+            self.assertEqual(model.calls,[]);self.assertEqual(self.redis.xpending(STREAM,'trato-business-ai')['pending'],0)
+    def test_a_job_with_a_recent_heartbeat_is_left_running(self):
+        import time
+        from trato_worker import ai_jobs
+        with patch.dict(os.environ,{'TRATO_AI_WORKFLOWS_ENABLED':'true'}),patch.object(ai_jobs,'RECOVERY_IDLE_MS',100):
+            jobs,id=self.enqueue_owned_by_a_dead_consumer(ai_jobs.HEARTBEAT_SECONDS)
+            model=Model(OUTPUT);time.sleep(.2)
+            self.assertTrue(AIConsumer(self.redis,None,model).process_once())
+            self.assertEqual(jobs.get('owner',id)['status'],'running');self.assertEqual(model.calls,[])
+            self.assertEqual(self.redis.xpending(STREAM,'trato-business-ai')['pending'],1)
+    def test_the_heartbeat_renews_a_slow_job_in_redis(self):
+        import time
+        from trato_api.ai_jobs import AIJobs,PREFIX
+        from trato_worker import ai_jobs
+        jobs=AIJobs(self.redis);id=str(uuid4());seen=[]
+        class Slow(Model):
+            def generate(model,messages,schema):
+                first=float(self.redis.hget(PREFIX+id,'started_at'));time.sleep(.4)
+                seen.append(float(self.redis.hget(PREFIX+id,'started_at'))-first)
+                return super().generate(messages,schema)
+        consumer=AIConsumer(self.redis,None,Slow(OUTPUT));consumer.setup()
+        with patch.dict(os.environ,{'TRATO_AI_WORKFLOWS_ENABLED':'true'}),patch.object(ai_jobs,'HEARTBEAT_SECONDS',.05):
+            self.redis.set('trato:ai:consumer:ready','1',ex=30)
+            jobs.enqueue('owner',id,{'workflow':'reputation','output_language':'es','reviews':[REVIEW]})
+            consumer.process_once()
+            self.assertGreater(seen[0],.2);self.assertEqual(jobs.get('owner',id)['status'],'completed')

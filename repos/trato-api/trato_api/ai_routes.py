@@ -182,6 +182,9 @@ def build_ai_router(settings,require_user,repository_factory=None,jobs=None,pref
         if result['status']=='completed' and result['result'].get('kind')=='dispute_defense':
             from .disputes import completed_defense
             result['result']=await run_in_threadpool(completed_defense,jobs,repository(request),owner,str(job_id),result['result'])
+        if result['status']=='completed' and result['result'].get('kind')=='invoice_concept':
+            from .invoice_concept import validate_concept
+            result['result']=validate_concept(result['result'])
         if result['status']=='completed' and result['result'].get('kind')=='section_help':
             from .section_help import completed_result
             result['result']=await run_in_threadpool(completed_result,jobs,owner,str(job_id),result['result'])

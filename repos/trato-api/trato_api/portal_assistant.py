@@ -31,10 +31,12 @@ class Question(BaseModel):
 class Answer(BaseModel):
     model_config = ConfigDict(extra='forbid', strict=True)
     kind: Literal['portal_assistant']
-    status: Literal['answered', 'outside_agreement', 'draft_change']
+    status: Literal['answered', 'outside_agreement', 'draft_change', 'draft_problem']
     answer: str = Field(min_length=1, max_length=4000)
     sources: list[Literal['scope', 'conditions', 'amount', 'deadline', 'status']] = Field(max_length=5)
     change_request: str = Field(max_length=4000)
+    # Default only for answers stored before problem reports existed.
+    problem_report: str = Field(default='', max_length=4000)
     model: str | None = None
 
 
@@ -48,26 +50,33 @@ def can_request_changes(view):
     return view.get('status') == 'ready_for_review' and bool(view.get('is_current')) and not view.get('accepted_at') and not view.get('change_request')
 
 
-def agreement_context(view):
+def can_report_problem(view, has_report):
+    # Paid and verified by PayPal, with no report yet. The database checks it again when the client sends it.
+    return view.get('status') == 'accepted' and view.get('payment_status') == 'completed' and not has_report
+
+
+def agreement_context(view, can_report=False):
     """Only fields the client already sees. Internal ids, rates, notes and other documents never reach the model."""
     request = view.get('change_request')
     return {'project_name': view.get('project_name'), 'client_name': view.get('client_name'), 'version': view.get('revision_no'),
             'scope': view.get('scope_summary'), 'conditions': view.get('conditions'), 'amount_minor': view.get('additional_minor'),
             'currency': view.get('currency'), 'deadline': view.get('deadline'), 'status': view.get('status'),
             'payment_status': view.get('payment_status'), 'can_request_changes': can_request_changes(view),
-            'pending_change_request': request.get('notes') if isinstance(request, dict) else None}
+            'pending_change_request': request.get('notes') if isinstance(request, dict) else None,
+            'can_report_problem': bool(can_report)}
 
 
-def validate_answer(result, can_request):
+def validate_answer(result, can_request, can_report=False):
     """The worker already validated; check again before the client sees it."""
     try:
         answer = Answer.model_validate(result)
     except ValidationError:
         raise ApiError('AI_INVALID_RESPONSE', 502) from None
     valid = answer.answer.strip() and len(set(answer.sources)) == len(answer.sources) and (
-        (answer.status == 'answered' and answer.sources and not answer.change_request)
-        or (answer.status == 'draft_change' and can_request and answer.change_request.strip() and not answer.sources)
-        or (answer.status == 'outside_agreement' and not answer.sources and not answer.change_request))
+        (answer.status == 'answered' and answer.sources and not answer.change_request and not answer.problem_report)
+        or (answer.status == 'draft_change' and can_request and answer.change_request.strip() and not answer.sources and not answer.problem_report)
+        or (answer.status == 'draft_problem' and can_report and answer.problem_report.strip() and not answer.sources and not answer.change_request)
+        or (answer.status == 'outside_agreement' and not answer.sources and not answer.change_request and not answer.problem_report))
     if not valid:
         raise ApiError('AI_INVALID_CITATION', 502)
     return answer.model_dump(exclude={'model', 'kind'})
@@ -88,8 +97,8 @@ def reserve_question(jobs, digest, job_id):
         raise ApiError('PORTAL_ASSISTANT_LIMIT', 429)
 
 
-def ask(jobs, preferences, digest, view, data):
-    """Queue a question about this addendum."""
+def ask(jobs, preferences, digest, view, data, can_report=False):
+    """Queue a question about this addendum. `can_report` comes from the database: paid, and no report yet."""
     if view.get('status') == 'superseded' or (not view.get('is_current') and view.get('status') != 'accepted'):
         raise ApiError('PROPOSAL_REVISION_CONFLICT', 409)
     job_id = uuid(data.get('job_id'))
@@ -99,25 +108,26 @@ def ask(jobs, preferences, digest, view, data):
         raise ApiError('AI_INVALID_INPUT', 422) from None
     if not item.question.strip() or any(turn.role != ('user' if index % 2 == 0 else 'assistant') for index, turn in enumerate(item.history)):
         raise ApiError('AI_INVALID_INPUT', 422)
-    context = agreement_context(view)
+    context = agreement_context(view, can_report)
     # No account means no personal model preference: always the configured default.
     payload = {'workflow': 'portal_assistant', 'output_language': item.output_language, 'question': item.question.strip(),
                'history': [turn.model_dump() for turn in item.history], 'agreement': context, 'model_id': preferences.configuration()[1]}
     reserve_question(jobs, digest, job_id)
-    return public_job(jobs.enqueue(job_owner(digest), job_id, payload), context['can_request_changes'])
+    return public_job(jobs.enqueue(job_owner(digest), job_id, payload), context['can_request_changes'], context['can_report_problem'])
 
 
 def status(jobs, digest, data):
     """Poll a question. The answer is checked against what the job was asked, not against the model's output."""
     owner, job_id = job_owner(digest), uuid(data.get('job_id'))
     job = jobs.get(owner, job_id, 'portal_assistant')
-    return public_job(job, bool(jobs.input(owner, job_id)['agreement'].get('can_request_changes')))
+    agreement = jobs.input(owner, job_id)['agreement']
+    return public_job(job, bool(agreement.get('can_request_changes')), agreement.get('can_report_problem') is True)
 
 
-def public_job(job, can_request):
+def public_job(job, can_request, can_report=False):
     reply = {'id': job['id'], 'status': job['status']}
     if job['status'] == 'completed':
-        reply['result'] = validate_answer(job['result'], can_request)
+        reply['result'] = validate_answer(job['result'], can_request, can_report)
     if job['status'] == 'failed':
         reply['error_code'] = job.get('error_code')
     return reply

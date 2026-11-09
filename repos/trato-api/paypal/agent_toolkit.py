@@ -10,6 +10,8 @@ from threading import Lock, Thread
 from .client import PayPalError
 
 READ_ONLY_TOOLS = frozenset({'list_disputes', 'get_dispute', 'get_order_details'})
+# Invoice tools, a separate explicit list: the backend calls them only after the freelancer confirms the invoice.
+INVOICE_TOOLS = frozenset({'create_invoice', 'send_invoice', 'get_invoice', 'search_invoicing'})
 TOKEN_SECONDS = 1800  # PayPal tokens last hours; the toolkit asks for a new one on every call, which costs ~1 s each.
 _shared_lock = Lock()
 _shared_api = {}
@@ -46,8 +48,8 @@ class AgentToolkit:
             raise PayPalError('PAYPAL_SANDBOX_NOT_CONFIGURED', status=503)
         self.client_id, self.client_secret, self.api, self.timeout = client_id, client_secret, api, timeout
 
-    def _run(self, tool, params):
-        if tool not in READ_ONLY_TOOLS:
+    def _run(self, tool, params, allowed=READ_ONLY_TOOLS):
+        if tool not in allowed:
             raise PayPalError('PAYPAL_TOOL_NOT_ALLOWED', status=422)
         results = Queue(maxsize=1)
 
@@ -81,3 +83,16 @@ class AgentToolkit:
 
     def get_dispute(self, dispute_id):
         return self._run('get_dispute', {'dispute_id': dispute_id})
+
+    def create_invoice(self, params):
+        return self._run('create_invoice', params, INVOICE_TOOLS)
+
+    def send_invoice(self, invoice_id):
+        return self._run('send_invoice', {'invoice_id': invoice_id, 'send_to_recipient': True}, INVOICE_TOOLS)
+
+    def get_invoice(self, invoice_id):
+        return self._run('get_invoice', {'invoice_id': invoice_id}, INVOICE_TOOLS)
+
+    def search_invoices(self, invoice_number):
+        return self._run('search_invoicing', {'resource_type': 'invoice', 'page_size': 5,
+                                              'invoice_filters': {'invoice_number': invoice_number}}, INVOICE_TOOLS)

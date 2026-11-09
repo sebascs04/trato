@@ -11,7 +11,7 @@ function fixture(){
  installPlanPayments(cloud);return {cloud,host,pending};
 }
 test('plan view removes the aggregate counter while keeping stage payment hooks',async()=>{
- const {cloud,host,pending}=fixture();cloud.renderPlanPayments(host,{stages:[]});pending[0].resolve({completed_at:null,stages:[]});await new Promise(setImmediate);assert.equal(host.children[0].removed,true);
+ const {cloud,host,pending}=fixture();cloud.renderPlanPayments(host,{stages:[]});pending[0].resolve({completed_at:null,stages:[]});pending[1]?.resolve({});await new Promise(setImmediate);assert.equal(host.children[0].removed,true);
 });
 test('a late payment summary cannot appear after changing owner or project',async()=>{
  const {cloud,host,pending}=fixture();cloud.renderAgreement(host);cloud.navigationOwner='owner-b';cloud.projectId='project-b';pending[0].resolve({completed_at:'2026-11-06T00:00:00Z',stages:[]});await new Promise(setImmediate);assert.doesNotMatch(host.children[0].textContent,/completado/);

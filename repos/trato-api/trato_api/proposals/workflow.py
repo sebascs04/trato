@@ -92,7 +92,9 @@ class ProposalWorkflow:
             payments=snapshot['payments']
             if not payments or payments[0]['status']!='pending_approval':raise ApiError('PAYMENT_NOT_READY',409)
             pay=payments[0]
-            item=PaymentEmail(pay['id'],client['contact_email'],client['name'],project['name'],amount,'USD',pay['approval_url'],attachment,language=language)
+            # A PayPal invoice is paid from its own payer page; Orders keep their approval link.
+            link=pay.get('invoice_url') if pay.get('method')=='invoice' else pay['approval_url']
+            item=PaymentEmail(pay['id'],client['contact_email'],client['name'],project['name'],amount,'USD',link,attachment,language=language,invoice=pay.get('method')=='invoice')
         else:raise ApiError('INVALID_MAIL_KIND',422)
         return snapshot,item
     def prepare_email(self,repo,owner,proposal_id,revision_id,kind,*,for_preview=False,freelancer_email='',language='es'):
@@ -281,6 +283,7 @@ class ProposalWorkflow:
         merchant=SandboxSettings.from_env().merchant_id
         pay=self.backend().command(owner,'payment_prepare',{'proposal_id':proposal_id,'revision_id':revision_id,'merchant_id':merchant,'token':secrets.token_urlsafe(32)})
         if not pay['acquired']:
+            if pay.get('method')=='invoice':return self.invoice_payment(pay)
             if not pay['order_id']:raise ApiError('ORDER_REFERENCE_UNCERTAIN',409)
             return pay
         origin=self.settings.web_origin.rstrip('/')
@@ -295,6 +298,7 @@ class ProposalWorkflow:
         if not isinstance(token,str) or len(token)!=43:raise ApiError('PAYMENT_NOT_FOUND',404)
         pay=self.backend().command(None,'checkout',{'token':token})
         if pay['status']=='completed':return self.public_payment(pay)
+        if pay.get('method')=='invoice':return self.public_payment(self.invoices().verify(pay))
         if not pay['order_id']:raise ApiError('ORDER_REFERENCE_UNCERTAIN',409)
         client=self.provider()
         try:
@@ -307,6 +311,16 @@ class ProposalWorkflow:
         except PayPalError as error:
             self.backend().command(pay['owner_id'],'payment_uncertain',{'payment_id':pay['id'],'error_code':error.code})
             raise ApiError(error.code,error.status) from None
+    def invoices(self):
+        from .invoices import AddendumInvoices
+        return AddendumInvoices(self)
+    def invoice_payment(self,pay):
+        # The addendum is collected by its PayPal invoice: its payer page replaces the Orders approval link,
+        # and the invoice is read back first so a paid one completes the change.
+        pay=self.invoices().verify(pay)
+        if pay['status']=='completed':return pay
+        if pay['status']!='pending_approval' or not pay.get('invoice_url'):raise ApiError('INVOICE_NOT_READY',409)
+        return {**pay,'approval_url':pay['invoice_url']}
     @staticmethod
     def public_payment(pay):
-        return {key:pay.get(key) for key in ('id','status','order_id','capture_id','amount_minor','currency')}
+        return {key:pay.get(key) for key in ('id','status','order_id','capture_id','amount_minor','currency','method','invoice_url')}

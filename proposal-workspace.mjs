@@ -5,6 +5,7 @@ import {uiText,uiLocale} from './i18n.mjs';
 import {icon as uiIcon} from './icons.mjs';
 import {createAgentPanel} from './agent-panel.mjs';
 import {renderAIActivity} from './ai-activity.mjs';
+import {fillInvoiceConcept} from './plan-payments.mjs';
 import {uiLanguage} from './i18n.mjs';
 const esc=value=>String(value??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const amount=minor=>new Intl.NumberFormat(uiLocale(),{style:'currency',currency:'USD'}).format(minor/100);
@@ -215,6 +216,13 @@ export function installProposalWorkspace(cloud){
   </section>`:'';
 
  }
+ // With more than two secondary actions, they fold into one "More" menu so the next step stays the visible choice.
+ // Same disclosure as the client-reply menu (cloud-reply-other).
+ function secondaryActions(items){
+  if(items.length<=2)return items.join('');
+  const menu=items.join('').replace(/class="button secondary"/g,'class="cloud-reply-menu-item" role="menuitem"');
+  return `<details class="cloud-reply-other"><summary class="button secondary">${uiText('proposalCard.more')}${uiIcon('chevron-down')}</summary><div class="cloud-reply-menu" role="menu" style="left:0;right:auto">${menu}</div></details>`;
+ }
  cloud.renderChangeManagement=function(panel){
   if(this.proposalLoading){panel.innerHTML=`<div class="cloud-detail-loading"><span aria-hidden="true">${uiIcon('refresh-cw')}</span><span>${uiText("Cargando detalles…")}</span></div>${this.renderSkeleton('project',uiText("Cargando detalles del pedido…"))}`;return;}
   if(this.proposalError){panel.innerHTML=`<section class="workspace-panel"><h3>${uiText("No se pudieron cargar los detalles")}</h3><p role="alert" class="cloud-error">${esc(this.proposalError)}</p><div class="cloud-tools"><button class="button" data-proposal-action="retry-details">${uiText("Reintentar")}</button><button class="button secondary" data-cloud-action="tab" data-cloud-tab="solicitudes">${uiText("Volver a los pedidos")}</button></div></section>`;return;}
@@ -242,7 +250,16 @@ export function installProposalWorkspace(cloud){
     if(!sent)controls.push(("<button class=\"button\" data-proposal-action=\"preview\" data-kind=\"adenda\">"+uiText("Enviar adenda →")+"</button>"));
     if(sent)replyDecision.push(("<button class=\"button\" data-proposal-action=\"accept\">"+uiText("Registrar aceptación recibida →")+"</button>"));
    }else if(data.payment_required){
+    // TeTrato can collect the addendum with a PayPal invoice instead of the checkout, while nobody can have paid the order.
+    // Only before the payment email: an addendum keeps one payment email, and the invoice needs its own to carry its link.
+    const invoiceable=!paymentSent&&(!payment||payment.method!=='invoice'&&!payment.capture_attempted&&['pending_approval','failed','cancelled'].includes(payment.status));
+    if(invoiceable)secondary.push(`<button class="button secondary" data-proposal-action="invoice">${uiIcon('sparkles')}${uiText('invoice.send')}</button>`);
     if(!payment)controls.push(("<button class=\"button\" data-proposal-action=\"payment\">"+uiText("Preparar cobro →")+"</button>"));
+    else if(payment.method==='invoice'){
+     if(payment.invoice_url)secondary.push(`<a class="button secondary" href="${esc(payment.invoice_url)}" target="_blank" rel="noopener">${uiIcon('file-text')}${uiText('invoice.open')}${uiIcon('arrow-up-right')}</a>`);
+     if(payment.status==='reconciliation_required'||payment.status==='creating')controls.push(`<button class="button" data-proposal-action="invoice">${uiText('invoice.retry')}</button>`);
+     else{if(payment.status==='pending_approval'&&!paymentSent)controls.push(`<button class="button" data-proposal-action="preview" data-kind="payment">${uiText('invoice.email')}</button>`);controls.push(("<button class=\"button secondary\" data-proposal-action=\"reconcile\">"+uiText("Verificar pago ↻")+"</button>"));}
+    }
     else{if(payment.status==='pending_approval'&&!data.deliveries.some(d=>d.kind==='payment'&&d.status==='accepted_by_gmail'))controls.push(("<button class=\"button\" data-proposal-action=\"preview\" data-kind=\"payment\">"+uiText("Enviar solicitud de pago →")+"</button>"));controls.push(("<button class=\"button secondary\" data-proposal-action=\"reconcile\">"+uiText("Verificar pago ↻")+"</button>"));}
    }
    const attempted=data.deliveries.some(d=>['sending','accepted_by_gmail','delivery_uncertain'].includes(d.status));
@@ -250,7 +267,7 @@ export function installProposalWorkspace(cloud){
    if(!payment&&!data.acceptances.length)closeControl=`<button type="button" class="text-button cloud-review-close" data-proposal-action="close-request">${uiIcon('trash-2')}${uiText("Cerrar pedido")}</button>`;
    if(!payment&&!data.acceptances.length&&sent)replyDecision.unshift(("<button class=\"button secondary\" data-proposal-action=\"revise\">"+uiText("Registrar ajustes del cliente")+"</button>"));
   }
-  panel.innerHTML=`<div class="cloud-tracking"><div class="cloud-review-top"><button class="text-button" data-cloud-action="tab" data-cloud-tab="solicitudes">${uiText("← Volver a los pedidos")}</button>${closeControl}</div><header class="cloud-view-heading"><span class="eyebrow">${uiText("DETALLES DEL PEDIDO")}</span><h3>${esc(this.documents.find(d=>d.id===this.requestId)?.title)}</h3></header><section class="workspace-panel"><div class="cloud-panel-heading"><div class="proposal-heading-title"><h3>${esc(uiText(p.business_status))}</h3><span class="badge review">${uiText("Adenda v")}${r.revision_no}${current?'':' · '+uiText('anterior')}</span>${paidBadge(payment)}</div><div class="proposal-heading-actions"><button type="button" class="text-button" data-proposal-action="analysis" aria-haspopup="dialog">${uiIcon('sparkles')}${uiText('proposalCard.analysis')}</button>${p.revision_no>1?`<button type="button" class="text-button" data-proposal-action="versions" aria-haspopup="dialog">${uiIcon('history')}${uiText('proposalCard.versions',{count:p.revision_no})}</button>`:''}${editControl}</div></div><div class="proposal-summary"><button type="button" class="proposal-summary-open" data-proposal-action="details" aria-haspopup="dialog" title="${uiText('proposalCard.seeDetail')}"><span class="proposal-summary-label">${uiText("Alcance del cambio")}<span class="proposal-summary-more">${uiText('proposalCard.seeDetail')}${uiIcon('arrow-up-right')}</span></span><span class="proposal-summary-clamp">${esc(r.scope_summary)}</span></button><dl class="proposal-summary-terms"><div><dt>${uiText('changeReply.amount')}</dt><dd>${esc(amount(r.additional_minor))}</dd></div><div><dt>${uiText("Fecha de entrega")}</dt><dd>${esc(deadlineLabel(r.deadline))}</dd></div></dl></div>${renderRevisionComparison(data.previous_sent,r)}<div class="cloud-tools cloud-flow-actions tracking-actions"><div class="tracking-secondary">${secondary.join('')}</div>${controls.length?`<div class="tracking-primary">${controls.join('')}</div>`:''}</div>${spamHint}${paid?("<p>"+uiText("Este cambio está finalizado y se conserva para consulta.")+"</p>"):''}</section></div>`;
+  panel.innerHTML=`<div class="cloud-tracking"><div class="cloud-review-top"><button class="text-button" data-cloud-action="tab" data-cloud-tab="solicitudes">${uiText("← Volver a los pedidos")}</button>${closeControl}</div><header class="cloud-view-heading"><span class="eyebrow">${uiText("DETALLES DEL PEDIDO")}</span><h3>${esc(this.documents.find(d=>d.id===this.requestId)?.title)}</h3></header><section class="workspace-panel"><div class="cloud-panel-heading"><div class="proposal-heading-title"><h3>${esc(uiText(p.business_status))}</h3><span class="badge review">${uiText("Adenda v")}${r.revision_no}${current?'':' · '+uiText('anterior')}</span>${paidBadge(payment)}</div><div class="proposal-heading-actions"><button type="button" class="text-button" data-proposal-action="analysis" aria-haspopup="dialog">${uiIcon('sparkles')}${uiText('proposalCard.analysis')}</button>${p.revision_no>1?`<button type="button" class="text-button" data-proposal-action="versions" aria-haspopup="dialog">${uiIcon('history')}${uiText('proposalCard.versions',{count:p.revision_no})}</button>`:''}${editControl}</div></div><div class="proposal-summary"><button type="button" class="proposal-summary-open" data-proposal-action="details" aria-haspopup="dialog" title="${uiText('proposalCard.seeDetail')}"><span class="proposal-summary-label">${uiText("Alcance del cambio")}<span class="proposal-summary-more">${uiText('proposalCard.seeDetail')}${uiIcon('arrow-up-right')}</span></span><span class="proposal-summary-clamp">${esc(r.scope_summary)}</span></button><dl class="proposal-summary-terms"><div><dt>${uiText('changeReply.amount')}</dt><dd>${esc(amount(r.additional_minor))}</dd></div><div><dt>${uiText("Fecha de entrega")}</dt><dd>${esc(deadlineLabel(r.deadline))}</dd></div></dl></div>${renderRevisionComparison(data.previous_sent,r)}<div class="cloud-tools cloud-flow-actions tracking-actions"><div class="tracking-secondary">${secondaryActions(secondary)}</div>${controls.length?`<div class="tracking-primary">${controls.join('')}</div>`:''}</div>${spamHint}${paid?("<p>"+uiText("Este cambio está finalizado y se conserva para consulta.")+"</p>"):''}</section></div>`;
   if(replyPanel)panel.querySelector('.cloud-tracking')?.insertAdjacentHTML('beforeend',replyPanel);
   // What the client answered decides the next step, so those actions live with the replies.
   // Shown first, right under the heading: what to do next is the main question once the client has answered.
@@ -420,6 +437,12 @@ export function installProposalWorkspace(cloud){
    if(slot())show(job.result);
   }catch(error){fail(error);}
  }
+ function showSaving(form){
+  form.hidden=true;
+  const box=cloud.document.createElement('div');box.dataset.proposalSaving='';box.setAttribute('aria-busy','true');
+  box.innerHTML=renderAIActivity({label:uiText('proposalCard.preparingEmail'),compact:true});form.after(box);
+  return {restore(){if(box.isConnected)box.remove();if(form.isConnected)form.hidden=false;}};
+ }
  async function preview(kind){
   const data=cloud.proposalDetails,project=cloud.projectId;
   cloud.show(kind==='adenda'?uiText('Enviar adenda al cliente'):uiText('Enviar solicitud de pago'),`<div data-mail-preview-loading aria-busy="true">${renderAIActivity({label:uiText('proposalCard.preparingEmail'),compact:true})}</div>`);
@@ -542,6 +565,14 @@ export function installProposalWorkspace(cloud){
    this.show(uiText("Cerrar pedido"),`<p>${uiText("Registra por qué no continuará este pedido. Sus documentos y versiones quedarán disponibles para consulta.")}</p><form data-cloud-form="proposal-close-request"><fieldset class="close-reason-choices"><legend class="field">${uiText("Motivo")}</legend>${[['rejected','x',"El cliente rechazó la propuesta"],['withdrawn','undo-2',"El cliente retiró el pedido"]].map(([value,glyph,label])=>`<label class="close-reason-choice"><input type="radio" name="reason" value="${value}" required><span class="close-reason-icon" aria-hidden="true">${uiIcon(glyph)}</span><span class="close-reason-label">${uiText(label)}</span></label>`).join('')}</fieldset><label class="field">${uiText("Detalle (opcional)")}<textarea class="context-box" name="notes" maxlength="4000"></textarea></label><div class="dialog-actions"><button class="button" type="submit">${uiText("Cerrar pedido")}</button><button class="button secondary" type="button" data-cloud-close>${uiText("Volver")}</button></div></form>`);
    return;
   }
+  if(action==='invoice'){
+   // The freelancer confirms what TeTrato will send: amount and recipient come from the accepted addendum.
+   if(!data||data.proposal.current_revision_id!==data.revision.id||data.proposal.locked_at)return;
+   const recipient=this.clients.find(client=>client.id===this.project()?.client_id)?.contact_email||'';
+   this.show(uiText('invoice.title'),`<form data-cloud-form="proposal-invoice"><p>${uiText('invoice.intro')}</p><dl class="proposal-summary-terms"><div><dt>${uiText('changeReply.amount')}</dt><dd>${esc(amount(data.revision.additional_minor))}</dd></div><div><dt>${uiText('invoice.recipient')}</dt><dd>${esc(recipient)}</dd></div></dl><label class="field">${uiText('invoice.concept')}<input class="context-box" name="concept" required maxlength="200"></label><div data-invoice-concept-status></div><p class="field-help">${uiText('invoice.oneWay')}</p><div class="dialog-actions"><button class="button" type="submit">${uiIcon('send')}${uiText('invoice.confirm')}</button><button class="button secondary" type="button" data-cloud-close>${uiText('Volver')}</button></div></form>`);
+   fillInvoiceConcept(this,this.modal.querySelector('[data-cloud-form="proposal-invoice"]'),{target:'addendum',proposal_id:data.proposal.id,revision_id:data.revision.id});
+   return;
+  }
   if(action==='gmail-sync'){void checkClientReplies(data);return;}
   this.run(async()=>{
    if(action==='view-gmail-pdf'){
@@ -611,7 +642,10 @@ export function installProposalWorkspace(cloud){
     try{await this.request(base(data)+'/payment',{method:'POST'});await refresh(this.requestId,undefined,{reloadStatus:true,quiet:true});await preview('payment');}
     catch(error){if(this.modal.open)this.show(uiText("Enviar solicitud de pago"),`<p class="cloud-error" role="alert">${esc(error.message)}</p>`);error.uiHandled=true;await refresh(this.requestId,undefined,{quiet:true}).catch(()=>{});}
    }
-   if(action==='reconcile'){await this.request(base(data)+'/reconcile',{method:'POST'});this.historyGeneration++;this.historyLoaded=false;this.historyPending=null;this.projectActivity=[];await refresh(this.requestId,undefined,{reloadStatus:true});}
+   if(action==='reconcile'){
+    // PayPal takes a couple of seconds: the button says so at once, so the click is never in doubt.
+    button.disabled=true;button.innerHTML=`${uiIcon('refresh-cw')}${uiText('payment.checking')}`;
+    await this.request(base(data)+'/reconcile',{method:'POST'});this.historyGeneration++;this.historyLoaded=false;this.historyPending=null;this.projectActivity=[];await refresh(this.requestId,undefined,{reloadStatus:true});}
    if(action==='versions'){await openVersions(button,data);return;}
    if(action==='view-reply-doc'){
     const doc=this.documents.find(d=>d.id===button.dataset.documentId);
@@ -634,9 +668,24 @@ export function installProposalWorkspace(cloud){
    return;
   }
   if(!kind?.startsWith('proposal-'))return originalSubmit(event);
-  const values=new FormData(event.target),sendWithSave=event.submitter?.value==='send';let reviewBeforeSend=false;
-  await this.run(async()=>{
+  const values=new FormData(event.target),sendWithSave=event.submitter?.value==='send';let reviewBeforeSend=false,saving=null;
+  await this.run(async()=>{try{
+   // «Save and review email» answers at once: the form gives way to TeTrato's activity, and comes back if anything fails.
+   if(kind==='proposal-terms'&&sendWithSave)saving=showSaving(event.target);
    let data=this.proposalDetails;
+   if(kind==='proposal-invoice'){
+    if(!data||data.proposal.current_revision_id!==data.revision.id)throw Error(uiText('invoice.changed'));
+    const form=event.target;form.querySelectorAll('button,input,textarea').forEach(b=>b.disabled=true);
+    form.insertAdjacentHTML('beforeend',`<div data-invoice-sending style="margin-top:20px">${renderAIActivity({label:uiText('invoice.sending'),compact:true})}</div>`);
+    try{await this.request(base(data)+'/invoice',this.json({concept:values.get('concept'),confirmed:true}));}
+    finally{form.querySelectorAll('button,input,textarea').forEach(b=>b.disabled=false);form.querySelector('[data-invoice-sending]')?.remove();}
+    // PayPal Sandbox does not email real inboxes: Trato's own payment email carries the invoice link, sent in the same step.
+    let mailed=true;
+    try{const mail=await this.request(base(data)+'/email-preview?kind=payment');await this.request(base(data)+'/email?kind=payment',this.json({digest:mail.digest,confirmed:true}));}
+    catch{mailed=false;}
+    this.modal.close();this.historyGeneration++;this.historyLoaded=false;this.historyPending=null;this.projectActivity=[];
+    await refresh(this.requestId,undefined,{reloadStatus:true});this.message=uiText(mailed?'invoice.sentWithEmail':'invoice.emailFailed');this.notify();return;
+   }
    if(kind==='proposal-close-request'){
     const id=this.closingRequestId;
     await this.request(`/api/v1/requests/${id}/close`,this.json({reason:values.get('reason'),notes:values.get('notes')}));
@@ -707,14 +756,21 @@ export function installProposalWorkspace(cloud){
     const upload=await this.request(base(data)+`/returned-pdf?${new URLSearchParams({filename:file.name})}`,{method:'POST',body:file,headers:{'Content-Type':'application/pdf','Idempotency-Key':'return-'+data.revision.id+'-'+uploadDigest}});
     await this.request(`/api/v1/proposals/${data.proposal.id}/acceptance`,{...this.json({expected_revision_id:data.revision.id,document_id:upload.document_id,confirmed:true,review_notes:values.get('notes')}),headers:{'Content-Type':'application/json','Idempotency-Key':'accept-'+data.revision.id}});
    }
-   this.modal.close();
+   if(!reviewBeforeSend)this.modal.close();
    if(kind==='proposal-send'){
     const sentKind=this.proposalPreview?.kind;
     this.historyGeneration++;this.historyLoaded=false;this.historyPending=null;this.projectActivity=[];await refresh();
     // Confirm the send once the card reflects it; the Spam hint stays on the card while waiting for the client.
     this.message=uiText(sentKind==='payment'?'mailSent.payment':'mailSent.adenda');this.notify();
    }
-   else {await this.loadProject();await refresh(this.requestId,undefined,{reloadList:false});if(reviewBeforeSend)await preview('adenda');}
-  });
+   else if(reviewBeforeSend){
+    // Straight to the addendum email: the saved version is read quietly behind the open window, without reloading the view.
+    try{await refresh(this.requestId,undefined,{reloadList:true,reloadStatus:true,quiet:true});}
+    catch(error){error.uiHandled=false;throw error;}
+    saving=null;await preview('adenda');
+    void this.refreshDocumentList?.().catch(()=>{});
+   }
+   else {await this.loadProject();await refresh(this.requestId,undefined,{reloadList:false});}
+  }catch(error){saving?.restore();throw error;}});
  };
 }

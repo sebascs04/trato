@@ -31,7 +31,7 @@ class Question(BaseModel):
 class Answer(BaseModel):
     model_config = ConfigDict(extra='forbid', strict=True)
     kind: Literal['portal_assistant']
-    status: Literal['answered', 'outside_agreement', 'draft_change', 'draft_problem']
+    status: Literal['answered', 'outside_agreement', 'draft_change', 'draft_problem', 'confirm_accept', 'confirm_pay']
     answer: str = Field(min_length=1, max_length=4000)
     sources: list[Literal['scope', 'conditions', 'amount', 'deadline', 'status']] = Field(max_length=5)
     change_request: str = Field(max_length=4000)
@@ -55,6 +55,17 @@ def can_report_problem(view, has_report):
     return view.get('status') == 'accepted' and view.get('payment_status') == 'completed' and not has_report
 
 
+def can_accept(view):
+    # The same moment the portal shows Accept addendum.
+    return can_request_changes(view)
+
+
+def can_pay(view):
+    # Accepted with an amount PayPal has not verified yet: the portal shows its pay button.
+    return (view.get('status') == 'accepted' and view.get('payment_status') != 'completed'
+            and type(view.get('additional_minor')) is int and view['additional_minor'] > 0)
+
+
 def agreement_context(view, can_report=False):
     """Only fields the client already sees. Internal ids, rates, notes and other documents never reach the model."""
     request = view.get('change_request')
@@ -63,10 +74,10 @@ def agreement_context(view, can_report=False):
             'currency': view.get('currency'), 'deadline': view.get('deadline'), 'status': view.get('status'),
             'payment_status': view.get('payment_status'), 'can_request_changes': can_request_changes(view),
             'pending_change_request': request.get('notes') if isinstance(request, dict) else None,
-            'can_report_problem': bool(can_report)}
+            'can_report_problem': bool(can_report), 'can_accept': can_accept(view), 'can_pay': can_pay(view)}
 
 
-def validate_answer(result, can_request, can_report=False):
+def validate_answer(result, can_request, can_report=False, accept=False, pay=False):
     """The worker already validated; check again before the client sees it."""
     try:
         answer = Answer.model_validate(result)
@@ -76,7 +87,9 @@ def validate_answer(result, can_request, can_report=False):
         (answer.status == 'answered' and answer.sources and not answer.change_request and not answer.problem_report)
         or (answer.status == 'draft_change' and can_request and answer.change_request.strip() and not answer.sources and not answer.problem_report)
         or (answer.status == 'draft_problem' and can_report and answer.problem_report.strip() and not answer.sources and not answer.change_request)
-        or (answer.status == 'outside_agreement' and not answer.sources and not answer.change_request and not answer.problem_report))
+        or (answer.status == 'outside_agreement' and not answer.sources and not answer.change_request and not answer.problem_report)
+        or (answer.status == 'confirm_accept' and accept and answer.sources and not answer.change_request and not answer.problem_report)
+        or (answer.status == 'confirm_pay' and pay and 'amount' in answer.sources and not answer.change_request and not answer.problem_report))
     if not valid:
         raise ApiError('AI_INVALID_CITATION', 502)
     return answer.model_dump(exclude={'model', 'kind'})
@@ -113,7 +126,8 @@ def ask(jobs, preferences, digest, view, data, can_report=False):
     payload = {'workflow': 'portal_assistant', 'output_language': item.output_language, 'question': item.question.strip(),
                'history': [turn.model_dump() for turn in item.history], 'agreement': context, 'model_id': preferences.configuration()[1]}
     reserve_question(jobs, digest, job_id)
-    return public_job(jobs.enqueue(job_owner(digest), job_id, payload), context['can_request_changes'], context['can_report_problem'])
+    return public_job(jobs.enqueue(job_owner(digest), job_id, payload), context['can_request_changes'], context['can_report_problem'],
+                      context['can_accept'], context['can_pay'])
 
 
 def status(jobs, digest, data):
@@ -121,13 +135,14 @@ def status(jobs, digest, data):
     owner, job_id = job_owner(digest), uuid(data.get('job_id'))
     job = jobs.get(owner, job_id, 'portal_assistant')
     agreement = jobs.input(owner, job_id)['agreement']
-    return public_job(job, bool(agreement.get('can_request_changes')), agreement.get('can_report_problem') is True)
+    return public_job(job, bool(agreement.get('can_request_changes')), agreement.get('can_report_problem') is True,
+                      agreement.get('can_accept') is True, agreement.get('can_pay') is True)
 
 
-def public_job(job, can_request, can_report=False):
+def public_job(job, can_request, can_report=False, accept=False, pay=False):
     reply = {'id': job['id'], 'status': job['status']}
     if job['status'] == 'completed':
-        reply['result'] = validate_answer(job['result'], can_request, can_report)
+        reply['result'] = validate_answer(job['result'], can_request, can_report, accept, pay)
     if job['status'] == 'failed':
         reply['error_code'] = job.get('error_code')
     return reply

@@ -902,3 +902,16 @@ body:not(.cloud-client-account) .sidebar nav a.nav-client-only{display:none}
 .cloud-client-tiles{grid-template-columns:repeat(4,minmax(0,1fr))}
 .cloud-client-summary-disputes{margin-top:16px;padding-top:16px;border-top:1px solid var(--line)}
 @media(max-width:640px){.cloud-client-tiles{grid-template-columns:repeat(2,minmax(0,1fr))}}
+
+/* Instruction for TeTrato on its proposal: a chat-style composer, the send button inside the box. */
+.change-instruct{display:grid;gap:8px}
+.change-instruct-label{display:flex;align-items:center;gap:8px;font-size:14px;color:var(--subtle)}
+.change-instruct-label .ui-icon{width:16px;height:16px;color:var(--purple)}
+.change-instruct-box{display:flex;align-items:flex-end;gap:8px;padding:8px 8px 8px 16px;border:1px solid var(--line);border-radius:14px;background:var(--surface);transition:border-color .15s,box-shadow .15s}
+.change-instruct-box:focus-within{border-color:var(--purple);box-shadow:0 0 0 3px var(--purple-soft)}
+.change-instruct-box textarea{flex:1;min-height:36px;max-height:140px;padding:7px 0;border:0;outline:0;resize:none;background:transparent;font:inherit;font-size:15px;line-height:1.5;color:var(--ink)}
+.change-instruct-box textarea::placeholder{color:var(--muted)}
+.change-instruct-send{display:grid;place-items:center;width:36px;height:36px;flex:none;border:0;border-radius:50%;background:var(--purple);color:#fff;cursor:pointer}
+.change-instruct-send .ui-icon{width:18px;height:18px}
+.change-instruct-send:hover{filter:brightness(1.08)}.change-instruct-send:focus-visible{outline:2px solid var(--purple);outline-offset:3px}
+.change-instruct-send:disabled{opacity:.45;cursor:default}

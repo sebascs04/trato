@@ -341,10 +341,10 @@ def build_project_assistant_router(settings,require_user,repository_factory=None
    data.update(refund_focus=refund,refund_generation=record['generation'],
     refund_document_ids=sorted(d['id'] for d in refund_documents(documents,linked,refund)))
    if refund['task']=='intake':data['intake_record']=record
-   if refund.get('conversation_id') and refund['task'] in ('intake','guide'):
+   if refund['task'] in ('intake','guide'):
+    # Same TeTrato as the rest of the project: the refund guide sees the project's recent conversation, not only this refund's.
     page=await run_in_threadpool(service.memory.call,owner,project['id'],'history',{'before':memory['revision']+1})
-    data['refund_history']=[{'question':entry['result']['question'],'answer':entry['result']['answer']}
-      for entry in page['entries'] if (entry['result'].get('refund_focus') or {}).get('conversation_id')==refund['conversation_id']][-8:]
+    data['refund_history']=[{'question':entry['result']['question'],'answer':entry['result']['answer']} for entry in page['entries']][-8:]
   data['thread']={'type':'thread','schema_version':1,'workflow':'project_assistant','action':'start','thread_id':job_id,
     'event_id':str(uuid5(NAMESPACE_URL,'trato:assistant:'+job_id)),'context':{'owner_id':owner,'project_id':project['id'],'client_id':project['client_id']}}
   job=await run_in_threadpool(service.jobs.enqueue,owner,job_id,data)

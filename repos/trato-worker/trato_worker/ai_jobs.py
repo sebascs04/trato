@@ -201,6 +201,9 @@ class AIConsumer:
                 elif data.get('workflow')=='invoice_concept':
                     from .invoice_concept import run_invoice_concept
                     result=run_invoice_concept(data,selected_model)
+                elif data.get('workflow')=='client_account_assistant':
+                    from .client_assistant import run_client_assistant
+                    result=run_client_assistant(data,selected_model)
                 elif data.get('workflow')=='portal_assistant':
                     from .portal_assistant import run_portal_assistant
                     result=run_portal_assistant(data,selected_model)

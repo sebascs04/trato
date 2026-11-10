@@ -34,7 +34,7 @@ class RefundRecovery:
         if not isinstance(supplementary,dict) or not isinstance(supplementary.get('related_ids',{}),dict):raise ApiError('REFUND_PAYMENT_CONTEXT_MISMATCH',409)
         related=supplementary.get('related_ids',{})
         oid=pay.get('order_id') or related.get('order_id')
-        order=client.get_order(provider_id(oid));unit=order_unit(order,pay)
+        order=client.get_order(provider_id(oid));pay=self.finance.with_invoice(pay,order);unit=order_unit(order,pay)
         if related.get('order_id') is not None and related['order_id']!=order['id']:raise ApiError('REFUND_PAYMENT_CONTEXT_MISMATCH',409)
         return capture,unit
 
@@ -46,14 +46,21 @@ class RefundRecovery:
             return known==proof['refund_id'] and record.get('custom_id',attempt['payload']['custom_id'])==attempt['payload']['custom_id']
         return record.get('custom_id')==attempt['payload']['custom_id']
 
-    def scan(self,owner,pay,attempts,client,*,hints=()):
-        _,unit=self.resources(pay,client)
+    def scan(self,owner,pay,attempts,client,*,hints=(),expected_dispute_refunds=None,dispute_id=None):
+        capture,unit=self.resources(pay,client)
+        fully_refunded = capture.get('status') == 'REFUNDED'
+        store=self.finance.backend()
+        if fully_refunded:
+            # The verified capture establishes the total independently of individual receipts.
+            store.confirm_full_capture_refund(owner, pay['id'], capture['id'])
         entries=unit['payments'].get('refunds',[])
         if not isinstance(entries,list) or len(entries)>100:raise ApiError('REFUND_RECONCILIATION_REQUIRED',409)
         ids={provider_id(x.get('id')) for x in entries if isinstance(x,dict)}
         if len(entries) and any(not isinstance(x,dict) for x in entries):raise ApiError('REFUND_RECONCILIATION_REQUIRED',409)
         ids.update(provider_id(a['provider_refund_id']) for a in attempts if a.get('provider_refund_id'))
         ids.update(provider_id(i) for i in hints)
+        if expected_dispute_refunds:
+            ids.update(provider_id(i) for i in expected_dispute_refunds)
         if len(ids)>100:raise ApiError('REFUND_RECONCILIATION_REQUIRED',409)
         observations=[]
         for rid in sorted(ids):
@@ -62,11 +69,18 @@ class RefundRecovery:
             observations.append((record,proof))
         mapping={a['id']:[proof['refund_id'] for record,proof in observations if self.match(record,proof,a)] for a in attempts}
         # Save every real movement, even if multiple candidates prevent attribution.
-        store=self.finance.backend()
         for record,proof in observations:
             matches=[a for a in attempts if a.get('provider_refund_id')==proof['refund_id'] or mapping[a['id']]==[proof['refund_id']]]
             attempt=matches[0] if len(matches)==1 else None
-            store.receipt(owner,pay['id'],proof,attempt['id'] if attempt else None)
+            result = store.receipt(owner,pay['id'],proof,attempt['id'] if attempt else None)
+            if expected_dispute_refunds is not None and not result['recorded']:
+                raise ApiError('REFUND_RECONCILIATION_REQUIRED', 409)
+            if dispute_id and proof['status']=='completed' and proof['refund_id'] in expected_dispute_refunds:
+                store.link_dispute_receipt(owner, pay['project_id'], result['receipt_id'], dispute_id)
+        if expected_dispute_refunds is not None and not fully_refunded:
+            completed = {proof['refund_id'] for _, proof in observations if proof['status'] == 'completed'}
+            if not expected_dispute_refunds or not expected_dispute_refunds.issubset(completed):
+                raise ApiError('REFUND_DISPUTE_PENDING', 409)
         return mapping
 
     def reconcile(self,repo,owner,parent,oid):
@@ -109,7 +123,12 @@ class RefundRecovery:
         if prior:return flow.backend().command(owner,'replay_claim',{'settlement_id':parent,'operation_id':oid,**data,'operation_key':key})
         try:
             client=flow.provider();pay=flow.payment(context,op['payment_id'])
+            dispute_refunds = flow.ensure_not_disputed(pay['capture_id'])
             self.scan(owner,pay,[a for a in context['attempts'] if a['operation_id']==oid],client)
+            if dispute_refunds is not None:
+                # Same-identity replay can run without a new balance check. Reconcile
+                # the dispute's money before allowing any newly authorized attempt.
+                raise ApiError('REFUND_RECONCILIATION_REQUIRED', 409)
             claim=flow.backend().command(owner,'replay_claim',{'settlement_id':parent,'operation_id':oid,**data,'operation_key':key})
             if not claim['acquired']:return claim
             attempt=claim['attempt']

@@ -1,4 +1,6 @@
 """Authenticated financial actions. The client cannot provide provider facts."""
+import json
+
 from fastapi import APIRouter,Depends,Request
 from fastapi.responses import JSONResponse
 from pydantic import ValidationError
@@ -12,7 +14,7 @@ from .financial_domain import FinancialCheckInput,FinancialAuthorizationInput,Fi
 from .repository import RefundRepository
 
 
-def build_refund_financial_router(settings,require_user,repository_factory=None,workflow=None,confirmation=None):
+def build_refund_financial_router(settings,require_user,repository_factory=None,workflow=None,confirmation=None,pdf_backend=None):
     router=APIRouter(prefix='/api/v1/refunds')
     def repository(request:Request,owner=Depends(require_user)):
         return (repository_factory or RefundRepository)(settings,request.headers.get('authorization',''))
@@ -46,6 +48,34 @@ def build_refund_financial_router(settings,require_user,repository_factory=None,
     async def execute(settlement_id:str,authorization_id:str,request:Request,repo=Depends(repository),owner=Depends(require_user)):
         operation_key=key(request);await read(request,FinancialExecutionInput)
         return reply(await run_in_threadpool(complete,workflow.execute,repo,owner,uuid(settlement_id),uuid(authorization_id),operation_key))
+
+    @router.post('/client-requests/{request_id}')
+    async def refund_client_request(request_id:str,request:Request,repo=Depends(repository),owner=Depends(require_user)):
+        # One click for a full refund the client asked for; see client_request.py. The button itself is the confirmation.
+        from .client_request import refund_client_request as run
+        from .pdf import RefundPdfService
+        from .workflow import RefundBackendStore
+        operation_key=key(request)
+        try:data=json.loads(await read_bytes(request,1000) or b'{}')
+        except ValueError:raise ApiError('INVALID_REQUEST',422) from None
+        if not isinstance(data,dict) or data.get('confirmed') is not True or not isinstance(data.get('project_id'),str):raise ApiError('INVALID_REQUEST',422)
+        language='en' if request.headers.get('accept-language','').lower().startswith('en') else 'es'
+        pdf=RefundPdfService(pdf_backend or (lambda:RefundBackendStore(settings))).save
+        return reply(await run_in_threadpool(run,repo,owner,data['project_id'],uuid(request_id),operation_key,finance=workflow,pdf=pdf,complete=complete,language=language))
+
+    @router.post('/{settlement_id}/refund')
+    async def refund_settlement(settlement_id:str,request:Request,repo=Depends(repository),owner=Depends(require_user)):
+        # Manual flow, last step: one click refunds the saved proposal (see client_request.py).
+        from .client_request import refund_settlement as run
+        from .pdf import RefundPdfService
+        from .workflow import RefundBackendStore
+        operation_key=key(request)
+        try:data=json.loads(await read_bytes(request,1000) or b'{}')
+        except ValueError:raise ApiError('INVALID_REQUEST',422) from None
+        if not isinstance(data,dict) or data.get('confirmed') is not True or not isinstance(data.get('expected_snapshot_id'),str):raise ApiError('INVALID_REQUEST',422)
+        language='en' if request.headers.get('accept-language','').lower().startswith('en') else 'es'
+        pdf=RefundPdfService(pdf_backend or (lambda:RefundBackendStore(settings))).save
+        return reply(await run_in_threadpool(run,repo,owner,uuid(settlement_id),uuid(data['expected_snapshot_id']),operation_key,finance=workflow,pdf=pdf,complete=complete,language=language))
 
     @router.get('/{settlement_id}/financial')
     def financial(settlement_id:str,repo=Depends(repository)):

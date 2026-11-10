@@ -340,6 +340,13 @@ class ClientPlanTest(unittest.TestCase):
         self.assertEqual(result[2]['pay_url'], 'http://localhost:5173/initial-payment.html?checkout=' + 'x' * 43 + '&lang=en')
         self.assertTrue(all('checkout_token' not in item and 'invoice_url' not in item for item in result))
 
+    def test_client_sees_how_much_of_a_paid_stage_was_refunded(self):
+        from trato_api.client_portal import client_plans
+        rows = [{'project_id': 'p', 'position': 1, 'title': 'Design', 'amount': '180.00', 'payment_status': 'completed',
+                 'paid_minor': 18000, 'refunded_minor': 5000}]
+        result = client_plans(rows, 'http://localhost:5173/')
+        self.assertEqual((result[0]['paid_minor'], result[0]['refunded_minor']), (18000, 5000))
+
 
 class ClientStageReviewRouteTest(unittest.TestCase):
     PROJECT, DOC = '11111111-1111-4111-8111-111111111111', '22222222-2222-4222-8222-222222222222'

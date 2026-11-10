@@ -94,6 +94,26 @@ class PortalStore:
         return self.repo.rpc('client_stage_review', {'p_user': uuid(user), 'p_project': uuid(project_id), 'p_position': position,
                                                      'p_document': uuid(document_id), 'p_decision': decision, 'p_notes': notes})
 
+    def refund_request(self, user, project_id, stage, proposal_id, amount_minor, reason):
+        # A request, never a refund: the database checks the project, the paid stage or addendum and what is left to refund.
+        return self.repo.rpc('client_refund_request_create', {'p_user': uuid(user), 'p_project': uuid(project_id), 'p_stage': stage,
+                                                              'p_proposal': uuid(proposal_id) if proposal_id else None,
+                                                              'p_amount': amount_minor, 'p_reason': reason})
+
+    def refund_requests(self, user):
+        return self.repo.rpc('client_refund_requests_for', {'p_user': uuid(user)})
+
+    def refund_request_message(self, user, request_id, text):
+        return self.repo.rpc('client_refund_request_client_message', {'p_user': uuid(user), 'p_request': uuid(request_id), 'p_body': text})
+
+    def refund_request_withdraw(self, user, request_id):
+        # Also the first step when the client reports a problem on the same payment: one open path at a time.
+        return self.repo.rpc('client_refund_request_withdraw', {'p_user': uuid(user), 'p_request': uuid(request_id)})
+
+    def meetings(self, user):
+        # Upcoming meetings of the client's projects; same authorization as the agreements.
+        return self.repo.rpc('client_account_meetings', {'p_user': uuid(user)})
+
     def link_hash(self, user, proposal_id):
         digest = self.repo.rpc('client_account_link_hash', {'p_user': uuid(user), 'p_proposal': proposal_id})
         if not isinstance(digest, str) or not SHA256.fullmatch(digest):
@@ -139,7 +159,7 @@ def public_view(view):
     # Only what the client needs to decide; internal ids stay on the server except the revision being accepted.
     keys = ('project_name', 'client_name', 'revision_id', 'revision_no', 'is_current', 'scope_summary', 'conditions',
             'currency', 'additional_minor', 'deadline', 'addendum_sha256', 'status', 'accepted_at', 'expires_at',
-            'payment_required', 'payment_status', 'change_request', 'payment_method', 'invoice_number')
+            'payment_required', 'payment_status', 'refunded_minor', 'change_request', 'payment_method', 'invoice_number')
     return {key: view.get(key) for key in keys}
 
 
@@ -149,7 +169,8 @@ def client_plans(items, web_origin):
     from urllib.parse import urlencode
     keys = ('project_id', 'project_name', 'freelancer_email', 'position', 'title', 'amount', 'payment_condition',
             'payment_status', 'payment_method', 'paid_at', 'invoice_number',
-            'delivery_document_id', 'delivery_title', 'review_decision', 'review_notes', 'reviewed_at')
+            'delivery_document_id', 'delivery_title', 'review_decision', 'review_notes', 'reviewed_at',
+            'paid_minor', 'refunded_minor')
     result = []
     for item in items or []:
         if not isinstance(item, dict):
@@ -167,7 +188,7 @@ def client_plans(items, web_origin):
 PAYPAL_APPROVAL = re.compile(r'^https://www\.sandbox\.paypal\.com/[^\s"<>]+$')
 
 
-def build_client_portal_router(settings, store=None, payments=None, require_user=None, disputes=None, jobs=None, preferences=None):
+def build_client_portal_router(settings, store=None, payments=None, require_user=None, disputes=None, jobs=None, preferences=None, gmail=None):
     router = APIRouter(prefix='/api/v1/portal')
 
     def backend():
@@ -290,7 +311,16 @@ def build_client_portal_router(settings, store=None, payments=None, require_user
         if reason not in PROBLEM_REASONS:
             raise ApiError('PROBLEM_REASON_REQUIRED', 422)
         notes = problem_text(data, 'notes', 'PROBLEM_NOTES_REQUIRED')
-        return reply(await run_in_threadpool(backend().report_problem, digest, reason, notes))
+        service = backend()
+        result = await run_in_threadpool(service.report_problem, digest, reason, notes)
+        if gmail is not None and getattr(service, 'repo', None) is not None:
+            # The report is saved; the freelancer's email is best effort and never changes the client's answer.
+            from .problem_alerts import ProblemAlerts
+            try:
+                await run_in_threadpool(ProblemAlerts(settings, service.repo, gmail).notify, digest)
+            except (ApiError, KeyError, TypeError):
+                pass
+        return reply(result)
 
     async def problem_message_by(digest, data):
         return reply(await run_in_threadpool(backend().problem_message, digest, problem_text(data, 'body', 'PROBLEM_MESSAGE_REQUIRED')))
@@ -371,6 +401,104 @@ def build_client_portal_router(settings, store=None, payments=None, require_user
                                 uuid(data.get('document_id')), decision, (notes or '').strip()[:4000] or None)
         return reply(client_plans(await run_in_threadpool(backend().plans, user), settings.web_origin))
 
+    # Report a problem on a paid Work plan deliverable: same rules as on an addendum, authorized by the client account.
+    def stage_args(user, project_id, position):
+        return {'p_user': uuid(user), 'p_project': uuid(project_id), 'p_position': stage_position(position)}
+
+    @router.get('/account/projects/{project_id}/stages/{position}/problem')
+    async def stage_problem(project_id: str, position: int, user=Depends(require_user)):
+        return reply(await run_in_threadpool(backend().repo.rpc, 'client_account_stage_problem', stage_args(user, project_id, position)))
+
+    @router.post('/account/projects/{project_id}/stages/{position}/problem')
+    async def report_stage_problem(project_id: str, position: int, request: Request, user=Depends(require_user)):
+        data = await body(request)
+        reason = data.get('reason')
+        if reason not in PROBLEM_REASONS:
+            raise ApiError('PROBLEM_REASON_REQUIRED', 422)
+        notes = problem_text(data, 'notes', 'PROBLEM_NOTES_REQUIRED')
+        service = backend()
+        result = await run_in_threadpool(service.repo.rpc, 'client_account_report_stage_problem',
+                                         {**stage_args(user, project_id, position), 'p_reason': reason, 'p_notes': notes})
+        if gmail is not None and isinstance(result, dict) and result.get('report_id'):
+            # Same freelancer email as an addendum report, best effort: the report is already saved.
+            from .problem_alerts import ProblemAlerts
+            try:
+                await run_in_threadpool(ProblemAlerts(settings, service.repo, gmail).notify_report, result['report_id'])
+            except (ApiError, KeyError, TypeError):
+                pass
+        return reply(result.get('problem') if isinstance(result, dict) else result)
+
+    @router.post('/account/projects/{project_id}/stages/{position}/problem/message')
+    async def stage_problem_message(project_id: str, position: int, request: Request, user=Depends(require_user)):
+        text = problem_text(await body(request), 'body', 'PROBLEM_MESSAGE_REQUIRED')
+        return reply(await run_in_threadpool(backend().repo.rpc, 'client_account_stage_problem_message',
+                                             {**stage_args(user, project_id, position), 'p_body': text}))
+
+    @router.post('/account/projects/{project_id}/stages/{position}/problem/close')
+    async def close_stage_problem(project_id: str, position: int, request: Request, user=Depends(require_user)):
+        status = (await body(request)).get('status')
+        if status not in ('resolved', 'unresolved'):
+            raise ApiError('PROBLEM_STATUS_INVALID', 422)
+        return reply(await run_in_threadpool(backend().repo.rpc, 'client_account_close_stage_problem',
+                                             {**stage_args(user, project_id, position), 'p_status': status}))
+
+    @router.get('/account/refund-requests')
+    async def refund_requests(user=Depends(require_user)):
+        return reply(await run_in_threadpool(backend().refund_requests, user))
+
+    @router.post('/account/projects/{project_id}/refund-requests')
+    async def refund_request(project_id: str, request: Request, user=Depends(require_user)):
+        # The client asks for money back on a paid stage or addendum; the freelancer decides in Refunds.
+        data = await body(request)
+        stage, proposal, amount, reason = data.get('stage_position'), data.get('proposal_id'), data.get('amount_minor'), data.get('reason')
+        if (stage is None) == (proposal is None) or stage is not None and (type(stage) is not int or not 1 <= stage <= 8):
+            raise ApiError('REFUND_REQUEST_TARGET_INVALID', 422)
+        if type(amount) is not int or not 0 < amount <= 99999999999:
+            raise ApiError('REFUND_REQUEST_AMOUNT_INVALID', 422)
+        if not isinstance(reason, str) or not 1 <= len(reason.strip()) <= 4000:
+            raise ApiError('REFUND_REQUEST_REASON_REQUIRED', 422)
+        service = backend()
+        created = await run_in_threadpool(service.refund_request, user, uuid(project_id), stage, proposal, amount, reason.strip())
+        if gmail is not None and getattr(service, 'repo', None) is not None and isinstance(created, dict) and created.get('id'):
+            # The request is saved; the freelancer's email is best effort and never changes the client's answer.
+            from .refund_request_alerts import RefundRequestAlerts
+            try:
+                await run_in_threadpool(RefundRequestAlerts(settings, service.repo, gmail).notify, created['id'])
+            except (ApiError, KeyError, TypeError):
+                pass
+        return reply(await run_in_threadpool(service.refund_requests, user))
+
+    @router.post('/account/refund-requests/{request_id}/messages')
+    async def refund_request_message(request_id: str, request: Request, user=Depends(require_user)):
+        text = (await body(request)).get('body')
+        if not isinstance(text, str) or not 1 <= len(text.strip()) <= 4000:
+            raise ApiError('REFUND_REQUEST_MESSAGE_REQUIRED', 422)
+        return reply(await run_in_threadpool(backend().refund_request_message, user, request_id, text.strip()))
+
+    @router.post('/account/refund-requests/{request_id}/withdraw')
+    async def refund_request_withdraw(request_id: str, user=Depends(require_user)):
+        return reply(await run_in_threadpool(backend().refund_request_withdraw, user, request_id))
+
+    # TeTrato across the client's account: built from the same agreements and Work plan the client sees.
+    @router.post('/account/assistant')
+    async def account_assistant(request: Request, user=Depends(require_user)):
+        from .client_assistant import ask
+        data = await body(request)
+        queue, models = assistant_services()
+        service = backend()
+        agreements = await run_in_threadpool(service.agreements, user)
+        plans = client_plans(await run_in_threadpool(service.plans, user), settings.web_origin)
+        return reply(await run_in_threadpool(ask, queue, models, user, agreements, plans, data))
+
+    @router.post('/account/assistant-status')
+    async def account_assistant_status(request: Request, user=Depends(require_user)):
+        from .client_assistant import status
+        return reply(await run_in_threadpool(status, assistant_services()[0], user, await body(request)))
+
+    @router.get('/account/meetings')
+    async def account_meetings(user=Depends(require_user)):
+        return reply(await run_in_threadpool(backend().meetings, user))
+
     @router.get('/account/problems')
     async def account_problems(user=Depends(require_user)):
         # State of each report in Trato, by addendum, for the client's lists. Only paid addenda can have one.
@@ -385,6 +513,10 @@ def build_client_portal_router(settings, store=None, payments=None, require_user
                 if isinstance(report, dict) and report.get('status') in ('open', 'resolved', 'unresolved'):
                     # request_paid: the fix was registered and paid, so only the client's closing is missing.
                     found[item['proposal_id']] = {'status': report['status'], 'request_paid': report.get('request_paid') is True}
+            # Reports on paid Work plan deliverables, keyed so they never collide with an addendum id.
+            if getattr(service, 'repo', None) is not None:
+                for row in service.repo.rpc('client_account_stage_problems', {'p_user': uuid(user)}) or []:
+                    found[f"stage:{row['project_id']}:{row['position']}"] = {'status': row['status'], 'request_paid': row.get('request_paid') is True}
             return found
         return reply(await run_in_threadpool(read))
 

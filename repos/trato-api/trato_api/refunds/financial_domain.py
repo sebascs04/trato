@@ -82,7 +82,13 @@ def order_unit(order,payment):
     if len(matched)!=1:fail()
     unit=matched[0]
     # Current Trato checkouts capture a single payment per purchase unit.
-    if len(unit['payments']['captures'])!=1 or unit.get('reference_id')!=payment['expected_reference'] or unit.get('custom_id')!=payment['expected_reference']:fail()
+    if len(unit['payments']['captures'])!=1:fail()
+    # A PayPal invoice's order is created by PayPal, not by Trato's checkout: instead of Trato's reference it carries
+    # the invoice Trato issued for this payment (RefundFinance.with_invoice). Merchant and amount are checked the same way.
+    invoice=payment.get('invoice_id')
+    if invoice:
+        if unit.get('invoice_id')!=invoice:fail()
+    elif unit.get('reference_id')!=payment['expected_reference'] or unit.get('custom_id')!=payment['expected_reference']:fail()
     if not isinstance(unit.get('payee'),dict) or unit['payee'].get('merchant_id')!=payment['merchant_id']:fail()
     if usd(unit.get('amount'),positive=True)!=payment['amount_minor']:fail()
     return unit

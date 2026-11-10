@@ -48,7 +48,7 @@ export class ConnectedWorkspace {
     try {
       const value=JSON.parse(this.storage.getItem(this.navigationKey())||'null');
       const id=value=>typeof value==='string'&&/^[a-zA-Z0-9-]{1,80}$/.test(value);
-      if(value?.version!==1||!['acuerdo','plan','solicitudes','devoluciones','disputas','documentos','historial','gestion','comparar','asistente'].includes(value.tab))return null;
+      if(value?.version!==1||!['acuerdo','plan','solicitudes','devoluciones','disputas','reuniones','documentos','historial','gestion','comparar','asistente'].includes(value.tab))return null;
       if([value.clientId,value.projectId,value.requestId,value.revisionId].some(value=>value!==''&&!id(value)))return null;
       return {...value,historyView:value.historyView==='map'?'map':'history'};
     } catch {return null;}
@@ -61,7 +61,7 @@ export class ConnectedWorkspace {
     const requestId=projectId&&this.documents.some(d=>d.id===this.requestId&&d.kind==='email_request')?this.requestId:'';
     const details=this.proposalDetails?.proposal?.request_document_id===requestId?this.proposalDetails:null;
     const revisionId=this.tab==='gestion'&&requestId?(details?.revision?.id||this.proposalRetryRevision||''):'';
-    const tab=['acuerdo','plan','solicitudes','devoluciones','disputas','documentos','historial','gestion','comparar','asistente'].includes(this.tab)?this.tab:'acuerdo';
+    const tab=['acuerdo','plan','solicitudes','devoluciones','disputas','reuniones','documentos','historial','gestion','comparar','asistente'].includes(this.tab)?this.tab:'acuerdo';
     try {this.storage.setItem(this.navigationKey(),JSON.stringify({version:1,clientId,projectId,tab,requestId,revisionId,historyView:this.historyView==='map'?'map':'history'}));} catch { /* Navigation storage is optional; business operations are unaffected. */ }
   }
   async restoreProjectNavigation(nav) {
@@ -578,8 +578,8 @@ export class ConnectedWorkspace {
     panel.innerHTML=`<section class="workspace-panel cloud-refunds" aria-label="${uiText("Devoluciones del proyecto")}"><header class="cloud-refund-heading"><span class="cloud-refund-symbol" aria-hidden="true">${uiIcon('undo-2')}</span><div><span class="eyebrow">${uiText("DEVOLUCIONES")}</span><h3>${uiText("Revisar dinero que ya se pagó")}</h3><p>${uiText("Cuando el cliente pide recuperar todo o parte de un pago, revisa el acuerdo, el trabajo realizado y el importe que corresponde proponer.")}</p></div></header><div class="cloud-refund-context"><strong>${uiText("Una devolución parte de un pago recibido.")}</strong><p>${uiText("Si el cliente pide más trabajo o una nueva fecha, corresponde a Cambios. Si pide dinero de vuelta, corresponde a Devoluciones. Una cancelación puede requerir revisar el cierre antes de decidir si hay dinero que devolver.")}</p></div><div class="cloud-refund-trial"><button type="button" class="button" data-cloud-action="refund-preview">${uiText("Probar flujo de devolución")} ${uiIcon('arrow-right')}</button></div></section>`;
   }
   projectNavigation(tab) {
-    const selected=['solicitudes','comparar','gestion'].includes(tab)?'solicitudes':['plan','devoluciones','disputas','documentos','historial','asistente'].includes(tab)?tab:'acuerdo';
-    const sections=[['acuerdo','folder-open',uiText('projectSummary.tab'),uiText("Acuerdo y fuentes iniciales")],['asistente','messages-square',uiText('projectAssistant.nav'),uiText('projectAssistant.navigation')],['plan','wallet',uiText('projectStart.plan'),uiText('projectStart.planNavigation')],['solicitudes','git-compare-arrows',uiText("Cambios"),uiText("Alcance, precio o plazo")],['devoluciones','undo-2',uiText("Devoluciones"),uiText("Dinero de un pago recibido")],['disputas','shield-check',uiText('disputes.nav'),uiText('disputes.navigation')],['documentos','file-text',uiText("Documentos"),uiText("Archivos por pedido")],['historial','history',uiText("Historial del proyecto"),uiText("Historial y mapa")]];
+    const selected=['solicitudes','comparar','gestion'].includes(tab)?'solicitudes':['plan','devoluciones','disputas','reuniones','documentos','historial','asistente'].includes(tab)?tab:'acuerdo';
+    const sections=[['acuerdo','folder-open',uiText('projectSummary.tab'),uiText("Acuerdo y fuentes iniciales")],['asistente','messages-square',uiText('projectAssistant.nav'),uiText('projectAssistant.navigation')],['plan','wallet',uiText('projectStart.plan'),uiText('projectStart.planNavigation')],['solicitudes','git-compare-arrows',uiText("Cambios"),uiText("Alcance, precio o plazo")],['devoluciones','undo-2',uiText("Devoluciones"),uiText("Dinero de un pago recibido")],['disputas','shield-check',uiText('disputes.nav'),uiText('disputes.navigation')],['reuniones','users',uiText('meeting.nav'),uiText('meeting.navigation')],['documentos','file-text',uiText("Documentos"),uiText("Archivos por pedido")],['historial','history',uiText("Historial del proyecto"),uiText("Historial y mapa")]];
     return `<nav class="cloud-project-navigation" aria-label="${uiText("Secciones del proyecto")}">${sections.map(([id,icon,title,description])=>`<button type="button" data-cloud-action="tab" data-cloud-tab="${id}" aria-label="${title}: ${description}" ${selected===id?'aria-current="page"':''}>${uiIcon(icon)}<span><strong>${title}</strong><small>${description}</small></span></button>`).join('')}</nav>`;
   }
   async reviewChange(id) {
@@ -648,6 +648,20 @@ export class ConnectedWorkspace {
     void this.loadClientPlans?.();
     void this.loadClientDisputes();
     void this.loadClientProblems();
+    void this.loadClientMeetings();
+  }
+  async loadClientMeetings() {
+    // Upcoming Google Meet calls the freelancer scheduled in the client's projects.
+    // A quiet reload (back on the tab) keeps the list on screen; only another account starts from empty.
+    const epoch=this.epoch;if(this.clientMeetingsOwner!==this.navigationOwner)this.clientMeetings=undefined;this.clientMeetingsOwner=this.navigationOwner;
+    try{const value=await this.request('/api/v1/portal/account/meetings');if(epoch!==this.epoch)return;this.clientMeetings=Array.isArray(value)?value:[];}
+    catch{if(epoch!==this.epoch)return;this.clientMeetings=[];}
+    this.notify();
+  }
+  async refreshClientMeetings() {
+    // Opening the Meetings tab reads the list again in the background, so a call scheduled meanwhile shows up.
+    const epoch=this.epoch;
+    try{const value=await this.request('/api/v1/portal/account/meetings');if(epoch!==this.epoch||!Array.isArray(value))return;this.clientMeetings=value;this.notify();}catch{}
   }
   async loadClientProblems() {
     // Reports made in Trato about paid addenda: the lists say so, like they say a dispute is open.
@@ -686,7 +700,11 @@ export class ConnectedWorkspace {
     this.notify();
   }
   clientAgreementState(item) {
-    return item.payment_status==='completed'?['paid','clientAccount.state.paid']:item.change_requested&&item.status!=='accepted'?['waiting','clientAccount.state.changesRequested']:item.status==='accepted'?(item.additional_minor>0?['pay',item.payment_method==='invoice'?'clientAccount.state.invoiceToPay':'clientAccount.state.toPay']:['done','clientAccount.state.accepted']):['open','clientAccount.state.toReview'];
+    if(item.payment_status==='completed'){
+      const state=item.refunded_minor>0?(item.refunded_minor>=item.additional_minor?'refunded':'partiallyRefunded'):'paid';
+      return ['paid',`clientAccount.state.${state}`];
+    }
+    return item.change_requested&&item.status!=='accepted'?['waiting','clientAccount.state.changesRequested']:item.status==='accepted'?(item.additional_minor>0?['pay',item.payment_method==='invoice'?'clientAccount.state.invoiceToPay':'clientAccount.state.toPay']:['done','clientAccount.state.accepted']):['open','clientAccount.state.toReview'];
   }
   // The fix was registered as a new request and paid: only the client's «It's resolved» is missing, so Trato reminds them.
   clientProblemToClose(item) {
@@ -700,11 +718,17 @@ export class ConnectedWorkspace {
     const checking=item.payment_status==='completed'&&!this.clientDisputes&&!this.clientDisputesFailed;
     // A closed dispute stays visible: the client sees it ended and whether the money comes back.
     const closed=this.clientDisputes?.[item.proposal_id]?.status==='RESOLVED'?this.clientDisputes[item.proposal_id]:null;
-    const refunded=['RESOLVED_BUYER_FAVOUR','ACCEPTED'].includes(closed?.outcome);
-    // A dispute in PayPal comes first; otherwise a report in Trato says how the paid addendum stands for the client.
+    const buyerWon=['RESOLVED_BUYER_FAVOUR','ACCEPTED'].includes(closed?.outcome);
     const problem=item.payment_status==='completed'?this.clientProblems?.[item.proposal_id]:null;
     const reported=this.clientProblemToClose(item)?['pay','clientAccount.state.problemToClose']:{open:['dispute','clientAccount.state.problemOpen'],unresolved:['dispute','clientAccount.state.problemUnresolved'],resolved:['paid','clientAccount.state.problemResolved']}[problem?.status];
-    const [kind,label]=inDispute?['dispute','clientAccount.state.inDispute']:checking?['waiting','clientAccount.state.checking']:refunded?['paid','clientAccount.state.disputeRefunded']:closed?['paid','clientAccount.state.disputeClosed']:reported||this.clientAgreementState(item);
+    let [kind,label]=this.clientAgreementState(item);
+    if(inDispute)[kind,label]=['dispute','clientAccount.state.inDispute'];
+    else if(item.refunded_minor>0){
+      if(buyerWon&&item.refunded_minor>=item.additional_minor)label='clientAccount.state.disputeRefunded';
+    }else if(checking)[kind,label]=['waiting','clientAccount.state.checking'];
+    else if(buyerWon)[kind,label]=['waiting','clientAccount.state.refundVerificationPending'];
+    else if(closed)[kind,label]=['paid','clientAccount.state.disputeClosed'];
+    else if(reported)[kind,label]=reported;
     // Inside a project, several addenda share a version number: the row names what each one changes.
     const scope=String(item.scope_summary||'').replace(/\s+/g,' ').trim(),about=scope.length>90?scope.slice(0,90).trimEnd()+'…':scope;
     const title=withProject?escape(item.project_name):about?escape(about):uiText('portal.eyebrow',{number:escape(item.revision_no)});
@@ -736,7 +760,8 @@ export class ConnectedWorkspace {
     this.agreementHost=workspace.querySelector('[data-agreement-host]');this.agreementHostId=id;
     const api=(action,body,{binary=false}={})=>this.request(`/api/v1/portal/account/agreements/${encodeURIComponent(id)}/${action}`,this.json(body),binary);
     const known=this.clientDisputes?.[id];
-    this.agreementView=mountAgreement(this.agreementHost,{api,inDisputeHint:!!known&&known.status!=='RESOLVED'});
+    // Request a refund sits inside the addendum card, next to Report a problem (client account only).
+    this.agreementView=mountAgreement(this.agreementHost,{api,inDisputeHint:!!known&&known.status!=='RESOLVED',paidActions:()=>this.agreementRefundParts?.(id)||{}});
   }
   renderClientProjects(workspace) {
     const groups=new Map();
@@ -782,12 +807,21 @@ export class ConnectedWorkspace {
     else if(tab==='historial') this.renderProjectHistory(panel);
     else if(tab==='devoluciones') this.renderRefunds(panel);
     else if(tab==='disputas') this.renderDisputes(panel);
+    else if(tab==='reuniones'&&this.renderMeetings) this.renderMeetings(panel);
     else this.renderAgreement(panel);
   }
   releaseProjectMap() {
     this.projectMapGeneration=(this.projectMapGeneration||0)+1;
     this.projectMapCleanup?.();this.projectMapCleanup=null;
     this.projectMapPanel?.remove();this.projectMapPanel=null;
+  }
+  invalidateProjectHistory(project) {
+    if(project!==this.projectId)return;
+    this.historyGeneration++;
+    this.historyLoaded=false;
+    this.historyPending=null;
+    this.historyGroupPending=new Map();
+    this.releaseProjectMap();
   }
   renderProjectHistory(panel) {
     const map=this.historyView==='map';
@@ -828,7 +862,7 @@ export class ConnectedWorkspace {
       case 'client_changes_requested':return uiText('history.portalChanges',{version:event.revision_no});
       case 'payment_requested':return uiText('history.paymentRequested');
       case 'invoice_sent':return uiText(event.invoice_number?'history.invoiceSent':'history.invoiceSentPlain',{number:event.invoice_number||''});
-      case 'problem_reported':return uiText('history.problemReported',{version:event.revision_no});
+      case 'problem_reported':return event.stage_position?uiText('history.problemReportedStage',{number:event.stage_position}):uiText('history.problemReported',{version:event.revision_no});
       case 'problem_message':return uiText(event.author==='client'?'history.problemClientMessage':'history.problemYourMessage');
       case 'problem_request_registered':return uiText('history.problemRequestRegistered',{title:event.new_request_title||''});
       case 'problem_closed':return uiText(event.status==='resolved'?'history.problemResolved':'history.problemUnresolved');
@@ -842,6 +876,7 @@ export class ConnectedWorkspace {
       case 'refund_feedback_reviewed':return uiText('history.refundFeedback',{version:event.revision_no});
       case 'refund_acceptance_recorded':return uiText('history.refundAccepted',{version:event.revision_no});
       case 'refund_financial_authorized':return uiText('history.refundAuthorized');
+      case 'dispute_refund_confirmed':return uiText('history.disputeRefundConfirmed',{amount:new Intl.NumberFormat(uiLocale(),{style:'currency',currency:event.currency}).format(event.amount_minor/100)});
       case 'refund_completed':return uiText('history.refundCompleted',{amount:new Intl.NumberFormat(uiLocale(),{style:'currency',currency:event.currency}).format(event.amount_minor/100)});
       case 'refund_closed':return uiText('history.refundClosed');
       default:throw Error('Unsupported project activity: '+event.kind);
@@ -876,7 +911,7 @@ export class ConnectedWorkspace {
     }catch(error){if(current())body.innerHTML=`<p class="cloud-error" role="alert">${uiText('history.groupError')}</p><button type="button" class="text-button" data-cloud-action="history-group-retry">${uiText('history.retryGroup')}</button>`;}
   }
   renderHistoryGroup(group) {
-    const icons={dispute_opened:'flag',client_message:'mail',freelancer_message:'send',paypal_message:'mail',dispute_status:'shield-check',project_created:'folder-open',initial_source_added:'file-text',plan_confirmed:'layout-dashboard',delivery_evidence_added:'file-check',stage_paid:'credit-card',plan_completed:'circle-check',request_registered:'file-text',adenda_sent:'send',acceptance_recorded:'file-text',client_changes_requested:'messages-square',payment_requested:'mail',invoice_sent:'mail',problem_reported:'flag',problem_message:'messages-square',problem_request_registered:'file-text',problem_closed:'check',delivery_shared:'send',stage_reviewed:'circle-check',stage_payment_requested:'mail',payment_completed:'credit-card',request_closed:'x',refund_requested:'undo-2',refund_proposal_sent:'send',refund_feedback_reviewed:'file-text',refund_acceptance_recorded:'file-text',refund_financial_authorized:'credit-card',refund_completed:'credit-card',refund_closed:'check'};
+    const icons={dispute_opened:'flag',client_message:'mail',freelancer_message:'send',paypal_message:'mail',dispute_status:'shield-check',dispute_refund_confirmed:'undo-2',project_created:'folder-open',initial_source_added:'file-text',plan_confirmed:'layout-dashboard',delivery_evidence_added:'file-check',stage_paid:'credit-card',plan_completed:'circle-check',request_registered:'file-text',adenda_sent:'send',acceptance_recorded:'file-text',client_changes_requested:'messages-square',payment_requested:'mail',invoice_sent:'mail',problem_reported:'flag',problem_message:'messages-square',problem_request_registered:'file-text',problem_closed:'check',delivery_shared:'send',stage_reviewed:'circle-check',stage_payment_requested:'mail',payment_completed:'credit-card',request_closed:'x',refund_requested:'undo-2',refund_proposal_sent:'send',refund_feedback_reviewed:'file-text',refund_acceptance_recorded:'file-text',refund_financial_authorized:'credit-card',refund_completed:'credit-card',refund_closed:'check'};
     const dayFormat=new Intl.DateTimeFormat(uiLocale(),{dateStyle:'long',timeZone:'America/Lima'});
     const clockFormat=new Intl.DateTimeFormat(uiLocale(),{timeStyle:'short',timeZone:'America/Lima'});
     const valid=value=>value&&Number.isFinite(Date.parse(value));

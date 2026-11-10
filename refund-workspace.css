@@ -214,3 +214,71 @@
   .refund-finance-totals { grid-template-columns: minmax(0, 1fr); }
   .refund-finance .refund-finance-totals > div { display: flex; align-items: center; }
 }
+
+/* Three fixed steps as a centered timeline: it stays at the top while the step scrolls. */
+.refund-wizard-steps { display: flex; justify-content: center; gap: 0; position: sticky; top: 0; z-index: 3; margin: 0 0 6px; padding: 16px 0 12px; background: var(--paper, #fff); border-bottom: 1px solid var(--line); }
+.refund-wizard-steps button { position: relative; flex: 0 1 190px; flex-direction: column; flex-wrap: nowrap; gap: 7px; min-height: 0; padding: 0 6px; border: 0; background: none; font-size: 12.5px; }
+.refund-wizard-steps button + button::before { content: ""; position: absolute; top: 16px; right: calc(50% + 20px); width: calc(100% - 40px); height: 2px; border-radius: 2px; background: var(--line); }
+.refund-wizard-steps [data-done] + button::before { background: var(--refund-accent); }
+.refund-wizard-steps span { width: 32px; height: 32px; border: 2px solid var(--line); background: var(--paper, #fff); font-size: 13px; }
+.refund-wizard-steps span .ui-icon { width: 15px; height: 15px; }
+.refund-wizard-steps [aria-current="step"] { background: none; border: 0; }
+.refund-wizard-steps [aria-current="step"] span { border-color: var(--refund-accent); box-shadow: 0 0 0 4px var(--refund-tint); }
+.refund-wizard-steps [data-done] { color: var(--refund-accent); opacity: 1 !important; }
+.refund-wizard-steps [data-done] span { border-color: var(--refund-accent); background: var(--refund-tint); color: var(--refund-accent); }
+.refund-wizard-steps button:not(:disabled):hover { border: 0; }
+.refund-wizard-help { max-width: 520px; margin: 12px auto 0; text-align: center; }
+.refund-stage { max-width: 640px; margin-left: auto; margin-right: auto; }
+.refund-amount-head { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 6px 16px; padding-bottom: 12px; margin-bottom: 14px; border-bottom: 1px solid var(--line); }
+.refund-amount-head span { font-size: 13px; font-weight: 650; color: var(--refund-muted); }
+.refund-amount-head strong { font-size: 26px; font-variant-numeric: tabular-nums; letter-spacing: -.4px; color: var(--refund-accent); }
+.refund-request-card h3 { margin: 0 0 8px; font-size: 13px; font-weight: 650; color: var(--refund-muted); }
+blockquote.refund-reason { font-size: 13px; }
+blockquote.refund-reason { margin: 0; padding: 10px 14px; border-left: 3px solid var(--refund-accent-line); border-radius: 0 10px 10px 0; background: var(--surface-soft); white-space: pre-wrap; overflow-wrap: anywhere; }
+.refund-step-next { display: flex; justify-content: flex-end; margin-top: 16px; }
+.refund-step-next .button { display: inline-flex; align-items: center; gap: 8px; }
+.refund-result-card, .refund-confirm-card { text-align: center; padding: 30px 22px; }
+.refund-result-card { display: grid; justify-items: center; gap: 6px; }
+.refund-result-check { display: grid; place-items: center; width: 60px; height: 60px; margin-bottom: 8px; border-radius: 50%; background: #e6f6ec; color: #1f8a4c; }
+.refund-result-check .ui-icon { width: 28px; height: 28px; stroke-width: 2.4; }
+.refund-result-amount { font-size: 38px; line-height: 1.1; font-variant-numeric: tabular-nums; letter-spacing: -1px; }
+.refund-result-card h3 { margin: 0; font-size: 17px; }
+.refund-result-card p { margin: 0 0 10px; color: var(--refund-muted); font-size: 13px; }
+.refund-confirm-card > h3 { font-size: 19px; }
+.refund-confirm-card > p { color: var(--refund-muted); font-size: 13px; margin: 0 0 16px; }
+.refund-confirm-card .refund-proposal-summary { text-align: left; }
+.refund-confirm-card .refund-actions { justify-content: center; margin-top: 18px; }
+.refund-confirm-card .refund-actions .button { min-width: 220px; min-height: 46px; font-size: 15px; }
+@media (max-width: 640px) { .refund-wizard-steps button { font-size: 11px; } }
+
+/* The request form: one column, short, the evidence as its own block and the action at the end. */
+.refund-create{display:grid;gap:16px;max-width:640px;margin-left:auto;margin-right:auto}
+.refund-create>label{display:grid;gap:6px;font-size:13px;font-weight:650}
+.refund-create select,.refund-create textarea{width:100%}
+.refund-create-evidence{display:grid;gap:8px;padding:14px;border:1px dashed var(--line);border-radius:12px}
+.refund-create-evidence>span{font-size:13px;font-weight:650}
+.refund-create .refund-step-next{align-items:center;gap:14px;margin-top:4px}
+.refund-create-file{display:flex;align-items:center;gap:8px;margin:0;font-size:13px}.refund-create-file span{flex:1;min-width:0;overflow-wrap:anywhere}.refund-create-file .ui-icon{width:17px;height:17px;flex:none}
+.refund-create-evidence input[type="file"]{font:inherit;font-size:13px}
+.refund-create-evidence .text-button{justify-self:start;font-size:12.5px}
+.refund-create-progress{margin:0;font-size:13px;color:var(--refund-muted)}
+/* Request form: Trato fields, compact. */
+.refund-create{display:block;max-width:560px;margin:14px auto 0}
+.refund-workspace .refund-create label.field,.refund-create .field{display:block;margin:0 0 12px;font-size:12px;font-weight:600}
+.refund-workspace .refund-create .context-box{display:block;width:100%;margin-top:5px;min-height:40px}
+.refund-workspace .refund-create textarea.context-box{min-height:72px}
+.refund-create .refund-checkbox{margin:0 0 12px}
+.refund-create-evidence{padding:0;border:0;gap:0}
+.refund-create-evidence .text-button{display:inline-block;margin-top:4px}
+.refund-create-evidence .refund-evidence{margin:5px 0 0}
+.refund-create .dialog-actions{margin-top:14px}
+.refund-create .refund-notice{margin-bottom:12px}
+.refund-view-pdf{display:inline-flex;align-items:center;gap:6px;font-size:13px}.refund-view-pdf .ui-icon{width:16px;height:16px}
+.refund-cancel-request{max-width:640px;margin:18px auto 0;text-align:center}.refund-cancel-request>summary{list-style:none;display:inline-block;cursor:pointer;font-size:12.5px;color:var(--refund-muted)}.refund-cancel-request>summary::-webkit-details-marker{display:none}.refund-cancel-request form{text-align:left}
+/* Two-step polish */
+.refund-request-card .refund-view-pdf{margin-top:14px}
+.refund-request-card,.refund-proposal-summary,.refund-create{font-family:inherit}
+.refund-amount-head strong,.refund-result-amount{font-family:inherit}
+.refund-reader>.text-button{display:inline-flex;align-items:center;gap:6px;margin-bottom:10px}
+/* Trato font everywhere in the refund dialog, also in buttons, fields and quotes. */
+.refund-dialog,.refund-dialog button,.refund-dialog input,.refund-dialog select,.refund-dialog textarea,.refund-dialog blockquote,.refund-workspace button,.refund-workspace input,.refund-workspace select,.refund-workspace textarea{font-family:var(--font-ui)}

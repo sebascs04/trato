@@ -37,19 +37,23 @@ async function bootTrato() {
       installProjectPlanning(window.TratoCloud);
       const {installPlanPayments}=await import('/plan-payments.mjs');
       installPlanPayments(window.TratoCloud);
+      const {installStageProblems}=await import('/stage-problems.mjs');
+      installStageProblems(window.TratoCloud);
       const {installVisitorLanding}=await import('/visitor-landing.mjs');
       installVisitorLanding(window.TratoCloud);
       const {installProposalWorkspace} = await import('/proposal-workspace.mjs');
       installProposalWorkspace(window.TratoCloud);
       const {installDisputeWorkspace} = await import('/dispute-workspace.mjs');
       installDisputeWorkspace(window.TratoCloud);
+      const {installProjectMeetings} = await import('/project-meetings.mjs');
+      installProjectMeetings(window.TratoCloud);
       const {installRefundWorkspace} = await import('/refund-workspace.mjs');
       installRefundWorkspace(window.TratoCloud);
       const {installGmailConnection} = await import('/gmail-connection.mjs');
       installGmailConnection(window.TratoCloud);
       const {installProjectAssistant}=await import('/project-assistant.mjs');
       installProjectAssistant(window.TratoCloud);
-      // TeTrato flotante en Ensayos y Reputación: desactivado (Sebastian, 8/11/2026). Esas secciones se explican con sus botones «i»;
+      // TeTrato flotante en Ensayos y Reputación: desactivado. Esas secciones se explican con sus botones «i»;
       // el código (section-assistant.mjs, /api/v1/ai/section-questions) queda para un posible TeTrato único.
       const {installDemoWorkspace}=await import('/demo-workspace.mjs');
       installDemoWorkspace(window.TratoCloud);

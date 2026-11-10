@@ -45,9 +45,9 @@ class DisputeListener(RefundFinance):
 
 
 class DisputeWebhook(RefundWebhook):
-    def __init__(self, finance, reader=None):
+    def __init__(self, finance, reader=None, alerts=None):
         super().__init__(finance)
-        self.reader = reader or DisputeReader()
+        self.reader, self.alerts = reader or DisputeReader(), alerts
 
     def process(self, event, client, store):
         if event['event_type'] not in EVENTS or not isinstance(event.get('resource'), dict):
@@ -65,17 +65,25 @@ class DisputeWebhook(RefundWebhook):
             summary = summarize(dispute, payment)
             if summary:
                 store.record(payment['owner_id'], payment['project_id'], summary['dispute_id'], dispute_events(summary))
+                if self.alerts is not None:
+                    # The history is saved; the freelancer's email is best effort and sent once per dispute.
+                    try:
+                        self.alerts.notify(payment['owner_id'], payment['project_id'], summary)
+                    except (ApiError, KeyError, TypeError):
+                        pass
                 return True
         return False  # Not about a payment Trato knows: nothing to save.
 
 
-def build_dispute_webhook_router(settings, *, finance=None, reader=None):
+def build_dispute_webhook_router(settings, *, finance=None, reader=None, gmail=None):
     router = APIRouter()
 
     @router.post('/api/v1/disputes/webhooks/paypal')
     async def receive(request: Request):
         raw = await read_bytes(request, 256 * 1024)
-        hook = DisputeWebhook(finance or DisputeListener(settings), reader)
+        flow = finance or DisputeListener(settings)
+        from .dispute_alerts import DisputeAlerts
+        hook = DisputeWebhook(flow, reader, DisputeAlerts(settings, flow.backend(), gmail) if gmail is not None else None)
         result = await run_in_threadpool(hook.receive, raw, dict(request.headers))
         return JSONResponse({'data': result}, headers={'Cache-Control': 'no-store'})
     return router

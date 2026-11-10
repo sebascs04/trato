@@ -242,6 +242,29 @@ def context(repo, owner, project, focus, *, financial_lookup=None):
                 if len(record['reply']['text']) > 24000:
                     raise ApiError('AI_CONTEXT_LIMIT', 413)
 
+    if focus['task'] in ('intake', 'guide'):
+        payment_ids = {p['id'] for p in record['payments']}
+        if focus['payment_id']:
+            payment_ids &= {focus['payment_id']}
+        events = rows('project_dispute_events', 'dispute_id,kind,details,happened_at',
+                      kind='in.(dispute_opened,dispute_status)', order='happened_at.asc,event_key.asc')
+        disputes = {}
+        for event in events:
+            details = event['details']
+            if event['kind'] == 'dispute_opened' and details.get('received_payment_id') in payment_ids:
+                disputes[event['dispute_id']] = {
+                    'case_id': event['dispute_id'], 'payment_id': details['received_payment_id'],
+                    'reason': details.get('reason'), 'amount': details.get('amount'),
+                    'opened_at': event['happened_at'], 'last_recorded_status': None,
+                }
+        for event in events:
+            dispute = disputes.get(event['dispute_id'])
+            details = event['details']
+            if dispute is not None and event['kind'] == 'dispute_status' and details.get('status'):
+                dispute.update(last_recorded_status=details['status'], status_recorded_at=event['happened_at'],
+                               outcome=details.get('outcome'))
+        record['recorded_disputes'] = list(disputes.values())
+
     serialized=record
     reply_text=''
     if 'reply' in record:

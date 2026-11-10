@@ -44,6 +44,11 @@ class Repo:
     def eligible_payments(self, project):
         self.calls.append(('payments',project)); return []
 
+    def received_payments(self, project, payment=None):
+        self.calls.append(('received', project, payment))
+        rows = [{'id': uid(3), 'capture_id': 'CAPTURE123'}, {'id': uid(30), 'capture_id': 'CAPTURE456'}]
+        return [row for row in rows if payment is None or row['id'] == payment]
+
     def operation(self, project, key):
         self.calls.append(('operation',project,key)); return {'state':'unconfirmed'}
 
@@ -61,6 +66,10 @@ class RefundApiTests(unittest.TestCase):
                     **({'artifact':{'document_id':uid(40)}} if name=='pdf' else {})}
             return call
         self.workflow=SimpleNamespace(**{name:invoke(name) for name in ['pdf','preview','send','register_initial','reconcile_send','sync']})
+        dispute_guard = patch('trato_api.app.ensure_no_open_dispute')
+        self.dispute_guard = dispute_guard.start()
+        self.addCleanup(dispute_guard.stop)
+        self.dispute_guard.return_value = None
         with patch('trato_api.app.RefundWorkflow',return_value=self.workflow):
             self.client = TestClient(create_app(services=Services(),
                 refund_repository_factory=lambda settings, authorization: self.repo))
@@ -74,13 +83,36 @@ class RefundApiTests(unittest.TestCase):
     def test_create_uses_path_project_and_idempotency(self):
         r=self.client.post(self.create_url,json=self.create_data,headers=self.headers)
         self.assertEqual(r.status_code,200,r.text)
-        action,data,key=self.repo.calls[0]
+        self.dispute_guard.assert_called_once_with('CAPTURE123')
+        self.assertIn(('received',uid(2),uid(3)), self.repo.calls)
+        action,data,key=self.repo.calls[-1]
         self.assertEqual((action,data['project_id'],key),('create',uid(2),'create-test'))
         self.assertEqual(r.headers['cache-control'],'no-store')
+
+    def test_create_reports_open_dispute_before_registering_the_request(self):
+        self.dispute_guard.side_effect = ApiError('REFUND_PAYMENT_IN_DISPUTE', 409)
+        response = self.client.post(self.create_url, json=self.create_data, headers=self.headers)
+        self.assertEqual(response.status_code, 409)
+        self.assertEqual(response.json()['error']['code'], 'REFUND_PAYMENT_IN_DISPUTE')
+        self.assertFalse(any(call[0] == 'create' for call in self.repo.calls))
+
+    def test_create_prepares_evidence_after_registration_and_reports_queue_failure(self):
+        def prepare(*_):
+            self.assertEqual(self.repo.calls[-1][0], 'create')
+            raise ApiError('AI_QUEUE_UNAVAILABLE', 503)
+
+        with patch.dict('os.environ', {'TRATO_FILE_PROCESSING_ENABLED': 'true', 'TRATO_VECTOR_SEARCH_ENABLED': 'true'}), \
+             patch('trato_api.refunds.routes.prepare_request_evidence', side_effect=prepare) as enqueue:
+            response = self.client.post(self.create_url, json=self.create_data, headers=self.headers)
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()['data']['settlement']['id'], uid(10))
+        self.assertEqual(response.json()['data']['evidence_processing_error'], 'AI_QUEUE_UNAVAILABLE')
+        enqueue.assert_called_once()
 
     def test_all_routes_require_jwt(self):
         paths=[('GET',self.create_url),('POST',self.create_url),('GET',f'/api/v1/refunds/{uid(10)}'),
                ('GET',f'/api/v1/projects/{uid(2)}/refund-payments'),
+               ('POST',f'/api/v1/projects/{uid(2)}/refund-payments/sync'),
                ('GET',f'/api/v1/projects/{uid(2)}/refund-operations/key'),
                ('GET',f'/api/v1/refunds/{uid(10)}/snapshots/{uid(11)}'),
                ('POST',f'/api/v1/refunds/{uid(10)}/draft'),('POST',f'/api/v1/refunds/{uid(10)}/close')]
@@ -136,8 +168,11 @@ class RefundApiTests(unittest.TestCase):
         for reason in ['accepted','completed','refund_pending']:
             self.assertEqual(self.client.post(base+'/close',json={'reason':reason,'notes':'x'},headers=self.headers).status_code,422)
         self.assertEqual(self.client.post(base+'/close',json={'reason':'withdrawn','notes':'Client withdrew'},headers=self.headers).status_code,200)
-        for action in ['accept','send','authorize','refund']:
+        for action in ['accept','send','authorize']:
             self.assertEqual(self.client.post(base+'/'+action,headers=self.headers).status_code,404)
+        # /refund is the one-click last step. It still needs a key and explicit confirmation, and
+        # goes through the usual check, authorization and execution (refunds/client_request.py).
+        self.assertEqual(self.client.post(base+'/refund',headers=self.headers).status_code,422)
 
     def test_project_scope_requires_reviewed_distinct_members_and_no_individual_id(self):
         data={k:v for k,v in self.create_data.items() if k!='payment_id'}
@@ -146,7 +181,8 @@ class RefundApiTests(unittest.TestCase):
             self.assertEqual(self.client.post(self.create_url,json=data|invalid,headers=self.headers).status_code,422)
         self.assertFalse(self.repo.calls)
         self.assertEqual(self.client.post(self.create_url,json=data,headers=self.headers).status_code,200)
-        self.assertEqual(self.repo.calls[0][1]['payment_ids'],[uid(3),uid(30)])
+        self.assertEqual(self.repo.calls[-1][1]['payment_ids'],[uid(3),uid(30)])
+        self.assertEqual([call.args[0] for call in self.dispute_guard.call_args_list], ['CAPTURE123', 'CAPTURE456'])
 
     def test_review_and_acceptance_require_explicit_confirmation_exact_head_and_known_evidence(self):
         base=f'/api/v1/refunds/{uid(10)}'

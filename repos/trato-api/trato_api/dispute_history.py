@@ -71,7 +71,21 @@ def dispute_rows(repo, project_id, dispute_id=None):
     params = {'select': 'id,dispute_id,kind,details,happened_at', 'project_id': 'eq.' + project_id, 'order': 'happened_at.asc,event_key.asc', 'limit': 1000}
     if dispute_id is not None:
         params['dispute_id'] = 'eq.' + dispute_id
-    return repo.rows('project_dispute_events', params)
+    events = repo.rows('project_dispute_events', params)
+    if not events:
+        return events
+    case_ids = {event['dispute_id'] for event in events}
+    receipts = repo.rows('refund_provider_receipts', {
+        'select': 'id,dispute_id,amount_minor,currency,confirmed_at',
+        'project_id': 'eq.' + project_id, 'status': 'eq.completed',
+        'dispute_id': 'eq.' + dispute_id if dispute_id is not None else 'not.is.null',
+        'order': 'confirmed_at.asc,id.asc', 'limit': 1000,
+    })
+    return events + [
+        {'id': row['id'], 'dispute_id': row['dispute_id'], 'kind': 'dispute_refund_confirmed',
+         'happened_at': row['confirmed_at'], 'details': {'amount_minor': row['amount_minor'], 'currency': row['currency']}}
+        for row in receipts if row['confirmed_at'] and row['dispute_id'] in case_ids
+    ]
 
 
 def with_dispute_groups(repo, project_id, groups):

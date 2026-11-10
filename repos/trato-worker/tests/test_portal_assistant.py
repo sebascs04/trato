@@ -22,7 +22,7 @@ class Model:
     def __init__(self, value): self.value = value; self.messages = None
     def generate(self, messages, schema):
         self.messages = messages
-        assert schema['properties']['status']['enum'] == ['answered', 'outside_agreement', 'draft_change', 'draft_problem']
+        assert schema['properties']['status']['enum'] == ['answered', 'outside_agreement', 'draft_change', 'draft_problem', 'confirm_accept', 'confirm_pay']
         return self.value
 
 

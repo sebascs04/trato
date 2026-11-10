@@ -48,7 +48,9 @@ test('renders saved snapshots and editor without translating document data or in
  const snap={id:'snap',settlement_id:'parent',version_no:1,draft_sequence:2,created_at:'2026-11-01T12:00:00Z',breakdown:{refund_minor:30000},terms:{conditions:'<img src=x onerror=alert(1)>',adjustments:[]}};
  s.detail={settlement:{id:'parent',project_id:'project',payment_id:'payment',status:'draft',current_snapshot_id:'snap',request_evidence:[],reason:'Client text'},snapshots:[snap]};s.snapshot=snap;s.view='detail';s.wizardOpen=true;s.step=2;
  s.payments=[{id:'payment',amount_minor:30000,local_previous_refunds_minor:0}];cloud.renderRefunds(panel);
- assert.match(dialog.innerHTML,/instantánea interna 2/);assert.ok(!dialog.innerHTML.includes('<img src=x'));
+ // the saved proposal shows its amount first, not the internal «v1 · snapshot 2» title.
+ assert.doesNotMatch(dialog.innerHTML,/instantánea interna/);assert.match(dialog.innerHTML,/refund-amount-head[\s\S]*300/);
+ assert.ok(!dialog.innerHTML.includes('<img src=x'));
  assert.match(dialog.innerHTML,/&lt;img/);
  s.editor={conditions:'Review',reviewed:false,items:[{concept_id:'item',kind:'penalty',beneficiary:'seller',description:'Clause',mode:'percent',base:'300',rate:'10',evidence:[]}]};cloud.renderRefunds(panel);
  assert.match(dialog.innerHTML,/Base monetaria en USD/);

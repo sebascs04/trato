@@ -23,6 +23,7 @@ from .project_assistant import build_project_assistant_router
 from .vector_routes import build_vector_router
 from .vector_jobs import build_vector_job_router
 from .reputation_vector import build_public_vector_router
+from .meeting_copilot import build_meeting_copilot_router
 from .file_processing import build_file_processing_router
 from .model_preferences import build_model_preferences_router
 from .rehearsal_routes import build_rehearsal_router
@@ -31,10 +32,13 @@ from .dispute_webhook import build_dispute_webhook_router
 from .payment_webhook import build_payment_webhook_router
 from .disputes import build_dispute_router
 from .problem_reports import build_problem_report_router
+from .client_refund_requests import build_client_refund_request_router
+from .project_meetings import build_project_meeting_router
 from .graph_routes import build_graph_router
 from .reputation_routes import build_reputation_router
 from .proposals.routes import build_proposal_router
 from .refunds.routes import build_refund_router
+from .refunds.disputes import ensure_no_open_dispute
 from .refunds.workflow import RefundWorkflow
 from .refunds.financial import RefundFinance
 from .refunds.confirmation import RefundConfirmation
@@ -143,6 +147,7 @@ def create_app(settings=None, services=None, repository_factory=None, *, gmail_s
     services = services or Services(settings)
     app = FastAPI(title='Trato API', version='0.1.0')
     app.state.services = services
+    app.state.meeting_session_manager = __import__('trato_api.meeting_copilot', fromlist=['MeetingSessionManager']).MeetingSessionManager()
     gmail_settings = GmailSettings.from_env()
     if gmail_service is None and gmail_settings.configured():
         gmail_service = (TratoGmailService if gmail_settings.delivery_mode=='trato' else GmailConnectionService)(gmail_settings)
@@ -160,7 +165,7 @@ def create_app(settings=None, services=None, repository_factory=None, *, gmail_s
     app.include_router(build_sandbox_payment_router(sandbox_test_service, require_user))
     app.include_router(build_business_router(settings, services, require_user, repository_factory))
     proposal_workflow=ProposalWorkflow(settings,gmail_service)
-    app.include_router(build_client_portal_router(settings, payments=proposal_workflow, require_user=require_user))
+    app.include_router(build_client_portal_router(settings, payments=proposal_workflow, require_user=require_user, gmail=gmail_service))
     app.include_router(build_thread_router(settings))
     app.include_router(build_agent_tools_router(settings))
     app.include_router(build_reference_tools_router(settings))
@@ -178,20 +183,23 @@ def create_app(settings=None, services=None, repository_factory=None, *, gmail_s
     app.include_router(build_file_processing_router(settings,require_user,repository_factory))
     app.include_router(build_model_preferences_router(require_user))
     app.include_router(build_rehearsal_router(require_user,rehearsal_service))
+    app.include_router(build_meeting_copilot_router(require_user))
     app.include_router(build_section_help_router(require_user))
     from .invoice_concept import build_invoice_concept_router
     app.include_router(build_invoice_concept_router(settings, require_user))
-    app.include_router(build_dispute_router(settings,require_user,repository_factory,replies=proposal_workflow.gmail_replies))
+    refund_finance=RefundFinance(settings,disputes=ensure_no_open_dispute)
+    app.include_router(build_dispute_router(settings,require_user,repository_factory,replies=proposal_workflow.gmail_replies,refund_finance=refund_finance))
     app.include_router(build_problem_report_router(settings,require_user,repository_factory))
+    app.include_router(build_client_refund_request_router(settings,require_user,repository_factory))
+    app.include_router(build_project_meeting_router(settings,require_user,repository_factory,gmail=gmail_service))
     app.include_router(build_graph_router(settings,require_user,repository_factory,graph_reader))
     app.include_router(build_reputation_router(settings,require_user,repository_factory))
     app.include_router(build_proposal_router(settings, require_user, proposal_repository_factory, proposal_workflow))
-    app.include_router(build_refund_router(settings, require_user, refund_repository_factory, RefundWorkflow(settings,gmail_service)))
-    refund_finance=RefundFinance(settings)
+    app.include_router(build_refund_router(settings, require_user, refund_repository_factory, RefundWorkflow(settings,gmail_service),refund_finance))
     refund_confirmation=RefundConfirmation(settings,gmail_service)
     app.include_router(build_refund_financial_router(settings,require_user,refund_repository_factory,refund_finance,refund_confirmation))
     app.include_router(build_refund_webhook_router(refund_finance,refund_confirmation))
-    app.include_router(build_dispute_webhook_router(settings))
+    app.include_router(build_dispute_webhook_router(settings, gmail=gmail_service))
     app.include_router(build_payment_webhook_router(settings))
 
     @app.exception_handler(ApiError)

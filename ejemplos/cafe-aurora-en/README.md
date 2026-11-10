@@ -14,9 +14,9 @@ You need:
 | `03-change-request-store.pdf` | Registering the client's change request |
 | `04-client-adjustments-addendum-v1.pdf` | Registering the client's feedback on addendum v1 |
 | `05-client-acceptance-addendum-v2.pdf` | Registering the client's acceptance of addendum v2 |
-| `06-deliverable-1-acknowledgment.pdf` | Delivery evidence for deliverable 1 (USD 180) |
-| `07-deliverable-2-acknowledgment.pdf` | Delivery evidence for deliverable 2 (USD 300) |
-| `08-deliverable-3-acknowledgment.pdf` | Delivery evidence for deliverable 3 (USD 120) |
+| `06-deliverable-1-acknowledgment.pdf` | Sending deliverable 1 to the client (USD 180) |
+| `07-deliverable-2-acknowledgment.pdf` | Sending deliverable 2 to the client (USD 300) |
+| `08-deliverable-3-acknowledgment.pdf` | Sending deliverable 3 to the client (USD 120) |
 
 ## 1. Sign in and look at the completed example
 
@@ -53,11 +53,13 @@ Confirm to create the project. When Trato asks for the initial agreement, upload
 Repeat these steps for deliverables 1, 2 and 3, in order. A deliverable can be charged only after the previous one is paid.
 
 1. In the work plan, open the deliverable and choose **Delivery and payment**.
-2. **Attach delivery evidence:** upload `06-…`, `07-…` or `08-…` for that deliverable. An AI agent checks that the client confirms the stage is complete. You can keep working while it processes.
-3. When the document shows as processed, click **Prepare payment request**.
-4. Click **Send payment email**, review the email and send it to the client.
-5. **Pay as the client.** In real use the client pays from the email. To test, click **Open test payment** in the *Test mode (PayPal Sandbox)* box, or use the link in the email you received. Log in to PayPal with the Sandbox buyer account from Devpost, or any PayPal Sandbox buyer account, and approve the payment.
-6. Back in Trato, click **Check payment**. The deliverable is marked as paid only after the backend verifies the capture with PayPal.
+2. Attach `06-…`, `07-…` or `08-…` for that deliverable and click **Send to client for review**.
+3. **Approve it as the client.** The first time, sign up in Trato with the client's email and choose **Client** (see step 6). Open **My projects → Café Aurora website → Work plan**, open the deliverable, click **View delivery**, then **Approve delivery**. **Something's missing** sends a note instead, and the freelancer sends a corrected delivery.
+4. Back as the freelancer, click **Send payment request**. Trato prepares the PayPal payment and emails it to the client in one step.
+5. **Pay as the client** with **Pay with PayPal** on the deliverable, or from the email. Log in to PayPal with the Sandbox buyer account from Devpost, or any PayPal Sandbox buyer account, and approve the payment.
+6. Reopen **Delivery and payment**: Trato checks PayPal and shows **Payment verified by PayPal** once the backend verifies the capture.
+
+**PayPal invoice instead:** after the payment email, **Still unpaid?** offers **Send PayPal invoice**. TeTrato writes the concept, **Confirm and send** issues the invoice through the PayPal Agent Toolkit, and the client pays it with **Pay invoice in PayPal**.
 
 ## 5. Turn a scope change into a paid addendum
 
@@ -71,12 +73,12 @@ Repeat these steps for deliverables 1, 2 and 3, in order. A deliverable can be c
 
 **If the client answers outside Trato:** under **Did the client answer another way?** you can check Gmail replies or register a document. To try it, upload `04-client-adjustments-addendum-v1.pdf` as the client's feedback or `05-client-acceptance-addendum-v2.pdf` as the received acceptance.
 
-## 6. See it as a client (optional)
+## 6. The client account
 
-Sign up with the client's email address and choose **Client**. After you confirm that address, the agreements sent to it appear inside Trato, with the same actions as the portal.
+Sign up with the client's email address and choose **Client**. After you confirm that address, **My projects** opens each project with its **Work plan** (deliveries to approve and pay), **Agreement changes** (addenda, with the same actions as the portal) and **Disputes and problems**.
 
 ## 7. Explore the rest
 
-- **Project map:** the agreement, requests, addenda, acceptances and payments as a graph.
+- **Project map:** the agreement, requests, addenda, acceptances, delivery approvals and payments as a graph.
 - **TeTrato assistant:** ask *"What is included in deliverable 2?"* or *"How much has the client paid so far?"*. Answers cite the project's own documents.
 - **Rehearsals:** practice a scope-creep conversation with an AI client, then choose **End practice → Analyze with AI** for coaching with cited sources.

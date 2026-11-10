@@ -27,7 +27,11 @@ class InitialPayments:
     def link(self,pay):
         return self.settings.web_origin.rstrip('/')+'/initial-payment.html?'+urlencode({'checkout':pay['checkout_token'],'lang':pay['output_language']})
     def public(self,pay):
-        return {k:pay.get(k) for k in ('id','status','amount_minor','currency','order_id','capture_id','paid_at','project_name','conditions','stage_position')}
+        return {k:pay.get(k) for k in ('id','status','amount_minor','currency','order_id','capture_id','paid_at','project_name','conditions','stage_position','method','invoice_url','invoice_number')}
+    def invoices(self):
+        # A deliverable can be collected with a PayPal invoice issued by TeTrato instead of its order.
+        from ..proposals.invoices import StageInvoices
+        return StageInvoices(self)
     def owned(self,pay):
         if pay is None:return None
         # sandbox lets the owner open the client's checkout to test it; Live never exposes that shortcut.
@@ -86,6 +90,9 @@ class InitialPayments:
         pay=self.backend().command(owner,'get',{'project_id':project})
         if pay is None:raise ApiError('INITIAL_PAYMENT_NOT_FOUND',404)
         if pay['status']=='completed':return self.owned(pay)
+        if pay.get('method')=='invoice':
+            self.invoices().verify(pay)
+            return self.get(repo,owner,project)
         try:pay=self.apply(pay,self.provider().get_order(pay['order_id'])) if pay.get('order_id') else self.create(pay)
         except PayPalError as error:raise ApiError(error.code,error.status) from None
         return self.get(repo,owner,project)
@@ -93,6 +100,11 @@ class InitialPayments:
         if not isinstance(token,str) or len(token)!=43 or not all(c.isalnum() or c in '_-' for c in token):raise ApiError('INITIAL_PAYMENT_NOT_FOUND',404)
         pay=self.backend().command(None,'checkout',{'token':token})
         if pay['status']=='completed':return self.public(pay)
+        if pay.get('method')=='invoice':
+            # The client's payment page sends them to the PayPal invoice; reading it back completes a paid one.
+            pay=self.invoices().verify(pay);result=self.public(pay)
+            if pay['status']=='pending_approval':result['approval_url']=pay.get('invoice_url')
+            return result
         if not pay.get('order_id'):raise ApiError('INITIAL_ORDER_RECONCILIATION_REQUIRED',409)
         try:
             pay=self.apply(pay,self.provider().get_order(pay['order_id']))
@@ -110,12 +122,13 @@ class InitialPayments:
         p=repo.project(project)
         if p['owner_id']!=owner:raise ApiError('PROJECT_NOT_FOUND',404)
         pay=self.backend().command(owner,'get',{'project_id':project})
-        if not pay or not pay.get('order_id') or pay['status']=='completed':raise ApiError('INITIAL_PAYMENT_NOT_READY',409)
+        if not pay or not (pay.get('order_id') or pay.get('invoice_url')) or pay['status']=='completed':raise ApiError('INITIAL_PAYMENT_NOT_READY',409)
         if not self.gmail:raise ApiError('GMAIL_NOT_CONFIGURED',503)
         status=self.gmail.status(owner)
         if not status.get('connected'):raise ApiError('GMAIL_NOT_CONNECTED',409)
         item={k:pay.get(k) for k in ('project_name','client_name','recipient_email','amount_minor','conditions','output_language','mail_id','stage_position')}
-        item['url']=self.link(pay);item['sender']=status['email']
+        item['url']=pay['invoice_url'] if pay.get('method')=='invoice' else self.link(pay);item['sender']=status['email']
+        if pay.get('method')=='invoice':item['invoice']=True
         digest=sha256(json.dumps(item,sort_keys=True).encode()).hexdigest()
         message=build_email(item['sender'],item,pay['mail_id'])
         return pay,item,{'sender':item['sender'],'recipient':pay['recipient_email'],'subject':str(message['Subject']),'body':message.get_body(preferencelist=('plain',)).get_content(),'digest':digest}
@@ -133,14 +146,16 @@ class InitialPayments:
 
 def build_email(sender,item,notification):
     english=item['output_language']=='en';amount=f'USD {item["amount_minor"]/100:.2f}'
-    staged=item.get('stage_position') is not None
-    subject=(('Deliverable payment' if english else 'Pago de entregable') if staged else ('Initial payment' if english else 'Pago inicial'))+' · '+' '.join(item['project_name'].split())
+    staged=item.get('stage_position') is not None;invoice=bool(item.get('invoice'))
+    subject=(('PayPal invoice' if english else 'Factura PayPal') if invoice else ('Deliverable payment' if english else 'Pago de entregable') if staged else ('Initial payment' if english else 'Pago inicial'))+' · '+' '.join(item['project_name'].split())
     title=('Your deliverable is ready' if english else 'Tu entregable está listo') if staged else ('Your project starts here' if english else 'Tu proyecto empieza aquí')
     intro=(('Here is the payment request for deliverable ' if english else 'Te enviamos la solicitud de pago del entregable ')+str(item['stage_position'])+' · '+item['project_name']+'.') if staged else (('Here is the initial payment request for ' if english else 'Te enviamos la solicitud de pago inicial de ')+item['project_name']+'.')
-    button='Review payment' if english else 'Revisar pago'
+    button=('Pay invoice in PayPal' if english else 'Pagar factura en PayPal') if invoice else ('Review payment' if english else 'Revisar pago')
+    from paypal.email import INVOICE_NOTE_EN,INVOICE_NOTE_ES
+    note=(INVOICE_NOTE_EN if english else INVOICE_NOTE_ES) if invoice else ''
     sandbox='PayPal Sandbox · test funds' if english else 'PayPal Sandbox · saldo de prueba'
     msg=EmailMessage();msg['From']=sender;msg['To']=item['recipient_email'];msg['Subject']=subject;msg['Date']=formatdate(usegmt=True)
     msg['Message-ID']=f'<trato-initial-{notification}@{sender.rsplit("@",1)[1]}>'
-    msg.set_content(f'{intro}\n\n{amount}\n{item["conditions"]}\n\n{item["url"]}\n\n{sandbox}')
-    msg.add_alternative(email_layout(title,item['project_name'],f'<p>{escape(intro)}</p><h2>{amount}</h2><p>{escape(item["conditions"]).replace(chr(10),"<br>")}</p><p><a href="{escape(item["url"],quote=True)}">{button}</a></p><p>{sandbox}</p>'),subtype='html')
+    msg.set_content(f'{intro}\n\n{amount}\n{item["conditions"]}\n\n{item["url"]}\n\n'+(note+'\n\n' if note else '')+sandbox)
+    msg.add_alternative(email_layout(title,item['project_name'],f'<p>{escape(intro)}</p><h2>{amount}</h2><p>{escape(item["conditions"]).replace(chr(10),"<br>")}</p><p><a href="{escape(item["url"],quote=True)}">{button}</a></p>'+(f'<p>{escape(note)}</p>' if note else '')+f'<p>{sandbox}</p>'),subtype='html')
     return msg

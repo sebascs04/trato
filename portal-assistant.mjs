@@ -18,15 +18,21 @@ export function assistantHistory(messages){
 }
 
 // Once a change request goes out, a draft is no longer something to send: it says whether it was the one sent.
+// A draft is a change request before acceptance, or a problem report once the addendum is paid.
 export function draftMarkup(message,index){
  if(!message.draft)return '';
- const next=message.sent?`<p class="portal-assistant-draft-sent" role="status">${icon('check')}<span>${t('draftSent')}</span></p>`:message.closed?'':`<button type="button" class="portal-button" data-assistant-draft="${index}">${icon('pencil')}${t('draftAction')}</button>`;
- return `<div class="portal-assistant-draft"><strong>${t(message.sent?'draftSentTitle':'draftTitle')}</strong><p>${escape(message.draft)}</p>${next}</div>`;
+ const problem=message.draftKind==='problem';
+ const next=message.sent?`<p class="portal-assistant-draft-sent" role="status">${icon('check')}<span>${t('draftSent')}</span></p>`:message.closed?'':`<button type="button" class="portal-button" data-assistant-draft="${index}">${icon(problem?'flag':'pencil')}${t('draftAction')}</button>`;
+ return `<div class="portal-assistant-draft"><strong>${t(message.sent?(problem?'draftProblemSentTitle':'draftSentTitle'):(problem?'draftProblemTitle':'draftTitle'))}</strong><p>${escape(message.draft)}</p>${next}</div>`;
+}
+export function answerMessage(result){
+ const problem=!!result.problem_report;
+ return {role:'assistant',text:result.answer,sources:result.sources,draft:(problem?result.problem_report:result.change_request)||'',draftKind:problem?'problem':'change'};
 }
 export function closeDrafts(messages,usedIndex){
  messages.forEach((message,index)=>{if(message.draft&&!message.closed){message.closed=true;message.sent=index===usedIndex;}});
 }
-export function createPortalAssistant({doc,api,onDraft,wait=ms=>new Promise(done=>doc.defaultView.setTimeout(done,ms)),newId=()=>doc.defaultView.crypto.randomUUID()}){
+export function createPortalAssistant({doc,api,onDraft,onProblemDraft=()=>{},wait=ms=>new Promise(done=>doc.defaultView.setTimeout(done,ms)),newId=()=>doc.defaultView.crypto.randomUUID()}){
  const messages=[];let working=false,usedDraft=null;
  const dialog=doc.createElement('dialog');
  dialog.className='portal-dialog portal-side-dialog portal-assistant';
@@ -42,7 +48,7 @@ export function createPortalAssistant({doc,api,onDraft,wait=ms=>new Promise(done
   log.innerHTML=intro+messages.map((message,index)=>message.role==='user'
    ?`<p class="portal-assistant-bubble mine">${escape(message.text)}</p>`
    :`<div class="portal-assistant-bubble"><p>${escape(message.text)}</p>${message.sources?.length?`<small>${t('basedOn')} ${message.sources.map(source=>t(`source.${source}`)).join(', ')}</small>`:''}${draftMarkup(message,index)}</div>`).join('')+(working?renderAIActivity({label:t('thinking'),compact:true}):'');
-  for(const button of log.querySelectorAll('[data-assistant-draft]'))button.onclick=()=>{usedDraft=Number(button.dataset.assistantDraft);dialog.close();onDraft(messages[usedDraft].draft);};
+  for(const button of log.querySelectorAll('[data-assistant-draft]'))button.onclick=()=>{usedDraft=Number(button.dataset.assistantDraft);dialog.close();const used=messages[usedDraft];(used.draftKind==='problem'?onProblemDraft:onDraft)(used.draft);};
   q('[data-assistant-send]').disabled=working;
   log.scrollTop=log.scrollHeight;
  }
@@ -66,7 +72,7 @@ export function createPortalAssistant({doc,api,onDraft,wait=ms=>new Promise(done
   try{
    const jobId=newId();
    const result=await answer(jobId,await api('assistant',{job_id:jobId,question,output_language:uiLanguage(),history}));
-   messages.push({role:'assistant',text:result.answer,sources:result.sources,draft:result.change_request||''});
+   messages.push(answerMessage(result));
   }catch(error){
    // The question goes back to the box and leaves the conversation, so no answer is implied.
    messages.pop();input.value=question;

@@ -31,7 +31,7 @@ SELECTORS = {
  }""",
  'plan': """CALL (p) {
  OPTIONAL MATCH (anchor:TratoEntity:Plan {entity_key:$anchor,owner_id:p.owner_id,project_id:p.project_id,generation:p.generation})
- OPTIONAL MATCH path=(anchor)-[:HAS_STAGE|DELIVERY_EVIDENCE|STAGE_PAYMENT|PAYMENT_EVIDENCE|HAS_CHANGE_REQUEST|HAS_NEW_WORK*0..3]->(n)
+ OPTIONAL MATCH path=(anchor)-[:HAS_STAGE|DELIVERY_EVIDENCE|STAGE_PAYMENT|PAYMENT_EVIDENCE|HAS_CHANGE_REQUEST|HAS_NEW_WORK|CLIENT_STAGE_REVIEW|REVIEWS_DELIVERY*0..3]->(n)
  WHERE all(item IN nodes(path) WHERE item.owner_id=p.owner_id AND item.project_id=p.project_id AND item.generation=p.generation)
  AND all(rel IN relationships(path) WHERE rel.owner_id=p.owner_id AND rel.project_id=p.project_id)
  WITH p,anchor,collect(DISTINCT n) AS reached
@@ -39,7 +39,9 @@ SELECTORS = {
  }""",
  'change': """CALL (p) {
  OPTIONAL MATCH (anchor:TratoEntity:Document {entity_key:$anchor,owner_id:p.owner_id,project_id:p.project_id,generation:p.generation,business_kind:'email_request'})
- OPTIONAL MATCH path=(anchor)-[:RESPONDS_TO|HAS_REVISION|CURRENT_REVISION|FOR_REVISION|ACCEPTS_REVISION|HAS_REVIEW*0..4]-(n)
+ // The client's own steps on this request too: portal change requests, its problem report and a PayPal dispute on its payment.
+ // BECAME_REQUEST is left out on purpose: it leads to a different request.
+ OPTIONAL MATCH path=(anchor)-[:RESPONDS_TO|HAS_REVISION|CURRENT_REVISION|FOR_REVISION|ACCEPTS_REVISION|HAS_REVIEW|ASKS_TO_CHANGE|REPORTS_PROBLEM_ON|HAS_DISPUTE*0..4]-(n)
  WHERE all(item IN nodes(path) WHERE item.owner_id=p.owner_id AND item.project_id=p.project_id AND item.generation=p.generation)
  AND all(rel IN relationships(path) WHERE rel.owner_id=p.owner_id AND rel.project_id=p.project_id)
  WITH p,anchor,collect(DISTINCT n) AS reached

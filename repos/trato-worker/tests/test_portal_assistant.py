@@ -22,7 +22,7 @@ class Model:
     def __init__(self, value): self.value = value; self.messages = None
     def generate(self, messages, schema):
         self.messages = messages
-        assert schema['properties']['status']['enum'] == ['answered', 'outside_agreement', 'draft_change']
+        assert schema['properties']['status']['enum'] == ['answered', 'outside_agreement', 'draft_change', 'draft_problem']
         return self.value
 
 
@@ -30,7 +30,7 @@ class PortalAssistantWorkerTests(unittest.TestCase):
     def test_answers_from_the_agreement_with_only_what_the_backend_sent(self):
         model = Model(output())
         result = run_portal_assistant({**data(), 'owner_id': 'internal', 'model_id': 'internal'}, model)
-        self.assertEqual(result, {'kind': 'portal_assistant', 'model': 'test-model', **output()})
+        self.assertEqual(result, {'kind': 'portal_assistant', 'model': 'test-model', 'problem_report': '', **output()})
         sent = json.loads(model.messages[1]['content'])
         self.assertEqual(set(sent), {'output_language', 'agreement', 'history', 'question'})
 
@@ -52,9 +52,22 @@ class PortalAssistantWorkerTests(unittest.TestCase):
                 run_portal_assistant(data(), Model(bad))
             self.assertEqual(error.exception.code, 'AI_INVALID_RESPONSE')
 
+    def test_drafts_a_problem_report_only_for_a_paid_addendum_without_one(self):
+        paid = {**AGREEMENT, 'status': 'accepted', 'payment_status': 'completed', 'can_request_changes': False, 'can_report_problem': True}
+        draft = output(status='draft_problem', answer='Choose a reason, review it and send it.', sources=[], problem_report='The photos are blurry.')
+        self.assertEqual(run_portal_assistant(data(agreement=paid), Model(draft))['problem_report'], 'The photos are blurry.')
+        for agreement in ({**paid, 'can_report_problem': False}, AGREEMENT):  # Already reported, or not paid (and an older job without the flag).
+            with self.assertRaises(ToolError) as error:
+                run_portal_assistant(data(agreement=agreement), Model(draft))
+            self.assertEqual(error.exception.code, 'AI_INVALID_CITATION')
+        for bad in (output(problem_report='Hidden report'), {**draft, 'change_request': 'Both'}, {**draft, 'sources': ['scope']}):
+            with self.assertRaises(ToolError, msg=bad):
+                run_portal_assistant(data(agreement=paid), Model(bad))
+
     def test_invalid_input_never_reaches_the_model(self):
         model = Model(output())
-        for bad in (data(workflow='section_help'), data(question='  '), data(output_language='fr'), data(history=None), data(agreement={'scope': 'x'})):
+        for bad in (data(workflow='section_help'), data(question='  '), data(output_language='fr'), data(history=None), data(agreement={'scope': 'x'}),
+                    data(agreement={**AGREEMENT, 'can_report_problem': 'yes'})):
             with self.assertRaises(ToolError):
                 run_portal_assistant(bad, model)
         self.assertIsNone(model.messages)

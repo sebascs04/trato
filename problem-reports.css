@@ -1,0 +1,24 @@
+/* Report a problem, freelancer side. Cards, badges and the side panel come from dispute-workspace.css. */
+/* Switch between PayPal disputes and client problems in the same tab. */
+.dispute-switch{display:inline-flex;gap:4px;padding:4px;margin:0 0 14px;border:1px solid var(--line);border-radius:12px;background:var(--surface-soft,#f7f5fb);max-width:100%;overflow-x:auto}
+.dispute-switch button{display:inline-flex;align-items:center;gap:8px;min-height:36px;padding:0 14px;border:0;border-radius:9px;background:transparent;color:var(--muted);font:inherit;font-size:14px;font-weight:600;cursor:pointer;white-space:nowrap}
+.dispute-switch button[aria-pressed="true"]{background:var(--surface,#fff);color:var(--ink);box-shadow:0 1px 4px #2423401a}
+.dispute-switch button:focus-visible{outline:2px solid var(--purple);outline-offset:2px}
+.dispute-switch-count{min-width:20px;padding:0 6px;border-radius:999px;background:var(--purple-soft,#f2edf9);color:var(--purple);font-size:12px;line-height:20px;text-align:center}
+.dispute-switch-dot{width:8px;height:8px;border-radius:50%;background:#c2410c}
+.problem-reports{display:grid;gap:12px;margin:0 0 20px}
+.dispute-closed{display:grid;gap:12px;margin-top:4px}
+.dispute-closed>.text-button{justify-self:start;display:inline-flex;align-items:center;gap:6px;min-height:36px}
+.problem-reports>h3{margin:0;font-size:15px;font-weight:600}
+.problem-card .dispute-icon{color:#8a5a00}
+.problem-notes{margin:12px 0 0;font-size:14px;line-height:1.6;white-space:pre-wrap;overflow-wrap:anywhere;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}
+.problem-conversation{display:grid;grid-template-rows:minmax(0,1fr) auto;gap:14px;min-height:0}
+.problem-conversation .dispute-messages{align-content:start;overflow-y:auto;padding-right:4px}
+.problem-register{display:grid;gap:8px;justify-items:start;padding:12px 0;border-bottom:1px solid var(--line)}
+.problem-register p{margin:0}.problem-register .cloud-error:empty{display:none}
+.problem-registered{display:flex;gap:8px;align-items:center;margin:0;padding:10px 12px;border-radius:10px;background:var(--ok-soft);color:var(--ok);font-size:14px}
+.problem-registered svg{width:16px;height:16px;flex:none}
+.problem-reply{display:grid;gap:8px}
+.problem-reply textarea{width:100%;box-sizing:border-box}
+.problem-reply footer{display:flex;justify-content:flex-end}
+.problem-reply .cloud-error:empty{display:none}

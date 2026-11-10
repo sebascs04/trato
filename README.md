@@ -2,7 +2,7 @@
 
 > **Judges:** start with **[JUDGES.md](JUDGES.md)**. It has the live demo, the test accounts and a 15-minute walkthrough.
 
-**Trato helps freelancers get paid for what they agreed, and for every change along the way.** Each phase of a project leaves a document behind: the agreement, the client's change request, every addendum version, the acceptance and the sign-off of each deliverable. AI agents read those documents and prepare the next step. A person approves it, and PayPal handles the payment.
+**Trato helps freelancers get paid for what they agreed, and for every change along the way.** Each phase of a project leaves a document behind: the agreement, the client's change request, every addendum version, the acceptance and the sign-off of each deliverable. AI agents read those documents and prepare the next step. A person approves it, and PayPal handles the payment. TeTrato, Trato's agent, works on PayPal for the freelancer through the official PayPal Agent Toolkit: it issues invoices, explains stuck payments and prepares dispute responses.
 
 **Live demo:** https://trato-web-68896425401.us-central1.run.app (PayPal Sandbox, no real money is moved)
 
@@ -15,18 +15,22 @@ Scope changes are usually agreed in loose messages. The work grows, the price do
 | For | Feature | How it works |
 |---|---|---|
 | Freelancer | **Plan from the agreement** | AI proposes deliverables and staged payments from the project's documents |
-| Freelancer | **Paid deliverables** | AI checks the client's sign-off, then the client pays that stage with PayPal |
+| Both | **Approved deliverables** | The freelancer sends each delivery; the client approves it or says what is missing in their account, and only an approved stage is charged |
+| Freelancer | **PayPal invoices by TeTrato** | Agentic commerce: TeTrato writes the concept and issues a PayPal invoice through the official PayPal Agent Toolkit for an addendum or a deliverable, after the freelancer confirms |
+| Freelancer | **Payment detective** | TeTrato reads the payment's live state in PayPal and explains in plain words why it has not gone through and what to do |
 | Freelancer | **Addenda from change requests** | AI compares the request with the agreement and drafts scope, conditions and effort. Each version keeps its own PDF, delivery and acceptance |
-| Client | **Client portal** | Review, request changes, accept and pay from a secure emailed link, with no account needed. An optional client account shows the same agreements inside Trato |
-| Freelancer | **PayPal disputes** | Disputes on verified payments appear in the project, read through the official PayPal Agent Toolkit, with a response prepared from the project's evidence |
+| Client | **Client portal** | Review, request changes, accept and pay from a secure emailed link, with no account needed. An optional client account opens each project with its work plan, changes, and disputes and problems |
+| Client | **Report a problem** | After paying, the client reports a problem in Trato, or TeTrato drafts it. The freelancer replies or turns it into a new request; only the client closes it, and the conversation stays as evidence |
+| Freelancer | **PayPal disputes** | A new dispute on a verified payment is flagged on the home page. It opens in the project, read through the official PayPal Agent Toolkit, with a response prepared from the project's evidence that the freelancer reviews and sends |
 | Freelancer | **TeTrato assistant** | Answers questions about the project and cites its documents |
 | Freelancer | **Rehearsals** | Practice a difficult conversation with an AI client, then get coaching with cited sources |
-| Both | **History and map** | Every phase and document, in one timeline and one graph |
+| Both | **History and map** | Every phase and document, in one timeline and one graph. The timeline also records each step the client takes: change requests from the portal, approvals of each delivery and every payment request sent |
 
 **Rules the code enforces**
 
 - Agents never send email or move money without a person's approval.
 - Only a capture verified by the backend counts as paid. Returning from PayPal or sending an email does not.
+- One way to collect each payment: issuing a PayPal invoice retires the checkout link, so a client can never pay twice.
 - A paid change is read-only. New work becomes a separate request.
 - Agent output is JSON validated in code. If a step fails, Trato shows the error and never fakes a result.
 
@@ -45,7 +49,7 @@ Redis queue ── trato-worker (LangGraph + Gemini) ── generic processes de
 
 | Layer | Technology |
 |---|---|
-| **Payments** | PayPal Sandbox: Orders, capture, webhooks and the Agent Toolkit |
+| **Payments** | PayPal Sandbox: Orders, Invoicing, Disputes, webhooks and the PayPal Agent Toolkit |
 | **AI** | Google Gemini through LangGraph and LangChain |
 | **Data** | Supabase (Postgres with row-level security, Auth, Storage), Neo4j (project graph), Weaviate (vector search) |
 | **Email** | Gmail API |

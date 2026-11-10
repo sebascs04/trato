@@ -138,6 +138,37 @@ class DisputeReader:
             found = [value for values in pool.map(read, valid) for value in values]
         return {'project_id': project_id, 'payments_checked': len(payments), 'disputes': found}
 
+    def open_disputes(self, repo):
+        """Open disputes on any of the signed-in freelancer's verified payments, so the home page can warn without opening each project.
+        RLS limits payments and projects to this freelancer; a dispute counts only if PayPal ties it to one of those captures."""
+        payments = [p for p in repo.rows('project_received_payments', {
+            'select': 'id,project_id,origin,capture_id,amount_minor,currency,verified_at,proposal_payment_id', 'order': 'verified_at.desc', 'limit': 200})
+            if isinstance(p.get('capture_id'), str) and CAPTURE.fullmatch(p['capture_id'])]
+        if not payments:
+            return {'payments_checked': 0, 'disputes': []}
+        projects = {p['id']: p for p in repo.rows('projects', {'select': 'id,client_id,name', 'deleted_at': 'is.null',
+                                                               'id': 'in.(' + ','.join(sorted({p['project_id'] for p in payments})) + ')'})}
+        payments = [p for p in payments if p['project_id'] in projects]
+        client = self.provider()
+
+        def read(payment):
+            # Only a dispute PayPal does not already list as resolved is read in full.
+            items = [i for i in client.list_disputes(payment['capture_id']).get('items') or [] if isinstance(i, dict) and i.get('status') != 'RESOLVED']
+            return [(payment, value) for value in (summarize(client.get_dispute(i.get('dispute_id')), payment) for i in items) if value and value['status'] != 'RESOLVED']
+        with ThreadPoolExecutor(max_workers=min(4, len(payments) or 1)) as pool:
+            found = [pair for pairs in pool.map(read, payments) for pair in pairs]
+        by_project = {}
+        for payment, dispute in found:
+            by_project.setdefault(payment['project_id'], []).append(dispute)
+        # The same idempotent history the Disputes tab saves; a failure here never hides the warning.
+        saved = all([record_disputes(repo, project_id, disputes) for project_id, disputes in by_project.items()])
+        return {'payments_checked': len(payments), 'history_saved': saved, 'disputes': sorted([{
+            'project_id': payment['project_id'], 'project_name': projects[payment['project_id']]['name'], 'client_id': projects[payment['project_id']]['client_id'],
+            **{k: dispute[k] for k in ('dispute_id', 'reason', 'status', 'stage', 'amount', 'response_due')},
+            # A dispute PayPal has just opened is already waiting for the freelancer's first answer.
+            'your_turn': dispute['status'] in ('OPEN', 'WAITING_FOR_SELLER_RESPONSE') or 'provide_evidence' in dispute['actions']}
+            for payment, dispute in found], key=lambda d: (not d['your_turn'], d['response_due'] or '9999'))}
+
 
 class DefenseRequest(BaseModel):
     model_config = ConfigDict(extra='forbid', strict=True)
@@ -497,6 +528,11 @@ def build_dispute_router(settings, require_user, repository_factory=None, reader
 
     def repository(request):
         return (repository_factory or Repository)(settings, request.headers.get('authorization', ''))
+
+    @router.get('/disputes/attention')
+    async def disputes_attention(request: Request, owner=Depends(require_user)):
+        data = await run_in_threadpool(reader.open_disputes, repository(request))
+        return JSONResponse({'data': data}, headers={'Cache-Control': 'no-store'})
 
     @router.get('/projects/{project_id}/disputes')
     async def project_disputes(project_id: UUID, request: Request, owner=Depends(require_user)):

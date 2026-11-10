@@ -277,6 +277,29 @@ export class ConnectedWorkspace {
       else {this.message=message; this.notify();}
     } finally {this.busy=false; this.modal.querySelectorAll('button[type="submit"]').forEach(button=>{button.disabled=false;});}
   }
+  // Correct a document uploaded by mistake. The server refuses it once an addendum, payment, delivery, dispute,
+  // problem report or refund has used the document, and the message says so; nothing else changes.
+  openDocumentFix(action,id) {
+    const doc=(this.documents||[]).find(d=>d.id===id);if(!doc||!this.projectId)return;
+    const roles=[['initial_agreement',uiText('projectStart.roleInitial')],['email_request',uiText('projectStart.roleRequest')],['addendum',uiText('projectStart.roleAddendum')],['delivery',uiText('projectStart.roleDelivery')],['reference',uiText('projectStart.roleReference')]];
+    const remove=action==='document-remove';
+    const body=remove
+      ?`<p>${uiText('documentFix.removeCopy',{name:escape(doc.title)})}</p>`
+      :`<label class="field">${uiText('documentFix.roleLabel',{name:escape(doc.title)})}<select class="context-box" data-document-fix-kind>${roles.map(([value,key])=>`<option value="${value}" ${doc.kind===value?'selected':''}>${key}</option>`).join('')}</select></label>`;
+    this.show(uiText(remove?'documentFix.removeTitle':'documentFix.roleTitle'),`<div class="document-fix">${body}<p class="cloud-error" role="alert" data-document-fix-error></p><div class="dialog-actions"><button type="button" class="text-button" data-cloud-close>${uiText('documentFix.cancel')}</button><button type="button" class="button ${remove?'danger':''}" data-document-fix-save>${uiText(remove?'documentFix.removeConfirm':'documentFix.save')}</button></div></div>`);
+    const save=this.modal.querySelector('[data-document-fix-save]'),error=this.modal.querySelector('[data-document-fix-error]');
+    save.addEventListener('click',async()=>{
+      save.disabled=true;error.textContent='';
+      try{
+        const path=`/api/v1/projects/${encodeURIComponent(this.projectId)}/documents/${encodeURIComponent(id)}`;
+        if(remove)await this.request(path,{method:'DELETE'});
+        else await this.request(path,{...this.json({kind:this.modal.querySelector('[data-document-fix-kind]').value}),method:'PATCH'});
+        this.modal.close();this.historyLoaded=false;await this.loadProject();this.notify();
+      }catch(issue){
+        error.textContent=uiText({DOCUMENT_IN_USE:'documentFix.inUse',DOCUMENT_ROLE_LOCKED:'documentFix.roleLocked'}[issue?.code]||'documentFix.error');save.disabled=false;
+      }
+    });
+  }
   show(title,html) {
     this.releasePreview();
     this.modal.classList.remove('cloud-history-dialog','cloud-profile-dialog','cloud-auth-dialog','cloud-signup-dialog','cloud-document-preview','cloud-mail-dialog','cloud-project-setup','cloud-delete-dialog','cloud-project-create-dialog','cloud-change-steps-dialog');
@@ -456,6 +479,7 @@ export class ConnectedWorkspace {
       const url=URL.createObjectURL(blob), link=this.document.createElement('a'); link.href=url; link.download=doc.original_filename; link.click(); setTimeout(()=>URL.revokeObjectURL(url),1000);
     });
     if(action==='retry') this.run(async()=>{await this.request(`/api/v1/documents/${id}/retry`,{method:'POST'}); await this.loadProject();});
+    if(action==='document-role'||action==='document-remove'){this.openDocumentFix(action,id);return;}
   }
   releasePreview() {
     if(this.previewUrl){URL.revokeObjectURL(this.previewUrl);this.previewUrl=null;}
@@ -491,7 +515,7 @@ export class ConnectedWorkspace {
     const clientField=client
       ? `<div class="cloud-project-client"><small>${uiText("CLIENTE DEL PROYECTO")}</small><strong>${escape(client.name)}</strong></div><input type="hidden" name="client" value="${client.id}">`
       : `<label class="field">${uiText("Cliente del proyecto")}<select name="client" class="context-box" required><option value="" selected disabled>${uiText("Elige un cliente guardado")}</option>${this.clients.map(item=>`<option value="${item.id}">${escape(item.name)}</option>`).join('')}</select></label>`;
-    this.show(uiText("Nuevo proyecto"),`<form data-cloud-form="project">${clientField}<label class="field">${uiText("Nombre del nuevo proyecto")}<input name="name" class="context-box" required maxlength="200" placeholder="${uiText("Por ejemplo: sitio web corporativo")}"></label><h3>${uiText('projectStart.moment')}</h3><div class="project-start-choices">${[['new','sparkles','newTitle','newCopy']/* «Proyecto en marcha» oculto hasta revisarlo: restaurar ['ongoing','folder-open','ongoingTitle','ongoingCopy'] */].map(([value,glyph,title,copy])=>`<label class="project-start-choice"><input type="radio" name="project_start" value="${value}" ${value==='new'?'checked':''}><div>${uiIcon(glyph)}<strong>${uiText(`projectStart.${title}`)}</strong><p>${uiText(`projectStart.${copy}`)}</p></div></label>`).join('')}</div><div class="dialog-actions"><button type="submit" class="button">${uiText('projectStart.continue')}${uiIcon('arrow-right')}</button></div></form>`);
+    this.show(uiText("Nuevo proyecto"),`<form data-cloud-form="project">${clientField}<label class="field">${uiText("Nombre del nuevo proyecto")}<input name="name" class="context-box" required maxlength="200" placeholder="${uiText("Por ejemplo: sitio web corporativo")}"></label><h3>${uiText('projectStart.moment')}</h3><div class="project-start-choices">${[['new','sparkles','newTitle','newCopy'],['ongoing','folder-open','ongoingTitle','ongoingCopy']].map(([value,glyph,title,copy])=>`<label class="project-start-choice"><input type="radio" name="project_start" value="${value}" ${value==='new'?'checked':''}><div>${uiIcon(glyph)}<strong>${uiText(`projectStart.${title}`)}</strong><p>${uiText(`projectStart.${copy}`)}</p></div></label>`).join('')}</div><div class="dialog-actions"><button type="submit" class="button">${uiText('projectStart.continue')}${uiIcon('arrow-right')}</button></div></form>`);
     this.modal.classList.add('cloud-project-create-dialog');
   }
   initialSources() {return this.documents.filter(doc=>doc.kind==='initial_agreement');}
@@ -1039,7 +1063,7 @@ export class ConnectedWorkspace {
     if(unlinked.length)sections.push({kind:'unlinked',title:uiText("Adendas sin pedido vinculado"),docs:unlinked.sort(newest)});
     const row=doc=>{
       const extraction=Array.isArray(doc.document_extractions)?doc.document_extractions[0]:doc.document_extractions;
-      return `<div class="cloud-document-row"><button type="button" class="document-button" data-cloud-action="text" data-cloud-id="${escape(doc.id)}" title="${uiText("Ver")} ${escape(doc.title)}"><span class="cloud-document-file-icon" aria-hidden="true">${uiIcon('file-text')}</span><span class="cloud-document-file"><strong>${escape(doc.title)}</strong><small>${doc.documentRole?escape(doc.documentRole)+' · ':''}${doc.mime_type==='application/pdf'?'PDF':'Word'} · ${escape(date(doc.created_at))}</small>${extraction?.status!=='ready'?`<span class="cloud-document-read-status" data-document-status>${extraction?.status==='error'?uiText("Lectura pendiente"):uiText("Pendiente de lectura")}</span>`:''}</span></button>${this.documentProcessingNotice(doc)}<div class="cloud-document-actions"><button class="cloud-icon-button" data-cloud-action="download" data-cloud-id="${escape(doc.id)}" aria-label="${uiText("Descargar original")} ${escape(doc.title)}" title="${uiText("Descargar original")}">${uiIcon('download')}</button>${extraction?.status!=='ready'?`<button class="cloud-icon-button" data-cloud-action="retry" data-cloud-id="${escape(doc.id)}" aria-label="${uiText("Reintentar lectura de")} ${escape(doc.title)}" title="${uiText("Reintentar lectura")}">${uiIcon('refresh-cw')}</button>`:''}</div></div>`;
+      return `<div class="cloud-document-row"><button type="button" class="document-button" data-cloud-action="text" data-cloud-id="${escape(doc.id)}" title="${uiText("Ver")} ${escape(doc.title)}"><span class="cloud-document-file-icon" aria-hidden="true">${uiIcon('file-text')}</span><span class="cloud-document-file"><strong>${escape(doc.title)}</strong><small>${doc.documentRole?escape(doc.documentRole)+' · ':''}${doc.mime_type==='application/pdf'?'PDF':'Word'} · ${escape(date(doc.created_at))}</small>${extraction?.status!=='ready'?`<span class="cloud-document-read-status" data-document-status>${extraction?.status==='error'?uiText("Lectura pendiente"):uiText("Pendiente de lectura")}</span>`:''}</span></button>${this.documentProcessingNotice(doc)}<div class="cloud-document-actions"><button class="cloud-icon-button" data-cloud-action="download" data-cloud-id="${escape(doc.id)}" aria-label="${uiText("Descargar original")} ${escape(doc.title)}" title="${uiText("Descargar original")}">${uiIcon('download')}</button><button class="cloud-icon-button" data-cloud-action="document-role" data-cloud-id="${escape(doc.id)}" aria-label="${uiText('documentFix.roleFor',{name:doc.title})}" title="${uiText('documentFix.role')}">${uiIcon('pencil')}</button><button class="cloud-icon-button cloud-document-remove" data-cloud-action="document-remove" data-cloud-id="${escape(doc.id)}" aria-label="${uiText('documentFix.removeFor',{name:doc.title})}" title="${uiText('documentFix.remove')}">${uiIcon('trash-2')}</button>${extraction?.status!=='ready'?`<button class="cloud-icon-button" data-cloud-action="retry" data-cloud-id="${escape(doc.id)}" aria-label="${uiText("Reintentar lectura de")} ${escape(doc.title)}" title="${uiText("Reintentar lectura")}">${uiIcon('refresh-cw')}</button>`:''}</div></div>`;
     };
     const content=sections.map(({kind,id,title,docs},index)=>`<details class="cloud-document-group" data-document-kind="${kind}" ${id?`data-document-request="${escape(id)}"`:''} ${this.documentLibraryOpenGroups?.project===this.projectId?(this.documentLibraryOpenGroups.groups.has(kind+':'+(id||''))?'open':''):index===0?'open':''}><summary><span class="cloud-document-chevron" aria-hidden="true">${uiIcon('chevron-right')}</span><span>${kind==='request'?uiText('Pedido ·')+' ':''}${escape(title)}</span><span class="cloud-document-count">${docs.length} ${docs.length===1?uiText("archivo"):uiText("archivos")}</span></summary><div class="document-list">${docs.map(row).join('')}</div></details>`).join('');
     // The list redraws whenever a document changes: what the person opened or closed must survive it.

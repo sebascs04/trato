@@ -14,7 +14,7 @@ test('a missing plan resolved while another tab is open does not stay loading on
  const {cloud,panel,reject}=fixture();assert.match(panel.innerHTML,/Cargando el plan/);
  cloud.tab='asistente';reject({code:'AI_PLAN_NOT_FOUND'});await new Promise(resolve=>setImmediate(resolve));
  cloud.tab='plan';cloud.renderProjectPlan(panel);
- assert.match(panel.innerHTML,/todavía no tiene un plan/);assert.doesNotMatch(panel.innerHTML,/Cargando el plan/);
+ assert.match(panel.innerHTML,/aún no tiene plan de trabajo/);assert.match(panel.innerHTML,/data-plan-action="attach-plan"/);assert.doesNotMatch(panel.innerHTML,/Cargando el plan/);
 });
 test('a request failure offscreen becomes a retry state on return',async()=>{
  const {cloud,panel,reject}=fixture();cloud.tab='documentos';reject({code:'NETWORK_ERROR'});await new Promise(resolve=>setImmediate(resolve));

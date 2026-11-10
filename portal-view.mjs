@@ -3,6 +3,7 @@
 import {uiText,uiLocale} from './i18n.mjs';
 import {icon} from './icons.mjs';
 import {createPortalAssistant} from './portal-assistant.mjs';
+import {mountPayPalButtons} from './paypal-buttons.mjs';
 import {PROBLEM_REASONS,PAYPAL_RESOLUTION_CENTER,problemDialogsHtml,problemCardHtml,problemConversationHtml} from './problem-thread.mjs';
 
 const t=(key,values)=>uiText(`portal.${key}`,values);
@@ -78,7 +79,7 @@ export function mountAgreement(root,{api,linkMode=false,inDisputeHint=false,paid
   // A PayPal invoice is named as such, with its number, so the client recognizes PayPal's own email for it.
   const invoice=view.payment_method==='invoice'&&view.invoice_number;
   if(invoice)return `<section class="portal-payment"><div><strong>${t('invoiceTitle',{amount})}</strong><p>${t('invoiceCopy',{number:view.invoice_number})}</p><p class="portal-error" data-pay-error role="alert"></p></div><button type="button" class="portal-button" data-pay>${icon('file-text')}${t('invoiceAction')}</button></section>`;
-  return `<section class="portal-payment"><div><strong>${t('payTitle',{amount})}</strong><p>${t('payCopy')}</p><p class="portal-error" data-pay-error role="alert"></p></div><button type="button" class="portal-button" data-pay>${icon('wallet')}${t('payAction')}</button></section>`;
+  return `<section class="portal-payment"><div><strong>${t('payTitle',{amount})}</strong><p>${t('payCopy')}</p><p class="portal-error" data-pay-error role="alert"></p></div><div class="portal-pay-actions is-loading"><div class="portal-paypal-buttons" data-paypal-buttons></div><button type="button" class="portal-button" data-pay hidden>${icon('wallet')}${t('payAction')}</button></div></section>`;
  }
  function disputeMarkup(){
   if(disputeError)return `<p class="portal-error" role="alert">${t('dispute.error')}</p>`;
@@ -162,10 +163,32 @@ export function mountAgreement(root,{api,linkMode=false,inDisputeHint=false,paid
    q('[data-conversation]').showModal();
   };
   card.querySelector('[data-pay]')?.addEventListener('click',pay);
+  void paypalButtons();
   card.querySelector('[data-problem-open]')?.addEventListener('click',openProblem);
   card.querySelector('[data-report-problem]')?.addEventListener('click',()=>{assistant.changesDismissed();openNewProblem();});
   card.querySelector('[data-request-changes]')?.addEventListener('click',()=>{assistant.changesDismissed();q('[data-changes-notes]').value=view.change_request?.notes||'';q('[data-changes-error]').textContent='';q('[data-changes]').showModal();});
   card.querySelector('[data-accept]')?.addEventListener('click',()=>{q('[data-confirm-copy]').textContent=t('confirmCopy',{number:view.revision_no,amount});q('[data-confirm-error]').textContent='';q('[data-confirm]').showModal();});
+ }
+ // PayPal's own buttons, inside the page: the same order and the same server capture as the link below them.
+ // The link stays as it was when the buttons cannot load, and TeTrato's «pay it» keeps using it.
+ async function paypalButtons(){
+  const host=card.querySelector('[data-paypal-buttons]'),link=card.querySelector('[data-pay]');
+  if(!host||!link){if(link)link.hidden=false;return;}
+  const error=()=>{const target=card.querySelector('[data-pay-error]');if(target)target.textContent=t('payError');};
+  const shown=await mountPayPalButtons({doc,host,failed:error,
+   order:async()=>{
+    card.querySelector('[data-pay-error]').textContent='';
+    const result=await api('pay',{});
+    if(result.status==='completed'){view=await api('view',{});render();return null;}
+    return result.order_id||result.approval_url;
+   },
+   approved:async()=>{
+    try{view=await api('pay-capture',{});render();}
+    catch{error();}
+   }});
+  host.closest('.portal-pay-actions')?.classList.remove('is-loading');
+  if(shown&&link.isConnected){link.hidden=true;host.closest('.portal-payment')?.classList.add('with-paypal-buttons');}
+  else if(link.isConnected)link.hidden=false;
  }
  async function pay(){
   const button=card.querySelector('[data-pay]');button.disabled=true;card.querySelector('[data-pay-error]').textContent='';

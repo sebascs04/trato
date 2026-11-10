@@ -2,6 +2,7 @@ import {uiText,uiLocale,uiLanguage} from './i18n.mjs';
 import {icon} from './icons.mjs';
 import {renderAIActivity} from './ai-activity.mjs';
 import {createPortalAssistant} from './portal-assistant.mjs';
+import {mountPayPalButtons} from './paypal-buttons.mjs';
 import {installRefundRequestThread,refundRequestNotice,refundRequestActive,refundRequestClosed} from './refund-request-thread.mjs';
 const t=(key,values)=>uiText(['planPayment',key].join('.'),values);
 const esc=value=>String(value??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -86,7 +87,7 @@ export function installPlanPayments(cloud){
  const scope=()=>cloud.active?`${cloud.navigationOwner}:${cloud.projectId}`:null;
  const valid=state=>scope()===state.scope&&modalState===state&&cloud.modal.open&&cloud.modal.querySelector('[data-plan-payment-content]')?.dataset.planScope===state.scope;
  const endpoint=(project,position,tail='')=>`/api/v1/projects/${project}/stages/${position}/checkout${tail}`;
- const message=error=>t(({PLAN_PREVIOUS_STAGE_UNPAID:'previousUnpaid',PLAN_EVIDENCE_REQUIRED:'evidenceRequired',PLAN_EVIDENCE_NOT_READY:'evidencePending',PLAN_EVIDENCE_INVALID:'evidenceInvalid',PLAN_EVIDENCE_PROTECTED:'evidenceProtected',PLAN_STAGE_REQUIRED:'stageRequired',PLAN_LEGACY_PAYMENT_REQUIRES_REVIEW:'legacyReview',PLAN_STAGE_ALREADY_REQUESTED:'alreadyRequested',INITIAL_PAYER_MISMATCH:'payerMismatch'})[error.code]||'error');
+ const message=error=>t(({PLAN_PREVIOUS_STAGE_UNPAID:'previousUnpaid',PLAN_EVIDENCE_REQUIRED:'evidenceRequired',PLAN_EVIDENCE_NOT_READY:'evidencePending',PLAN_EVIDENCE_INVALID:'evidenceInvalid',PLAN_EVIDENCE_PROTECTED:'evidenceProtected',PLAN_STAGE_REQUIRED:'stageRequired',PLAN_LEGACY_PAYMENT_REQUIRES_REVIEW:'legacyReview',PLAN_STAGE_ALREADY_REQUESTED:'alreadyRequested',INITIAL_PAYER_MISMATCH:'payerMismatch'})[error.code]||'error')+(error?.code&&!['PLAN_PREVIOUS_STAGE_UNPAID','PLAN_EVIDENCE_REQUIRED','PLAN_EVIDENCE_NOT_READY','PLAN_EVIDENCE_INVALID','PLAN_EVIDENCE_PROTECTED','PLAN_STAGE_REQUIRED','PLAN_LEGACY_PAYMENT_REQUIRES_REVIEW','PLAN_STAGE_ALREADY_REQUESTED','INITIAL_PAYER_MISMATCH'].includes(error.code)&&/^[A-Z][A-Z0-9_]{2,60}$/.test(error.code)?` (${error.code})`:'');
  const originalReset=cloud.reset.bind(cloud);cloud.reset=function(){clearTimeout(timer);modalState=null;revision++;progressLoader.clear();cloud.clientPlans=undefined;cloud.clientPlansFailed=false;cloud.clientDisputesSettled=false;cloud.clientProblemsSettled=false;return originalReset();};
  // Last progress per project: a re-render repaints it at once and refreshes quietly, without a loading line.
  const lastProgress=new Map();
@@ -213,6 +214,27 @@ export function installPlanPayments(cloud){
   const [kind,label]=clientStageState(item);
   return `<li><button type="button" class="cloud-client-agreement-row" data-client-plan="stage" data-project="${esc(item.project_id)}" data-position="${item.position}"><span class="cloud-client-agreement-text"><strong>${t('deliverable',{number:item.position})} · ${esc(item.title)}</strong><small>${money(item.amount)}</small></span><span class="cloud-client-agreement-state ${kind}">${uiText(label)}</span>${icon('arrow-right')}</button></li>`;
  }
+ // Pay a deliverable without leaving the window: PayPal's own buttons for the order already sent to the client.
+ // The checkout token is the one in the client's own payment link; the server captures and verifies as on that page.
+ async function stageButtons(item){
+  const host=cloud.modal.querySelector('[data-stage-paypal]');if(!host||item.payment_method==='invoice')return;
+  // The link waits hidden while PayPal's buttons load in their fixed box; it appears only if they cannot load.
+  const showLink=()=>{const link=cloud.modal.querySelector('[data-stage-pay-link]');if(link)link.hidden=false;host.classList.remove('is-loading');};
+  host.classList.add('is-loading');
+  let token='';try{token=new URL(item.pay_url,cloud.location.origin).searchParams.get('checkout')||'';}catch{}
+  if(!/^[A-Za-z0-9_-]{43}$/.test(token)){showLink();return;}
+  const base=`/api/v1/initial-checkout/${encodeURIComponent(token)}`;
+  const shown=await mountPayPalButtons({doc,host,
+   order:async()=>{const response=await fetch(base,{cache:'no-store'});const result=await response.json();if(!response.ok)throw new Error('PAYMENT_NOT_READY');return result.data?.order_id||null;},
+   approved:async()=>{
+    const response=await fetch(base+'/capture',{method:'POST',cache:'no-store'});
+    if(!response.ok){host.insertAdjacentHTML('afterend',`<p class="cloud-error" role="alert">${uiText('portal.payError')}</p>`);return;}
+    await cloud.loadClientPlans?.();const fresh=(cloud.clientPlans||[]).find(stage=>stage.project_id===item.project_id&&stage.position===item.position);
+    if(fresh&&cloud.modal.open){cloud.show(t('deliverable',{number:fresh.position}),clientStageView(fresh));}cloud.notify();
+   },
+   failed:()=>host.insertAdjacentHTML('afterend',`<p class="cloud-error" role="alert">${uiText('portal.payError')}</p>`)});
+  host.classList.remove('is-loading');if(!shown)showLink();
+ }
  function clientStageView(item){
   const [kind,label]=clientStageState(item),invoice=item.payment_method==='invoice'&&item.pay_url,done=item.payment_status==='completed';
   const data=`data-project="${esc(item.project_id)}" data-position="${item.position}" data-document="${esc(item.delivery_document_id||'')}"`;
@@ -220,7 +242,7 @@ export function installPlanPayments(cloud){
   const note=item.review_decision==='changes_requested'&&item.review_notes?`<div class="cloud-notice" role="status"><strong>${uiText('clientPlan.yourRequest')}</strong><p>${esc(item.review_notes)}</p></div>`:'';
   // Asking for changes here fixes what was agreed for this deliverable; new work is a change to the agreement.
   const review=stageNeedsReview(item)?`<p class="plan-evidence-help">${uiText('clientPlan.scopeHint')}</p><footer class="dialog-actions"><button type="button" class="button secondary" data-client-plan="changes" ${data}>${uiText('clientPlan.requestChanges')}</button><button type="button" class="button" data-client-plan="approve" ${data}>${icon('check')}${uiText('clientPlan.approve')}</button></footer>`:'';
-  const pay=!done&&item.pay_url?`<footer class="dialog-actions"><a class="button" href="${esc(item.pay_url)}" target="_blank" rel="noopener">${icon(invoice?'file-text':'wallet')}${uiText(invoice?'portal.invoiceAction':'portal.payAction')}${icon('arrow-up-right')}</a></footer>`:'';
+  const pay=!done&&item.pay_url?`<footer class="dialog-actions">${invoice?'':`<div class="client-stage-paypal" data-stage-paypal data-project="${esc(item.project_id)}" data-position="${item.position}"></div>`}<a class="button" data-stage-pay-link href="${esc(item.pay_url)}" target="_blank" rel="noopener" ${invoice?'':'hidden'}>${icon(invoice?'file-text':'wallet')}${uiText(invoice?'portal.invoiceAction':'portal.payAction')}${icon('arrow-up-right')}</a></footer>`:'';
   // Paid: the client can ask for money back. It is a request the freelancer reviews in Refunds; only PayPal confirms a refund.
   const request=done?stageRefundRequest(item):null,cents=minor=>new Intl.NumberFormat(uiLocale(),{style:'currency',currency:'USD'}).format(minor/100);
   const closedRequest=done&&!request?stageRefundClosed(item):null;void cents;
@@ -254,7 +276,7 @@ export function installPlanPayments(cloud){
     if(source.type==='addendum'&&source.proposal_id&&cloud.rememberClientAgreement){cloud.rememberClientAgreement(source.proposal_id);if(cloud.location.hash!=='#acuerdos')cloud.location.hash='acuerdos';cloud.notify();return;}
     if(cloud.location.hash!=='#acuerdos')cloud.location.hash='acuerdos';cloud.notify();
     const item=source.type==='stage'&&(cloud.clientPlans||[]).find(stage=>stage.project_id===source.project_id&&stage.position===source.position);
-    if(item)cloud.show(t('deliverable',{number:item.position}),clientStageView(item));}});
+    if(item)cloud.show(t('deliverable',{number:item.position}),clientStageView(item));void stageButtons(item);}});
   doc.body.append(assistant.element);assistants.set(project,assistant);
   assistant.element.addEventListener('close',updateFab);
   return assistant;
@@ -310,19 +332,19 @@ export function installPlanPayments(cloud){
   // Tabs stay put while each one loads its own data: a paid addendum is what can carry a dispute or a reported problem.
   // Upcoming Google Meet calls the freelancer scheduled for this project (see project-meetings.mjs).
   const meetings=(this.clientMeetings||[]).filter(m=>m.project_id===open.id);
-  const saved=recall('trato:client-project-tab'),available={plan:open.stages.length>0,changes:open.items.length>0,issues:open.items.some(item=>item.payment_status==='completed')||!!refundRows,meetings:true};
-  const tab=available[saved]?saved:available.plan?'plan':available.changes?'changes':available.issues?'issues':'meetings';
+  const saved=recall('trato:client-project-tab'),available={plan:true,changes:true,issues:true,meetings:true};
+  const tab=available[saved]?saved:open.stages.length?'plan':open.items.length?'changes':'plan';
   const paid=open.stages.filter(s=>s.payment_status==='completed').length;
   const tabs=[['plan','wallet','clientPlan.title',open.planPending,available.plan],['changes','git-compare-arrows','clientPlan.changes',0,available.changes],['issues','shield-check','clientPlan.issues',0,available.issues],['meetings','users','meetings.clientTab',meetings.length,available.meetings]].filter(([, , , ,shown])=>shown);
   const nav=`<nav class="cloud-project-navigation" aria-label="${uiText('Secciones del proyecto')}">${tabs.map(([id,glyph,title,count])=>`<button type="button" data-client-plan="tab" data-tab="${id}" ${tab===id?'aria-current="page"':''}>${icon(glyph)}<span><strong>${uiText(title)}${badge(count)}</strong><small>${uiText(id==='plan'?'clientPlan.planHint':id==='changes'?'clientPlan.changesHint':id==='meetings'?'meetings.clientTabHint':'clientPlan.issuesHint')}</small></span></button>`).join('')}</nav>`;
   const when=m=>{const d=new Date(m.starts_at);return Number.isFinite(d.getTime())?new Intl.DateTimeFormat(uiLocale(),{dateStyle:'medium',timeStyle:'short'}).format(d):'';};
   const meetingsPanel=`<section class="workspace-panel cloud-client-plan"><h3>${uiText('meetings.clientTab')}</h3>${meetings.length?`<ul class="cloud-client-agreements-list">${meetings.map(m=>`<li><div class="cloud-client-agreement-row"><span class="cloud-client-agreement-text"><strong>${esc(m.title)}</strong><small>${esc(when(m))}</small></span><a class="button" href="${esc(m.meet_url)}" target="_blank" rel="noopener noreferrer">${icon('arrow-up-right')}${uiText('meetings.clientJoin')}</a></div></li>`).join('')}</ul>`:`<p class="cloud-client-empty">${uiText('meetings.clientEmpty')}</p>`}</section>`;
-  const plan=this.clientPlansFailed?`<p class="cloud-error" role="alert">${uiText('clientPlan.error')}</p>`:`<section class="workspace-panel cloud-client-plan"><h3>${uiText('clientPlan.title')} · ${uiText('clientPlan.progress',{paid,total:open.stages.length})}</h3><ul class="cloud-client-agreements-list">${open.stages.map(clientStageRow).join('')}</ul></section>`;
+  const plan=this.clientPlansFailed?`<p class="cloud-error" role="alert">${uiText('clientPlan.error')}</p>`:`<section class="workspace-panel cloud-client-plan"><h3>${uiText('clientPlan.title')}${open.stages.length?' · '+uiText('clientPlan.progress',{paid,total:open.stages.length}):''}</h3>${open.stages.length?`<ul class="cloud-client-agreements-list">${open.stages.map(clientStageRow).join('')}</ul>`:`<p class="cloud-client-empty">${uiText('clientPlan.noPlan')}</p>`}</section>`;
   // Addenda grouped by what they mean for the client: what waits for them, what has an open issue, what is closed.
   const rows=items=>`<ul class="cloud-client-agreements-list">${items.map(item=>this.clientAgreementRow(item,{withProject:false})).join('')}</ul>`;
   const blocks=list=>list.filter(([,items])=>items.length).map(([title,items])=>`<h4>${uiText(title)}</h4>${rows(items)}`).join('');
   const waiting=item=>['open','pay','waiting'].includes(this.clientAgreementState(item)[0]);
-  const changes=`<section class="workspace-panel cloud-client-plan"><h3>${uiText('clientPlan.changes')}</h3>${blocks([['clientPlan.groupPending',open.items.filter(waiting)],['clientPlan.groupClosed',open.items.filter(item=>!waiting(item)&&!dispute(item)&&!problem(item))]])}</section>`;
+  const changes=`<section class="workspace-panel cloud-client-plan"><h3>${uiText('clientPlan.changes')}</h3>${open.items.length?'':`<p class="cloud-client-empty">${uiText('clientPlan.noChanges')}</p>`}${blocks([['clientPlan.groupPending',open.items.filter(waiting)],['clientPlan.groupClosed',open.items.filter(item=>!waiting(item)&&!dispute(item)&&!problem(item))]])}</section>`;
   // Same split as the freelancer's Disputes tab: claims opened in PayPal, and problems reported in Trato.
   const issues=`<section class="workspace-panel cloud-client-plan"><h3>${uiText('clientPlan.issues')}</h3>${blocks([['clientPlan.paypalDisputes',disputed],['clientPlan.problemsReported',reported]])}${refundRows?`<h4>${uiText('clientPlan.refunds')}</h4><ul class="cloud-client-agreements-list">${refundRows}</ul>`:''}${!disputed.length&&!reported.length&&!refundRows?`<p class="cloud-client-empty">${uiText('clientPlan.noIssues')}</p>`:''}</section>`;
   workspace.innerHTML=`<div class="cloud-breadcrumb"><button class="text-button" data-client-plan="back">${uiText('portal.backToProjects')}</button></div><div class="client-banner"><span class="client-avatar">${esc((open.email||'').slice(0,2).toUpperCase())}</span><div><span class="eyebrow">${uiText('clientAccount.freelancer')}: ${esc(open.email)}</span><h2>${esc(open.name)}</h2></div></div>${nav}${tab==='plan'?(this.clientProblemsSettled?plan:`<section class="workspace-panel cloud-initial-loading">${this.renderSkeleton('list',uiText('clientPlan.loading'))}</section>`):tab==='meetings'?meetingsPanel:!this.clientDisputesSettled||!this.clientProblemsSettled?`<section class="workspace-panel cloud-initial-loading">${this.renderSkeleton('list',uiText('clientPlan.loading'))}</section>`:tab==='changes'?changes:issues}`;
@@ -343,7 +365,7 @@ export function installPlanPayments(cloud){
   if(action==='tab'){remember('trato:client-project-tab',button.dataset.tab);if(button.dataset.tab==='meetings')void cloud.refreshClientMeetings?.();cloud.notify();return;}
   if(action==='stage'){
    const item=(cloud.clientPlans||[]).find(stage=>stage.project_id===project&&stage.position===position);if(!item)return;
-   cloud.show(t('deliverable',{number:position}),clientStageView(item));return;
+   cloud.show(t('deliverable',{number:position}),clientStageView(item));void stageButtons(item);return;
   }
   if(action==='delivery'){try{await showDelivery(project,position);}catch(error){cloud.show(uiText('clientPlan.viewDelivery'),`<p class="cloud-error" role="alert">${esc(error.message)}</p>`);}return;}
   if(action==='refund'){
@@ -374,7 +396,7 @@ export function installPlanPayments(cloud){
     const target=request.dataset.proposal?{proposal_id:request.dataset.proposal}:{stage_position:Number(request.dataset.position)};
     cloud.clientRefundRequests=await cloud.request(`/api/v1/portal/account/projects/${encodeURIComponent(request.dataset.project)}/refund-requests`,cloud.json({...target,amount_minor:minor,reason:request.elements.reason.value.trim()}));
     const item=request.dataset.proposal?null:(cloud.clientPlans||[]).find(stage=>stage.project_id===request.dataset.project&&stage.position===Number(request.dataset.position));
-    if(item)cloud.show(t('deliverable',{number:item.position}),clientStageView(item));else{cloud.modal.close();cloud.agreementView?.reload?.();}
+    if(item){cloud.show(t('deliverable',{number:item.position}),clientStageView(item));void stageButtons(item);}else{cloud.modal.close();cloud.agreementView?.reload?.();}
     cloud.notify();
    }catch(failure){error.textContent=failure.message;request.querySelectorAll('button').forEach(b=>b.disabled=false);}
    return;
@@ -476,13 +498,15 @@ export function installPlanPayments(cloud){
   const files=state.files.length?`<div class="plan-evidence-list">${state.files.map(d=>`<article class="plan-evidence-file"><span>${icon('file-text')}${esc(d.title)}</span><small>${t(evidenceStatus(state,d))}</small>${!pay&&!sent?.shared_at?`<button type="button" class="text-button plan-evidence-remove" data-plan-pay="remove-evidence" data-plan-remove-id="${esc(d.id)}" aria-label="${t('removeEvidenceNamed',{name:d.title})}">${t('removeEvidence')}</button>`:''}</article>`).join('')}</div>`:'';
   const withdrawals=state.withdrawals.length?`<section class="plan-withdrawal-pending" role="status"><p>${t('cleanupPending')}</p>${state.withdrawals.map(item=>`<button type="button" class="text-button" data-plan-pay="remove-evidence" data-plan-remove-id="${esc(item.file_id)}">${t('retryCleanup')} · ${esc(item.title)}</button>`).join('')}</section>`:'';
   const chooser=`<label class="plan-evidence-upload" tabindex="0" role="button"><span class="plan-evidence-upload-icon" aria-hidden="true">${icon('file-up')}</span><span><strong>${t('uploadEvidence')}</strong><small>${t('pdfLimit')}</small></span><input type="file" accept=".pdf,application/pdf" data-plan-evidence-file hidden></label>`;
-  const send=!pay&&state.pendingFile||sent&&!sent.shared_at?`<footer class="plan-evidence-next"><span>${uiText(state.pendingFile?'clientPlan.fileReady':'clientPlan.notSent')}</span><button type="button" class="button" data-plan-pay="send-delivery">${icon('send')}${uiText('clientPlan.send')}</button></footer>`:'';
+  const send=!pay&&state.pendingFile||sent&&!sent.shared_at&&!state.replacing?`<footer class="plan-evidence-next"><span>${uiText(state.pendingFile?'clientPlan.fileReady':'clientPlan.notSent')}</span><button type="button" class="button" data-plan-pay="send-delivery">${icon('send')}${uiText('clientPlan.send')}</button></footer>`:'';
+  // Sent the wrong PDF? Until a payment request exists, a new delivery can replace it; the client reviews the new one.
+  const replaceLink=!pay?`<p class="plan-replace-delivery"><button type="button" class="text-button" data-plan-pay="replace-delivery">${icon('refresh-cw')}${uiText('clientPlan.replaceDelivery')}</button></p>`:'';
   let body='';
   if(paid)body=`<p class="plan-payment-confirmation">${icon('circle-check')}${t('verifiedPaid')}</p>${clientReview(review)}`;
-  else if(approved)body=clientReview(review)+(!pay?`${files}<footer class="plan-evidence-next"><span>${t(state.ready.length?'readyToCharge':'waitForEvidence')}</span><button type="button" class="button" data-plan-pay="prepare" ${!state.ready.length?'disabled':''}>${t('preparePayment')}${icon('arrow-right')}</button></footer>`:paymentActions(pay));
+  else if(approved&&!state.replacing)body=clientReview(review)+(!pay?`${files}<footer class="plan-evidence-next"><span>${t('readyToCharge')}</span><span class="plan-charge-actions"><button type="button" class="button secondary" data-plan-pay="invoice">${icon('sparkles')}${uiText('invoice.send')}</button><button type="button" class="button" data-plan-pay="prepare">${t('preparePayment')}${icon('arrow-right')}</button></span></footer>${replaceLink}`:paymentActions(pay));
   // Same card as an upload in progress: what happened, when, and what comes next.
-  else if(waiting)body=`${files}<article class="plan-upload-pending" role="status"><span class="plan-upload-icon" aria-hidden="true">${icon('send')}</span><div><strong>${uiText('clientPlan.sentTitle')}</strong><small>${esc(when(sent.shared_at))} · ${uiText('clientPlan.waitingReview')}</small></div></article>`;
-  else body=`${clientReview(review)}<p class="plan-evidence-help">${t(pay?'sendPreparedHelp':'uploadHelp')}</p>${pay?'':upload}${files}${withdrawals}${pay?'':chooser}${send}`;
+  else if(waiting&&!state.replacing)body=`${files}<article class="plan-upload-pending" role="status"><span class="plan-upload-icon" aria-hidden="true">${icon('send')}</span><div><strong>${uiText('clientPlan.sentTitle')}</strong><small>${esc(when(sent.shared_at))} · ${uiText('clientPlan.waitingReview')}</small></div></article>${replaceLink}`;
+  else body=`${state.replacing?'':clientReview(review)}<p class="plan-evidence-help">${state.replacing?uiText('clientPlan.replaceHelp'):t(pay?'sendPreparedHelp':'uploadHelp')}</p>${pay?'':upload}${files}${withdrawals}${pay?'':chooser}${send}`;
   cloud.modal.querySelector('[data-plan-payment-content]').innerHTML=`<section class="plan-delivery-payment"><header><div><span class="eyebrow">${t('deliverable',{number:state.position})}</span><h3>${esc(state.stage.title)}</h3></div><strong>${money(state.stage.amount)}</strong></header>${body}${state.error?`<div class="plan-payment-error"><p class="cloud-error" role="alert">${esc(state.error)}</p><button type="button" class="text-button" data-plan-pay="reload">${t('retry')}</button></div>`:''}<p role="status" data-plan-pay-notice></p></section>`;
   if(state.busy)cloud.modal.querySelector('[data-plan-payment-content]').querySelectorAll('button,input').forEach(el=>el.disabled=true);
   scheduleStateRead(state);
@@ -502,6 +526,17 @@ export function installPlanPayments(cloud){
   if(!valid(state))return;
   state.pendingFile=file;state.upload={name:file.name,phase:'ready',id:null};paint(state);
  });
+ // The delivery the client approved is the evidence of the charge; before that, a document Trato finished reading.
+ function chargeEvidence(state){
+  const approved=state.sent?.shared_at&&state.review?.decision==='approved'&&state.review.document_id===state.sent.document_id?state.files.find(file=>file.id===state.review.document_id):null;
+  return approved||state.ready[0]||null;
+ }
+ async function prepareStagePayment(state){
+  const evidence=chargeEvidence(state);
+  if(!evidence)throw {code:state.files.length?'PLAN_EVIDENCE_NOT_READY':'PLAN_EVIDENCE_REQUIRED'};
+  const key=`trato:stage-payment:${state.scope}:${state.position}`;let id=cloud.storage.getItem(key);if(!id){id=crypto.randomUUID();cloud.storage.setItem(key,id);}
+  state.pay=await cloud.request(endpoint(state.project,state.position),{...cloud.json({evidence_document_id:evidence.id,output_language:uiLanguage(),confirmed:true}),headers:{'Content-Type':'application/json','Idempotency-Key':id}});
+ }
  // The freelancer's click sends it: Trato builds the payment email from the reviewed request and sends it at once.
  async function sendPaymentEmail(state){
   const mail=await cloud.request(endpoint(state.project,state.position,'/email-preview'));if(!valid(state))return;
@@ -525,12 +560,11 @@ export function installPlanPayments(cloud){
     if(valid(state)){state.uploadKeys.clear();await load(state);}
     return;
    }
+   if(action==='replace-delivery'){state.replacing=true;state.pendingFile=null;state.upload=null;return;}
    if(action==='background'){clearTimeout(timer);cloud.modal.close();return;}
    if(action==='reload'){state.view='payment';await load(state);return;}
    if(action==='prepare'){
-    if(!state.ready.length)throw {code:state.files.length?'PLAN_EVIDENCE_NOT_READY':'PLAN_EVIDENCE_REQUIRED'};
-    const key=`trato:stage-payment:${state.scope}:${state.position}`;let id=cloud.storage.getItem(key);if(!id){id=crypto.randomUUID();cloud.storage.setItem(key,id);}
-    state.pay=await cloud.request(endpoint(state.project,state.position),{...cloud.json({evidence_document_id:state.ready[0].id,output_language:uiLanguage(),confirmed:true}),headers:{'Content-Type':'application/json','Idempotency-Key':id}});
+    await prepareStagePayment(state);
     // One click: the payment request is prepared and emailed to the client in the same step.
     if(valid(state)&&state.pay&&stagePaymentStep(state.pay)==='send_email')await sendPaymentEmail(state);
    }
@@ -538,17 +572,19 @@ export function installPlanPayments(cloud){
    if(action==='send-delivery'){
     if(state.pendingFile&&!state.pay){try{await uploadEvidence(state,state.pendingFile);}catch(error){if(state.upload)state.upload.phase='unconfirmed';throw error;}}
     if(!valid(state))return;
-    state.sent=await cloud.request(endpoint(state.project,state.position).replace('/checkout','/client-delivery'),cloud.json({}));state.review=null;
+    state.sent=await cloud.request(endpoint(state.project,state.position).replace('/checkout','/client-delivery'),cloud.json({}));state.review=null;state.replacing=false;
     await load(state);
    }
    if(action==='invoice'){
+    // Straight from an approved delivery: the payment request is prepared first, then collected with the invoice.
+    if(!state.pay){await prepareStagePayment(state);if(!valid(state)||!state.pay)return;}
     // The freelancer confirms what TeTrato will send: amount and recipient come from the plan and the client.
     clearTimeout(timer);state.view='invoice';
     cloud.modal.querySelector('[data-plan-payment-content]').innerHTML=`<form data-plan-stage-invoice class="plan-mail-form"><header class="plan-mail-heading"><span class="plan-mail-heading-icon" aria-hidden="true">${icon('sparkles')}</span><div><h3>${uiText('invoice.title')}</h3><p>${uiText('invoice.intro')}</p></div></header><dl class="proposal-summary-terms"><div><dt>${uiText('invoice.stageAmount')}</dt><dd>${esc(money(state.stage.amount))}</dd></div></dl><label class="field">${uiText('invoice.concept')}<input class="context-box" name="concept" required maxlength="200"></label><div data-invoice-concept-status></div><p class="field-help">${uiText('invoice.stageOneWay')}</p><footer class="dialog-actions"><button type="button" class="button secondary" data-plan-pay="reload">${uiText('Volver')}</button><button type="submit" class="button">${icon('send')}${uiText('invoice.confirm')}</button></footer><div data-invoice-sending></div><p class="cloud-error" role="alert" data-plan-invoice-error></p></form>`;
     fillInvoiceConcept(cloud,cloud.modal.querySelector('[data-plan-stage-invoice]'),{target:'stage',project_id:state.project,position:state.position});return;
    }
    if(action==='email')await sendPaymentEmail(state);
-  }catch(error){if(valid(state))state.error=message(error);}finally{state.busy=false;if(valid(state)&&(action!=='invoice'||state.error)){paint(state);}}
+  }catch(error){if(valid(state))state.error=error?.code==='PLAN_EVIDENCE_NOT_READY'&&state.files.some(file=>evidenceStatus(state,file)==='reviewEvidence')?t('evidenceNeedsReview'):message(error);}finally{state.busy=false;if(valid(state)&&(action!=='invoice'||state.error)){paint(state);}}
  });
  doc.addEventListener('submit',async event=>{
   if(!event.target.matches('[data-plan-stage-invoice]'))return;event.preventDefault();const state=modalState;if(!state||!valid(state)||state.busy)return;

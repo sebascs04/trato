@@ -54,7 +54,7 @@ function renderReplyDraft(result){
   <label class="field">${t('extraWork')}<textarea class="context-box" name="description" rows="2" maxlength="1000" required>${esc(draft.description)}</textarea></label>
   <div class="change-reply-term-grid">
    <label class="field">${t('totalUsd')}<input class="context-box" name="amount" inputmode="decimal" required value="${(result.proposed_amount_minor/100).toFixed(2)}"></label>
-   <label class="field">${t('deadline')}<input class="context-box" name="deadline" type="date" required value="${esc(result.proposed_deadline)}"></label>
+   <label class="field">${t('deadline')}<input class="context-box" name="deadline" type="date" max="9999-12-31" required value="${esc(result.proposed_deadline)}"></label>
   </div>
   <p class="change-reply-hint">${t('priceBreakdown',{base:format.format(base/100),extra:format.format(draft.estimated_extra_minor/100)})} ${t(draft.deadline_basis||'needs_confirmation')}</p>
   ${draft.estimated_extra_hours!=null?`<p class="change-reply-hint">${t('estimatedHours',{hours:new Intl.NumberFormat(uiLocale(),{maximumFractionDigits:2}).format(Number(draft.estimated_extra_hours))})}</p>`:''}

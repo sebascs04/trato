@@ -196,6 +196,7 @@ def run_tool_agent(model, runtime, messages, final_schema, *, maximum_context_by
         if not isinstance(reply, dict):
             log_invalid_reply(reply, index)
             raise ToolError('INVALID_AGENT_TOOL_RESPONSE')
+        reply = normalize_reply_type(reply)
         if reply.get('type') == 'final' and set(reply) == {'type', 'result'}:
             return reply['result']
         if reply.get('type') != 'tool_call' or set(reply) != {'type', 'tool', 'params'}:
@@ -208,6 +209,20 @@ def run_tool_agent(model, runtime, messages, final_schema, *, maximum_context_by
         history.append({'role': 'user', 'content': json.dumps({'tool_result': {
             'tool': reply['tool'], 'data': result}}, ensure_ascii=False)})
     raise ToolError('TOOL_CALL_LIMIT')
+
+
+# The model sometimes writes a synonym for the reply type ("result" for "final", "call" for "tool_call") while the
+# rest of the reply has the exact shape. Only the label is mapped; tools, parameters and the result are still checked.
+REPLY_TYPE_ALIASES = {'result': 'final', 'answer': 'final', 'call': 'tool_call', 'tool': 'tool_call', 'function_call': 'tool_call'}
+
+
+def normalize_reply_type(reply):
+    kind = REPLY_TYPE_ALIASES.get(reply.get('type'))
+    if kind == 'final' and set(reply) == {'type', 'result'}:
+        return {**reply, 'type': 'final'}
+    if kind == 'tool_call' and set(reply) == {'type', 'tool', 'params'}:
+        return {**reply, 'type': 'tool_call'}
+    return reply
 
 
 def with_rehearsal_sources(client, evaluate, *, context, maximum_context_bytes):

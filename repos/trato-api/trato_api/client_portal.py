@@ -188,6 +188,11 @@ def client_plans(items, web_origin):
 PAYPAL_APPROVAL = re.compile(r'^https://www\.sandbox\.paypal\.com/[^\s"<>]+$')
 
 
+def paypal_order_id(value):
+    # Only a well-formed PayPal order id reaches the page.
+    return value if isinstance(value, str) and re.fullmatch(r'[A-Z0-9]{10,24}', value) else None
+
+
 def build_client_portal_router(settings, store=None, payments=None, require_user=None, disputes=None, jobs=None, preferences=None, gmail=None):
     router = APIRouter(prefix='/api/v1/portal')
 
@@ -262,7 +267,26 @@ def build_client_portal_router(settings, store=None, payments=None, require_user
         url = result.get('approval_url')
         if not isinstance(url, str) or not PAYPAL_APPROVAL.fullmatch(url):
             raise ApiError('PAYMENT_NOT_READY', 409)
-        return reply({'status': result.get('status'), 'approval_url': url})
+        order = paypal_order_id(result.get('order_id'))
+        return reply({'status': result.get('status'), 'approval_url': url, **({'order_id': order} if order else {})})
+
+    async def pay_capture_by(digest):
+        # After the client approves in PayPal's window: the same capture and verification as the return page,
+        # found through the link or session. The checkout token stays on the server.
+        if payments is None:
+            raise ApiError('PAYMENTS_NOT_CONFIGURED', 503)
+        service = backend()
+        item = await run_in_threadpool(service.view, digest)
+        if item.get('status') != 'accepted' or not item.get('payment_required'):
+            raise ApiError('PAYMENT_NOT_REQUIRED', 409)
+        context = await run_in_threadpool(service.payment_context, digest)
+        pay = await run_in_threadpool(payments.create_payment, context['owner_id'], context['proposal_id'], context['revision_id'])
+        if pay.get('status') != 'completed':
+            token = pay.get('checkout_token')
+            if not isinstance(token, str) or len(token) != 43:
+                raise ApiError('PAYMENT_NOT_READY', 409)
+            await run_in_threadpool(payments.checkout, token, True)
+        return await view_by(digest)
 
     async def request_changes_by(digest, data):
         # The client's words reach the freelancer as feedback for a new version; nothing changes the addendum itself.
@@ -349,10 +373,21 @@ def build_client_portal_router(settings, store=None, payments=None, require_user
         return reply(await run_in_threadpool(status, assistant_services()[0], digest, data))
 
     actions = {'view': lambda digest, data: view_by(digest), 'dispute': lambda digest, data: dispute_by(digest), 'dispute-document': dispute_document_by, 'document': lambda digest, data: document_by(digest),
-               'accept': accept_by, 'pay': lambda digest, data: pay_by(digest), 'request-changes': request_changes_by,
+               'accept': accept_by, 'pay': lambda digest, data: pay_by(digest), 'pay-capture': lambda digest, data: pay_capture_by(digest),
+               'request-changes': request_changes_by,
                'assistant': assistant_by, 'assistant-status': assistant_status_by,
                'problem': lambda digest, data: problem_by(digest), 'report-problem': report_problem_by,
                'problem-message': problem_message_by, 'close-problem': close_problem_by}
+
+    # What PayPal's JavaScript SDK needs to draw its buttons: the app's public client id, Sandbox only. Never a secret.
+    @router.get('/paypal-sdk')
+    async def paypal_sdk():
+        from paypal.config import SandboxSettings
+        config = SandboxSettings.from_env()
+        if config.environment != 'sandbox' or not re.fullmatch(r'[A-Za-z0-9_-]{20,120}', config.client_id or ''):
+            raise ApiError('PAYPAL_SANDBOX_NOT_CONFIGURED', 503)
+        return JSONResponse({'data': {'client_id': config.client_id, 'currency': 'USD', 'environment': 'sandbox'}},
+                            headers={'Cache-Control': 'no-store'})
 
     # 1. With the emailed link: no account needed.
     @router.post('/{action}')

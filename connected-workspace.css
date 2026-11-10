@@ -915,3 +915,12 @@ body:not(.cloud-client-account) .sidebar nav a.nav-client-only{display:none}
 .change-instruct-send .ui-icon{width:18px;height:18px}
 .change-instruct-send:hover{filter:brightness(1.08)}.change-instruct-send:focus-visible{outline:2px solid var(--purple);outline-offset:3px}
 .change-instruct-send:disabled{opacity:.45;cursor:default}
+
+/* PayPal's own buttons in the client's deliverable window: fixed box from the start, so nothing moves while they load. */
+.client-stage-paypal{width:300px;max-width:100%;min-height:118px}.client-stage-paypal:empty:not(.is-loading){display:none}
+.client-stage-paypal.is-loading:empty{border-radius:6px;background:var(--surface-soft,#f7f5fb)}
+
+/* Correcting a document: one short window; the remove action is quiet until hovered. */
+.document-fix{display:grid;gap:12px;min-width:min(420px,80vw)}.document-fix p{margin:0}
+.cloud-document-remove:hover{color:#b3261e}
+.document-fix .button.danger{background:#b3261e;border-color:#b3261e;color:#fff}

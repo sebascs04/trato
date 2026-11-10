@@ -47,6 +47,16 @@ Verificación técnica en curso; pendiente prueba manual de conversación real, 
 
 TRATO-13, TRATO-14, TRATO-15 y TRATO-16: **implementados y validados en el alcance Sandbox aprobado, sin IA**. Dos recorridos manuales confirmados (cierre global parcial e individual total de adenda) y prueba conectada de entrega/deduplicación de eventos genuinos completados. Los apartados siguientes conservan el historial de tandas; sus pendientes históricos se resuelven en [el acta de cierre](cierre-validacion-devoluciones.md). La IA, un checkout inicial integrado y el uso Live no forman parte de este cierre. No se autoriza PR ni merge por publicar esta rama.
 
+### Devoluciones de adendas, disputas y espacio del cliente
+
+**Implementado y validado en PayPal Sandbox** en la rama `codex/devoluciones-portal-disputas`. Se probaron dos adendas independientes con un reembolso total de USD 10,00 cada una.
+
+- [x] **Por disputa de PayPal.** Con la disputa abierta, Trato mostró un aviso al intentar iniciar una devolución para el mismo pago. El freelancer usó **Aceptar y devolver** y PayPal confirmó el reembolso. Trato lo mostró en **Devoluciones** y vinculó el comprobante a la disputa en **Historial** y **Mapa**. El cliente vio **Disputa cerrada · Reembolso confirmado** y pudo consultar el importe y el resultado de la disputa en su adenda.
+- [x] **Devolución ordinaria.** Se completó el recorrido desde la solicitud hasta la confirmación de PayPal. En **Devoluciones**, el freelancer ve **Devolución confirmada** y puede abrir **Ver detalles**. En el **Mapa** de la adenda, el comprobante queda vinculado a su pago. El cliente ve el importe confirmado en **Reembolso por PayPal** dentro de la adenda.
+- [x] **Evidencia para TeTrato.** Se corrigió la indexación del PDF al vincularlo a la solicitud. La búsqueda recuperó el pasaje que respaldaba la devolución total del banner.
+
+**Para el despliegue.** Aplicar las migraciones del lote, desplegar la API y el worker actualizados y habilitar la proyección 3 en los proyectos donde corresponda mostrar las devoluciones ordinarias en el mapa. [Activación del mapa conectado](grafo-conectado.md).
+
 ## Hallazgos de pruebas de devoluciones — 3 de noviembre de 2026
 
 Dos tareas nuevas reportadas por el usuario durante sus pruebas. Estado: **Por hacer**, sin responsable asignado. Son pendientes del producto; el cierre Sandbox de TRATO-13 a 16 no acredita que estas capacidades estén resueltas.
@@ -226,7 +236,7 @@ Decisión y contrato de presentación en [Mapa de hitos clave](mapa-hitos-clave.
 
 - [ ] Revisión visual del responsable del proyecto.
 - [ ] Integrar estados reales de rechazo/retiro cuando el responsable de cambios y devoluciones cierre su contrato. No inventar hitos.
-- [ ] Aplicar el criterio al mapa conectado de devoluciones cuando el expediente forme parte de su proyección.
+- [x] Mostrar el comprobante de devolución en el mapa conectado de la adenda, vinculado a su pago en la ruta ordinaria y a la disputa en la ruta de PayPal. Validado en Sandbox con la proyección 3 habilitada.
 
 Plan de trabajo, creación desde cero y proyecto en marcha siguen pendientes de prueba manual en el recorrido ya acordado.
 

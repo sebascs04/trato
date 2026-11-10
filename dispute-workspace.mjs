@@ -47,7 +47,9 @@ const WON=['RESOLVED_SELLER_FAVOUR','CANCELED_BY_BUYER','DENIED'],LOST=['RESOLVE
 function closedResult(d){
  if(d.status!=='RESOLVED')return '';
  const outcome=OUTCOMES.includes(d.outcome)?d.outcome:'OTHER',tone=WON.includes(outcome)?'good':LOST.includes(outcome)?'lost':'neutral';
- return `<p class="dispute-result is-${tone}" role="status">${icon(tone==='good'?'check':tone==='lost'?'undo-2':'info')}<span>${t(`resultNote.${outcome}`,{amount:money(d.amount.value,d.amount.currency)})}</span></p>`;
+ const refundKey=d.refund_sync==='confirmed'?'confirmed':d.refund_sync==='unavailable'?'unavailable':'pending';
+ const result=t(`resultNote.${outcome}`,{amount:money(d.amount.value,d.amount.currency)});
+ return `<p class="dispute-result is-${tone}" role="status">${icon(tone==='good'?'check':tone==='lost'?'undo-2':'info')}<span>${result}${tone==='lost'?' '+t(`refundSync.${refundKey}`):''}</span></p>`;
 }
 const canDefend=d=>d.status!=='RESOLVED'&&d.payment.origin==='change'&&(d.status==='UNDER_REVIEW'||d.actions.some(a=>DEFENSE_ACTIONS.includes(a)||SANDBOX_ACTIONS.includes(a)));
 // Home warning: open disputes on any project, so the freelancer learns of one without opening Disputes. Facts come from PayPal via the backend.
@@ -139,7 +141,10 @@ export function renderDefense(result,draft,send={status:'idle',allowed:false,sel
   const failed=send.notice?`<p class="cloud-error" role="status">${t(`steps.${send.notice}`)}</p>`:'';
   return `<div class="dispute-defense">${analysisMarkup(result)}${failed}${evidenceForm(draft,send)}${acceptMarkup(send.actions,send.status==='sending')}</div>`;
  }
- if(result&&!finished&&!closedStep&&!send.composing&&(!send.previous||send.fresh))return `<div class="dispute-defense">${analysisMarkup(result)}<section>${textareaMarkup(draft,send,prepareAgain)}<p class="dispute-muted">${t('defense.notSent')}</p><div class="dispute-send">${send.allowed?composeMarkup(send):`<p class="dispute-muted">${t('send.notAllowed')}</p>`}</div></section>${acceptMarkup(send.actions)}</div>`;
+ if(result&&!finished&&!closedStep&&!send.composing&&(!send.previous||send.fresh)){
+  const failed=send.notice?.startsWith('error')?`<p class="cloud-error" role="alert">${t(`steps.${send.notice}`)}</p>`:'';
+  return `<div class="dispute-defense">${analysisMarkup(result)}${failed}<section>${textareaMarkup(draft,send,prepareAgain)}<p class="dispute-muted">${t('defense.notSent')}</p><div class="dispute-send">${send.allowed?composeMarkup(send):`<p class="dispute-muted">${t('send.notAllowed')}</p>`}</div></section>${acceptMarkup(send.actions)}</div>`;
+ }
  if(send.mode==='evidence')return `<div class="dispute-defense">${evidenceForm(draft,send)}</div>`;
  const text=finished?draft:send.previous?.text;
  const sent=text?`<section><h3>${t(send.status==='uncertain'?'defense.attemptedMessage':'defense.sentMessage')}${send.previous?.at&&!finished?` · ${esc(date(send.previous.at,true))}`:''}</h3><p class="dispute-sent-text">${esc(text)}</p></section>`:'';
@@ -243,7 +248,7 @@ export function installDisputeWorkspace(cloud){
   if(state.send.status==='sending')return;
   state.send={...state.send,notice:null,status:'sending'};saveDefense(state);if(openDefense===state)paintDefense(state);
   try{await cloud.request(`/api/v1/projects/${encodeURIComponent(state.project)}/disputes/${encodeURIComponent(state.disputeId)}/${path}`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});state.send={...state.send,notice:done,mode:undefined,status:'idle',evidenceNotes:body.notes??state.send.evidenceNotes};if(body.notes)state.draft='';}
-  catch(error){state.send={...state.send,notice:['DISPUTE_SEND_REJECTED','DISPUTE_NOT_ACTIONABLE','DISPUTE_DOCUMENT_INVALID'].includes(error.code)?'errorRejected':'errorUncertain',status:'idle'};}
+  catch(error){state.send={...state.send,notice:error.code==='REFUND_PAYMENT_IN_PROGRESS'?'errorRefundInProgress':['DISPUTE_SEND_REJECTED','DISPUTE_NOT_ACTIONABLE','DISPUTE_DOCUMENT_INVALID'].includes(error.code)?'errorRejected':'errorUncertain',status:'idle'};}
   saveDefense(state);if(openDefense===state)paintDefense(state);
   const list=states.get(key());if(list&&!list.loading)void load(list,state.project);
  }
@@ -275,7 +280,13 @@ export function installDisputeWorkspace(cloud){
  function remember(project,data){try{cloud.storage.setItem(storageKey(project),JSON.stringify(data));}catch{}}
  async function load(state,project){
   state.loading=true;state.error='';
-  try{state.data=validateDisputes(await cloud.request(`/api/v1/projects/${encodeURIComponent(project)}/disputes`),project);remember(project,state.data);if(state.data.client_documents_imported>0)void cloud.refreshDocumentList?.().catch(()=>{});}
+  try{
+   state.data=validateDisputes(await cloud.request(`/api/v1/projects/${encodeURIComponent(project)}/disputes`),project);
+   remember(project,state.data);
+   if(state.data.client_documents_imported>0)void cloud.refreshDocumentList?.().catch(()=>{});
+   if(state.data.disputes.some(d=>d.refund_sync))cloud.invalidateRefundList?.(project);
+   if(state.data.disputes.some(d=>d.refund_sync==='confirmed'))cloud.invalidateProjectHistory?.(project);
+  }
   catch(error){state.error=error.code==='PAYPAL_SANDBOX_NOT_CONFIGURED'?t('notConfigured'):t('error');}
   finally{state.loading=false;if(cloud.projectId===project)cloud.notify();if(openDefense?.project===project)paintDefense(openDefense);}
  }

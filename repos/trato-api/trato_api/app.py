@@ -35,6 +35,7 @@ from .graph_routes import build_graph_router
 from .reputation_routes import build_reputation_router
 from .proposals.routes import build_proposal_router
 from .refunds.routes import build_refund_router
+from .refunds.disputes import ensure_no_open_dispute
 from .refunds.workflow import RefundWorkflow
 from .refunds.financial import RefundFinance
 from .refunds.confirmation import RefundConfirmation
@@ -181,13 +182,13 @@ def create_app(settings=None, services=None, repository_factory=None, *, gmail_s
     app.include_router(build_section_help_router(require_user))
     from .invoice_concept import build_invoice_concept_router
     app.include_router(build_invoice_concept_router(settings, require_user))
-    app.include_router(build_dispute_router(settings,require_user,repository_factory,replies=proposal_workflow.gmail_replies))
+    refund_finance=RefundFinance(settings,disputes=ensure_no_open_dispute)
+    app.include_router(build_dispute_router(settings,require_user,repository_factory,replies=proposal_workflow.gmail_replies,refund_finance=refund_finance))
     app.include_router(build_problem_report_router(settings,require_user,repository_factory))
     app.include_router(build_graph_router(settings,require_user,repository_factory,graph_reader))
     app.include_router(build_reputation_router(settings,require_user,repository_factory))
     app.include_router(build_proposal_router(settings, require_user, proposal_repository_factory, proposal_workflow))
-    app.include_router(build_refund_router(settings, require_user, refund_repository_factory, RefundWorkflow(settings,gmail_service)))
-    refund_finance=RefundFinance(settings)
+    app.include_router(build_refund_router(settings, require_user, refund_repository_factory, RefundWorkflow(settings,gmail_service),refund_finance))
     refund_confirmation=RefundConfirmation(settings,gmail_service)
     app.include_router(build_refund_financial_router(settings,require_user,refund_repository_factory,refund_finance,refund_confirmation))
     app.include_router(build_refund_webhook_router(refund_finance,refund_confirmation))

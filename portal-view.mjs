@@ -55,13 +55,16 @@ export function mountAgreement(root,{api,linkMode=false,inDisputeHint=false}){
  function payment(amount){
   // Paid only when PayPal confirms it (the return page captures and verifies the order).
   if(view.payment_status==='completed'){
+   if(view.refunded_minor>0){
+    const refunded=new Intl.NumberFormat(uiLocale(),{style:'currency',currency:view.currency}).format(view.refunded_minor/100);
+    return `<section class="portal-payment paid">${icon('undo-2')}<div><strong>${t(view.refunded_minor>=view.additional_minor?'refundedTitle':'partialRefundTitle')}</strong><p>${t('refundConfirmed',{amount:refunded})}</p></div></section>`;
+   }
    // A report lives in Trato, so it shows at once; if PayPal then answers with a dispute, the card switches to it.
    if(disputeLoading&&!disputeHint&&problem)return problemCard(amount);
    // Until Trato knows whether there is a report, PayPal is not named: the report, not PayPal, may be what this shows.
    if(disputeLoading&&!disputeHint&&!problemChecked)return `<section class="portal-payment" role="status"><div><strong>${t('problem.checkingPayment')}</strong></div></section>`;
    if(disputeLoading&&!disputeHint)return `<section class="portal-payment" role="status"><div><strong>${t('dispute.checking')}</strong></div></section>`;
-   // The payment happened, but it did not stay: saying only "paid" would contradict the refund below.
-   if(refundedByDispute(dispute))return `<section class="portal-payment paid">${icon('undo-2')}<div><strong>${t('refundedTitle')}</strong><p>${t('refundedCopy',{amount})}</p></div></section>`;
+   if(refundedByDispute(dispute))return `<section class="portal-payment" role="status">${icon('flag')}<div><strong>${t('refundVerificationPending')}</strong></div></section>`;
    const open=dispute?dispute.status!=='RESOLVED':disputeHint;
    // A report in Trato is part of the payment's state too, like a dispute: paid, but not settled for the client.
    const reported=!open&&['open','resolved','unresolved'].includes(problem?.status)?problem.status:'';

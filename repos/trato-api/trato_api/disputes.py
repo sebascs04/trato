@@ -67,6 +67,20 @@ def summarize(dispute, payment):
             'payment': {k: payment.get(k) for k in ('id', 'origin', 'capture_id', 'amount_minor', 'currency', 'verified_at', 'proposal_payment_id')}}
 
 
+def dispute_refund_ids(details):
+    """Provider references only. Payments v2 still verifies each refund."""
+    refund = details.get('refund_details')
+    transactions = refund.get('transactions') if isinstance(refund, dict) else None
+    if not transactions:
+        return set()
+    if not isinstance(transactions, list) or len(transactions) > 100:
+        raise ApiError('INVALID_PROVIDER_RESPONSE', 502)
+    ids = [item.get('id') if isinstance(item, dict) else None for item in transactions]
+    if not all(isinstance(rid, str) and re.fullmatch(r'[A-Za-z0-9_-]{1,64}', rid) for rid in ids):
+        raise ApiError('INVALID_PROVIDER_RESPONSE', 502)
+    return set(ids)
+
+
 class DisputeReader:
     def __init__(self, paypal=None):
         self.paypal = paypal
@@ -89,7 +103,7 @@ class DisputeReader:
             raise ApiError('LIVE_PAYMENTS_DISABLED', 503)
         return PayPalSandboxClient(config.client_id, config.client_secret, config.merchant_id)
 
-    def project_disputes(self, repo, project_id):
+    def project_disputes(self, repo, project_id, *, include_refund_refs=False):
         repo.project(project_id)  # 404 unless the signed-in freelancer owns this active project.
         payments = repo.rows('project_received_payments', {
             'select': 'id,origin,capture_id,amount_minor,currency,verified_at,proposal_payment_id',
@@ -100,11 +114,24 @@ class DisputeReader:
             started = time.monotonic()
             listing = client.list_disputes(payment['capture_id'])
             listed = time.monotonic()
-            values = [summarize(client.get_dispute(item.get('dispute_id')), payment) for item in listing.get('items') or [] if isinstance(item, dict)]
+            values = []
+            for item in listing.get('items') or []:
+                if not isinstance(item, dict):
+                    continue
+                details = client.get_dispute(item.get('dispute_id'))
+                dispute = summarize(details, payment)
+                if dispute is None:
+                    continue
+                if include_refund_refs and dispute['status'] == 'RESOLVED' and dispute['outcome'] in ('RESOLVED_BUYER_FAVOUR', 'ACCEPTED'):
+                    try:
+                        dispute['_refund_refs'] = dispute_refund_ids(details)
+                    except ApiError:
+                        dispute['refund_sync'] = 'unavailable'
+                values.append(dispute)
             # Timing only: no business data or identifiers.
             logging.getLogger(__name__).warning(json.dumps({'event': 'dispute_paypal_read', 'list_ms': round(1000 * (listed - started)),
                 'get_ms': round(1000 * (time.monotonic() - listed)), 'disputes': len(values)}))
-            return [value for value in values if value]
+            return values
         valid = [p for p in payments if isinstance(p.get('capture_id'), str) and CAPTURE.fullmatch(p['capture_id'])]
         # Each payment is its own PayPal call: in parallel, a project with many payments stays about as fast as one with few.
         with ThreadPoolExecutor(max_workers=min(4, len(valid) or 1)) as pool:
@@ -399,11 +426,13 @@ def escalate(reader, repo, project_id, dispute_id, item):
     return {**paypal_action(lambda: client.escalate_dispute(dispute_id, item.note.strip())), 'history_saved': record_escalation(repo, project_id, dispute_id)}
 
 
-def accept_claim(reader, repo, project_id, dispute_id, item):
+def accept_claim(reader, repo, project_id, dispute_id, item, *, before_refund=None):
     """The freelancer closes the dispute in the client's favor: PayPal refunds the client. Only after the freelancer confirms."""
     if not item.note.strip():
         raise ApiError('AI_INVALID_INPUT', 422)
-    current_dispute(reader, repo, project_id, dispute_id, 'accept_claim')
+    dispute = current_dispute(reader, repo, project_id, dispute_id, 'accept_claim')
+    if before_refund is not None:
+        before_refund(dispute['payment'])
     client = reader.writer()
     return {**paypal_action(lambda: client.accept_dispute_claim(dispute_id, item.note.strip())), 'history_saved': record_accepted_claim(repo, project_id, dispute_id)}
 
@@ -491,7 +520,7 @@ def client_dispute(reader, capture_id):
             'reply_url': None if current['status'] == 'RESOLVED' else RESOLUTION_CENTER}
 
 
-def build_dispute_router(settings, require_user, repository_factory=None, reader=None, *, jobs=None, preferences=None, replies=None):
+def build_dispute_router(settings, require_user, repository_factory=None, reader=None, *, jobs=None, preferences=None, replies=None, refund_finance=None):
     router = APIRouter(prefix='/api/v1')
     reader = reader or DisputeReader()
     jobs = jobs if jobs is not None else AIJobs()
@@ -510,12 +539,21 @@ def build_dispute_router(settings, require_user, repository_factory=None, reader
         def read():
             repo = repository(request)
             started = time.monotonic()
-            data = reader.project_disputes(repo, str(project_id))
+            data = reader.project_disputes(repo, str(project_id), include_refund_refs=True) if refund_finance else reader.project_disputes(repo, str(project_id))
             read_done = time.monotonic()
             language = 'en' if request.headers.get('accept-language', '').lower().startswith('en') else 'es'
             copied = import_client_documents(reader, repo, settings, str(project_id), data['disputes'], language)
             copied_done = time.monotonic()
             saved = record_disputes(repo, str(project_id), data['disputes'])
+            for dispute in data['disputes'] if refund_finance else ():
+                refs = dispute.pop('_refund_refs', None)
+                if refs is None:
+                    continue
+                try:
+                    refund_finance.sync_dispute(owner, str(project_id), dispute['dispute_id'], dispute['payment'], refs)
+                    dispute['refund_sync'] = 'confirmed'
+                except (PayPalError, ApiError) as error:
+                    dispute['refund_sync'] = 'pending' if error.code == 'REFUND_DISPUTE_PENDING' else 'unavailable'
             # Timing only: no business data or identifiers.
             logging.getLogger(__name__).warning(json.dumps({'event': 'dispute_check_timing', 'paypal_ms': round(1000 * (read_done - started)),
                 'copy_documents_ms': round(1000 * (copied_done - read_done)), 'history_ms': round(1000 * (time.monotonic() - copied_done)),
@@ -569,7 +607,11 @@ def build_dispute_router(settings, require_user, repository_factory=None, reader
 
     @router.post('/projects/{project_id}/disputes/{dispute_id}/accept')
     async def accept_dispute_claim(project_id: UUID, dispute_id: str, request: Request, owner=Depends(require_user)):
-        data = await run_in_threadpool(accept_claim, reader, repository(request), str(project_id), dispute_id, await parsed(request, EscalateRequest))
+        def before_refund(payment):
+            refund_finance.ensure_no_unresolved_refund(owner, str(project_id), payment)
+
+        data = await run_in_threadpool(accept_claim, reader, repository(request), str(project_id), dispute_id,
+                                      await parsed(request, EscalateRequest), before_refund=before_refund if refund_finance else None)
         return JSONResponse({'data': data}, headers={'Cache-Control': 'no-store'})
 
     @router.post('/projects/{project_id}/disputes/{dispute_id}/sandbox')

@@ -3,7 +3,7 @@ import {icon} from './icons.mjs';
 const esc=value=>String(value??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const kinds={Dispute:[uiText('graph.dispute'),'messages-square'],ProblemReport:[uiText('graph.problemReport'),'flag'],StageReview:[uiText('graph.stageReview'),'circle-check'],ClientChangeRequest:[uiText('graph.clientChangeRequest'),'messages-square'],Refund:[uiText('graph.refund'),'undo-2'],RefundVersion:[uiText('graph.refundProposal'),'file-text'],RefundReceipt:[uiText('graph.refundReceipt'),'credit-card'],Plan:[uiText('graph.initialPlan'),'layout-dashboard'],PlanStage:[uiText('graph.planStage'),'file-text'],Project:[uiText("Proyecto"),'layout-dashboard'],Document:[uiText("Documento"),'file-text'],Extraction:[uiText("Texto extraído"),'file-text'],Proposal:[uiText("Propuesta"),'git-compare-arrows'],Revision:[uiText("Adenda"),'pencil'],Review:[uiText("Revisión"),'eye'],Acceptance:[uiText("Aceptación"),'file-text'],Delivery:[uiText("Envío"),'send'],Payment:[uiText("Pago"),'credit-card']};
 const links={
- HAS_DISPUTE:uiText('graph.hasDispute'),REPORTS_PROBLEM_ON:uiText('graph.reportsProblemOn'),HAS_PROBLEM_REPORT:uiText('graph.reportsProblemOn'),BECAME_REQUEST:uiText('graph.becameRequest'),
+ HAS_DISPUTE:uiText('graph.hasDispute'),DISPUTE_CONFIRMED_REFUND:uiText('graph.disputeConfirmedRefund'),REPORTS_PROBLEM_ON:uiText('graph.reportsProblemOn'),HAS_PROBLEM_REPORT:uiText('graph.reportsProblemOn'),BECAME_REQUEST:uiText('graph.becameRequest'),
  CLIENT_STAGE_REVIEW:uiText('graph.clientStageReview'),REVIEWS_DELIVERY:uiText('graph.reviewsDelivery'),HAS_CHANGE_REQUEST:uiText('graph.hasChangeRequest'),HAS_NEW_WORK:uiText('graph.hasNewWork'),
  HAS_REFUND:uiText('graph.hasRefund'),HAS_REFUND_VERSION:uiText('graph.hasRefundVersion'),
  REFUND_EVIDENCE:uiText('graph.refundEvidence'),REFUND_PDF:uiText('graph.refundPdf'),
@@ -137,7 +137,7 @@ export function assignProjectGraphCases(graph){
   for(const e of graph.edges){
    let from,to;
    if(['RESPONDS_TO','ACCEPTS_REVISION','FOR_REVISION','FOLLOWS_ACCEPTANCE'].includes(e.kind)){from=e.target;to=e.source;}
-   else if(['HAS_CHANGE_PROPOSAL','HAS_REVISION','HAS_PDF','EVIDENCED_BY','HAS_STAGE','DELIVERY_EVIDENCE','STAGE_PAYMENT','PAYMENT_EVIDENCE','HAS_REFUND_VERSION','REFUND_ORIGINAL_PAYMENT','REFUND_CONFIRMED_RECEIPT',...refundDocumentLinks].includes(e.kind)){from=e.source;to=e.target;}
+   else if(['HAS_CHANGE_PROPOSAL','HAS_REVISION','HAS_PDF','EVIDENCED_BY','HAS_STAGE','DELIVERY_EVIDENCE','STAGE_PAYMENT','PAYMENT_EVIDENCE','HAS_REFUND_VERSION','REFUND_ORIGINAL_PAYMENT','REFUND_CONFIRMED_RECEIPT','HAS_DISPUTE','DISPUTE_CONFIRMED_REFUND',...refundDocumentLinks].includes(e.kind)){from=e.source;to=e.target;}
    else continue;
    for(const id of memberships.get(from)||[])if(memberships.has(to)&&!memberships.get(to).has(id)){memberships.get(to).add(id);changed=true;}
   }
@@ -163,7 +163,7 @@ export function layoutProjectGraph(nodes,edges){
   if(n.kind==='Document')parent=incoming(id,'HAS_CHANGE_REQUEST')||incoming(id,'HAS_NEW_WORK')||incoming(id,'DELIVERY_EVIDENCE')||incoming(id,'HAS_PDF')||incoming(id,'EVIDENCED_BY')||refundDocumentLinks.map(kind=>incoming(id,kind)).find(Boolean)||root;
   else if(n.kind==='Refund')parent=incoming(id,'HAS_REFUND')||root;
   else if(n.kind==='RefundVersion')parent=incoming(id,'HAS_REFUND_VERSION')||root;
-  else if(n.kind==='RefundReceipt')parent=incoming(id,'REFUND_CONFIRMED_RECEIPT')||root;
+  else if(n.kind==='RefundReceipt')parent=incoming(id,'DISPUTE_CONFIRMED_REFUND')||incoming(id,'REFUND_CONFIRMED_RECEIPT')||outgoing(id,'REFUND_APPLIES_TO_PAYMENT')||root;
   else if(n.kind==='Plan')parent=incoming(id,'HAS_PLAN')||root;
   else if(n.kind==='PlanStage')parent=incoming(id,'HAS_STAGE')||root;
   else if(n.kind==='Proposal')parent=outgoing(id,'RESPONDS_TO')||root;

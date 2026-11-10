@@ -23,6 +23,9 @@ async function setup(page,{language='es',lookupError=false,deleteError=false,def
  await page.goto('/#clientes');await page.locator('[data-cloud-action="client-open"]').click();await page.locator('[data-cloud-action="project"]').click();
  return {errors,writes,lookups,uploads,deletions,reviewReads,releaseDocuments(value){documents=value;releaseDocumentRead();}};
 }
+async function confirmOngoing(page){
+ await page.locator('[data-plan-form] button[type=submit]').click();await expect(page.locator('.plan-review-group')).toBeVisible();await page.locator('[data-plan-form] button[type=submit]').click();
+}
 async function create(page,route='new'){
  await page.locator('[name="name"]').fill('Proyecto sin datos de ejemplo');await page.locator(`[name="project_start"][value="${route}"]`).check();
  await page.locator('[data-cloud-form="project"] button[type="submit"]').click();
@@ -50,7 +53,7 @@ test('already underway requires initial sources in the creation modal before ope
  const state=await setup(page);await create(page,'ongoing');await expect(page.locator('.cloud-project-overview')).toHaveCount(0);await expect(page.locator('[data-plan-form] button[type=submit]')).toBeDisabled();
  await page.locator('[data-plan-setup-file]').setInputFiles({name:'acuerdo.pdf',mimeType:'application/pdf',buffer:Buffer.from('%PDF-1.4\n%%EOF\n')});
  await expect(page.locator('.plan-uploaded-source')).toContainText('acuerdo.pdf');await expect(page.locator('.cloud-project-setup')).toBeVisible();expect(state.uploads).toHaveLength(0);expect(state.writes).toHaveLength(0);
- await page.locator('[data-plan-form] button[type=submit]').click();await expect(page.locator('.cloud-project-overview')).toBeVisible();await expect(page.locator('.cloud-agreement')).toContainText('acuerdo.pdf');expect(state.writes).toHaveLength(1);expect(state.errors).toEqual([]);
+ await confirmOngoing(page);await expect(page.locator('.cloud-project-overview')).toBeVisible();await expect(page.locator('.cloud-agreement')).toContainText('acuerdo.pdf');expect(state.writes).toHaveLength(1);expect(state.errors).toEqual([]);
 });
 test('background failure remains visible without invented experiences',async({page})=>{
  const state=await setup(page,{lookupError:true});await create(page);await expect(page.locator('.plan-background [role="alert"]')).toContainText('No pudimos');await expect(page.locator('.plan-experiences')).toHaveCount(0);await expect(page.locator('.plan-empty')).toHaveCount(0);expect(state.errors).toEqual([]);
@@ -62,12 +65,12 @@ test('adding an initial source stays in the same planning step',async({page})=>{
  await expect(page.locator('[data-plan-stage]')).toHaveCount(0);expect(state.uploads).toHaveLength(0);expect(state.writes).toHaveLength(0);expect(state.errors).toEqual([]);
 });
 test('deletion needs confirmation and removes a project only after successful persistence',async({page})=>{
- const state=await setup(page);await create(page,'ongoing');await page.locator('[data-plan-setup-file]').setInputFiles({name:'agreement.pdf',mimeType:'application/pdf',buffer:Buffer.from('%PDF-1.4\n%%EOF\n')});await page.locator('[data-plan-form] button[type=submit]').click();await expect(page.locator('.cloud-project-overview')).toBeVisible();await page.locator('[data-cloud-action="projects"]').first().click();
+ const state=await setup(page);await create(page,'ongoing');await page.locator('[data-plan-setup-file]').setInputFiles({name:'agreement.pdf',mimeType:'application/pdf',buffer:Buffer.from('%PDF-1.4\n%%EOF\n')});await confirmOngoing(page);await expect(page.locator('.cloud-project-overview')).toBeVisible();await page.locator('[data-cloud-action="projects"]').first().click();
  await page.locator('[data-cloud-action="project-delete"]').click();await expect(page.locator('.cloud-delete-dialog')).toBeVisible();await page.screenshot({path:'.local/browser-tests/project-delete-dialog.png',fullPage:true});await page.getByRole('button',{name:'Cancelar',exact:true}).click();expect(state.deletions).toEqual([]);await expect(page.locator('[data-cloud-action="project-open"]')).toHaveCount(1);
  await page.locator('[data-cloud-action="project-delete"]').click();await page.locator('[data-cloud-form="project-delete"] button[type=submit]').click();await expect(page.locator('[data-cloud-action="project-open"]')).toHaveCount(0);expect(state.deletions).toHaveLength(1);expect(state.errors).toEqual([]);
 });
 test('failed deletion keeps the project and displays the error',async({page})=>{
- const state=await setup(page,{deleteError:true});await create(page,'ongoing');await page.locator('[data-plan-setup-file]').setInputFiles({name:'agreement.pdf',mimeType:'application/pdf',buffer:Buffer.from('%PDF-1.4\n%%EOF\n')});await page.locator('[data-plan-form] button[type=submit]').click();await expect(page.locator('.cloud-project-overview')).toBeVisible();await page.locator('[data-cloud-action="projects"]').first().click();await page.locator('[data-cloud-action="project-delete"]').click();await page.locator('[data-cloud-form="project-delete"] button[type=submit]').click();await expect(page.locator('[data-cloud-error]')).not.toBeEmpty();await expect(page.locator('[data-cloud-action="project-open"]')).toHaveCount(1);expect(state.errors).toEqual([]);
+ const state=await setup(page,{deleteError:true});await create(page,'ongoing');await page.locator('[data-plan-setup-file]').setInputFiles({name:'agreement.pdf',mimeType:'application/pdf',buffer:Buffer.from('%PDF-1.4\n%%EOF\n')});await confirmOngoing(page);await expect(page.locator('.cloud-project-overview')).toBeVisible();await page.locator('[data-cloud-action="projects"]').first().click();await page.locator('[data-cloud-action="project-delete"]').click();await page.locator('[data-cloud-form="project-delete"] button[type=submit]').click();await expect(page.locator('[data-cloud-error]')).not.toBeEmpty();await expect(page.locator('[data-cloud-action="project-open"]')).toHaveCount(1);expect(state.errors).toEqual([]);
 });
 
 for(const route of ['new','ongoing'])test(`canceling ${route} setup writes neither project nor files`,async({page})=>{
@@ -75,7 +78,7 @@ for(const route of ['new','ongoing'])test(`canceling ${route} setup writes neith
  await page.locator('[data-plan-setup-file]').setInputFiles({name:'local-only.pdf',mimeType:'application/pdf',buffer:Buffer.from('%PDF-1.4\n%%EOF\n')});
  await expect(page.locator('.plan-source-list')).toContainText('local-only.pdf');
  expect(state.writes).toHaveLength(0);expect(state.uploads).toHaveLength(0);
- await page.locator('[data-cloud-close]').click();await expect(page.locator('.cloud-project-setup')).not.toBeVisible();
+ await page.locator('[data-cloud-close]').click();await expect(page.locator('[data-plan-discard]')).toBeVisible();await page.locator('[data-plan-discard-yes]').click();await expect(page.locator('.cloud-project-setup')).not.toBeVisible();
  await expect(page.locator('[data-cloud-action="project-open"]')).toHaveCount(0);
  expect(state.writes).toHaveLength(0);expect(state.uploads).toHaveLength(0);expect(state.errors).toEqual([]);
 });
@@ -83,8 +86,49 @@ for(const route of ['new','ongoing'])test(`canceling ${route} setup writes neith
 test('retrying a final file failure does not create a second project',async({page})=>{
  const state=await setup(page,{failUploadOnce:true});await create(page,'ongoing');
  await page.locator('[data-plan-setup-file]').setInputFiles({name:'agreement.pdf',mimeType:'application/pdf',buffer:Buffer.from('%PDF-1.4\n%%EOF\n')});
- await page.locator('[data-plan-form] button[type=submit]').click();await expect(page.locator('[data-cloud-error]')).not.toBeEmpty();
+ await confirmOngoing(page);await expect(page.locator('[data-cloud-error]')).not.toBeEmpty();
  expect(state.writes).toHaveLength(1);await expect(page.locator('[data-plan-form] button[type=submit]')).toBeEnabled();
  await page.locator('[data-plan-form] button[type=submit]').click();await expect(page.locator('.cloud-project-overview')).toBeVisible();
  expect(state.writes).toHaveLength(1);expect(state.uploads).toHaveLength(1);expect(state.errors).toEqual([]);
+});
+
+const path=require('node:path');
+const example=name=>({name,mimeType:'application/pdf',buffer:require('node:fs').readFileSync(path.join(__dirname,'..','..','ejemplos','proyecto-cafe-aurora',name))});
+const pdf=name=>({name,mimeType:'application/pdf',buffer:Buffer.from('%PDF-1.4\n%%EOF\n')});
+test('the new project dialog offers both starting points',async({page})=>{
+ await setup(page);await expect(page.locator('[name="project_start"]')).toHaveCount(2);await expect(page.locator('[name="project_start"][value="ongoing"]')).toBeVisible();
+});
+test('ongoing setup classifies several documents, lets the user fix roles and uploads them with their kind',async({page})=>{
+ const state=await setup(page);await create(page,'ongoing');
+ await expect(page.locator('[data-plan-dropzone]')).toBeVisible();await expect(page.locator('[data-plan-form] button[type=submit]')).toBeDisabled();await expect(page.locator('.plan-need-agreement')).toBeVisible();
+ await page.locator('[data-plan-setup-file]').setInputFiles([example('01-conversacion-inicial.pdf'),example('02-acuerdo-inicial-confirmado.pdf'),pdf('notas.txt'),pdf('adenda-v1.pdf')]);
+ await expect(page.locator('.plan-uploaded-source')).toHaveCount(3);await expect(page.locator('[data-plan-error]')).toContainText('notas.txt');
+ await expect(page.locator('[data-plan-role]').nth(0)).toHaveValue('initial_agreement');await expect(page.locator('[data-plan-role]').nth(1)).toHaveValue('initial_agreement');await expect(page.locator('[data-plan-role]').nth(2)).toHaveValue('addendum');
+ await page.locator('[data-plan-role]').nth(0).selectOption('email_request');await expect(page.locator('[data-plan-role]').nth(0)).toHaveValue('email_request');
+ await page.locator('[data-plan-action="remove-file"]').nth(2).click();await expect(page.locator('.plan-uploaded-source')).toHaveCount(2);
+ expect(state.writes).toHaveLength(0);expect(state.uploads).toHaveLength(0);
+ await page.screenshot({path:'.local/browser-tests/ongoing-documents.png',fullPage:true});
+ await page.locator('[data-plan-form] button[type=submit]').click();await expect(page.locator('.plan-review-group')).toHaveCount(2);expect(state.writes).toHaveLength(0);
+ await page.locator('[data-plan-action="edit-docs"]').click();await expect(page.locator('[data-plan-dropzone]')).toBeVisible();await expect(page.locator('.plan-uploaded-source')).toHaveCount(2);
+ await page.locator('[data-plan-form] button[type=submit]').click();await page.screenshot({path:'.local/browser-tests/ongoing-review.png',fullPage:true});await page.locator('[data-plan-form] button[type=submit]').click();
+ await expect(page.locator('.cloud-project-overview')).toBeVisible();expect(state.writes).toHaveLength(1);expect(state.uploads.map(u=>u.kind).sort()).toEqual(['email_request','initial_agreement']);expect(state.errors).toEqual([]);
+});
+test('removing the only agreement returns to documents and blocks continuing',async({page})=>{
+ await setup(page);await create(page,'ongoing');await page.locator('[data-plan-setup-file]').setInputFiles(pdf('acuerdo.pdf'));await page.locator('[data-plan-form] button[type=submit]').click();await expect(page.locator('.plan-review-group')).toBeVisible();
+ await page.locator('[data-plan-action="back"]').click();await page.locator('[data-plan-action="remove-file"]').click();await expect(page.locator('.plan-uploaded-source')).toHaveCount(0);await expect(page.locator('[data-plan-form] button[type=submit]')).toBeDisabled();
+});
+test('dropping PDFs on the zone adds them like the picker',async({page})=>{
+ const state=await setup(page);await create(page,'ongoing');
+ const data=await page.evaluateHandle(()=>{const d=new DataTransfer();d.items.add(new File(['%PDF-1.4\n%%EOF\n'],'contrato.pdf',{type:'application/pdf'}));return d;});
+ await page.locator('[data-plan-dropzone]').dispatchEvent('dragenter',{dataTransfer:data});await expect(page.locator('[data-plan-dropzone]')).toHaveClass(/is-dragging/);
+ await page.locator('[data-plan-dropzone]').dispatchEvent('drop',{dataTransfer:data});
+ await expect(page.locator('.plan-uploaded-source')).toContainText('contrato.pdf');await expect(page.locator('[data-plan-dropzone]')).not.toHaveClass(/is-dragging/);expect(state.uploads).toHaveLength(0);expect(state.errors).toEqual([]);
+});
+for(const [language,width,height] of [['es',1440,1000],['en',390,844]])test(`ongoing setup layout has no horizontal overflow (${language}, ${width}px)`,async({page})=>{
+ await page.setViewportSize({width,height});await setup(page,{language});await create(page,'ongoing');
+ await page.locator('[data-plan-setup-file]').setInputFiles([example('01-conversacion-inicial.pdf'),example('02-acuerdo-inicial-confirmado.pdf'),example('03-pedido-de-cambio-tienda.pdf')]);
+ await expect(page.locator('.plan-uploaded-source')).toHaveCount(3);
+ const overflow=await page.evaluate(()=>{const m=document.querySelector('.cloud-project-setup');return m.scrollWidth-m.clientWidth;});expect(overflow).toBeLessThanOrEqual(1);
+ for(const el of await page.locator('.plan-uploaded-source .icon-button').all()){const box=await el.boundingBox();expect(box.width).toBeGreaterThanOrEqual(36);expect(box.height).toBeGreaterThanOrEqual(36);}
+ await page.screenshot({path:`.local/browser-tests/ongoing-${language}-${width}.png`,fullPage:true});
 });

@@ -282,3 +282,20 @@ blockquote.refund-reason { margin: 0; padding: 10px 14px; border-left: 3px solid
 .refund-reader>.text-button{display:inline-flex;align-items:center;gap:6px;margin-bottom:10px}
 /* Trato font everywhere in the refund dialog, also in buttons, fields and quotes. */
 .refund-dialog,.refund-dialog button,.refund-dialog input,.refund-dialog select,.refund-dialog textarea,.refund-dialog blockquote,.refund-workspace button,.refund-workspace input,.refund-workspace select,.refund-workspace textarea{font-family:var(--font-ui)}
+
+/* Refund confirmation in a floating window with PayPal's look (blue wordmark, gold confirm button). */
+.refund-pp-dialog{width:min(420px,calc(100vw - 32px));padding:24px 26px 26px;border:0;border-radius:16px;background:#fff;color:#2c2e2f;box-shadow:0 24px 60px #0f1e4a33;text-align:center}
+.refund-pp-dialog::backdrop{background:#0b1a3a66}
+.refund-pp-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:14px}
+.refund-pp-logo{font:italic 700 24px/1 Verdana,Arial,sans-serif;letter-spacing:-.5px}.refund-pp-logo b{color:#003087}.refund-pp-logo i{color:#009cde}
+.refund-pp-x{display:grid;place-items:center;width:34px;height:34px;border:0;border-radius:50%;background:transparent;color:#6c7378;cursor:pointer}.refund-pp-x:hover{background:#f2f4f5}
+.refund-pp-dialog h2{margin:0 0 6px;font-size:18px;font-weight:600}
+.refund-pp-amount{margin:6px 0 14px;font-size:34px;font-weight:700;color:#003087}
+.refund-pp-route{display:grid;gap:8px;margin:0 0 14px;padding:12px 14px;border:1px solid #e4e7e9;border-radius:10px;text-align:left}
+.refund-pp-route div{display:flex;justify-content:space-between;gap:12px}.refund-pp-route dt{color:#6c7378;font-size:13px}.refund-pp-route dd{margin:0;font-size:13px;font-weight:600;text-align:right}
+.refund-pp-note{margin:0 0 18px;font-size:12px;line-height:1.5;color:#6c7378}
+.refund-pp-actions{display:grid;gap:8px}
+.refund-pp-confirm{min-height:46px;border:0;border-radius:24px;background:#ffc439;color:#111;font:inherit;font-size:16px;font-weight:600;cursor:pointer}.refund-pp-confirm:hover{filter:brightness(.96)}
+.refund-pp-confirm:focus-visible,.refund-pp-x:focus-visible{outline:2px solid #003087;outline-offset:2px}
+.refund-pp-check{display:inline-grid;place-items:center;width:52px;height:52px;border-radius:50%;background:#e7f6ec;color:#1a7f37}.refund-pp-check .ui-icon{width:26px;height:26px}
+.refund-pp-status{margin:0 0 18px;font-size:14px}

@@ -32,6 +32,7 @@ from .dispute_webhook import build_dispute_webhook_router
 from .payment_webhook import build_payment_webhook_router
 from .disputes import build_dispute_router
 from .problem_reports import build_problem_report_router
+from .document_corrections import build_document_corrections_router
 from .client_refund_requests import build_client_refund_request_router
 from .project_meetings import build_project_meeting_router
 from .graph_routes import build_graph_router
@@ -190,6 +191,7 @@ def create_app(settings=None, services=None, repository_factory=None, *, gmail_s
     refund_finance=RefundFinance(settings,disputes=ensure_no_open_dispute)
     app.include_router(build_dispute_router(settings,require_user,repository_factory,replies=proposal_workflow.gmail_replies,refund_finance=refund_finance))
     app.include_router(build_problem_report_router(settings,require_user,repository_factory))
+    app.include_router(build_document_corrections_router(settings,require_user,repository_factory))
     app.include_router(build_client_refund_request_router(settings,require_user,repository_factory))
     app.include_router(build_project_meeting_router(settings,require_user,repository_factory,gmail=gmail_service))
     app.include_router(build_graph_router(settings,require_user,repository_factory,graph_reader))

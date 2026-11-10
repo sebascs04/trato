@@ -3,6 +3,7 @@ import {icon} from './icons.mjs';
 import {renderRefundDocuments,renderInitialPayment,documentAction,documentInput,documentSubmit} from './refund-documents.mjs';
 import {isFinancialAction,financialPath,financeError,renderRefundFinance,renderFinancialPending,loadRefundFinance,financialAction,financialInput,financialSubmit} from './refund-finance.mjs';
 import {parseRefundMoney,refundInputMoney,percentageMinor,previewRefund,allocateRefund} from './refund-form.mjs';
+import {confirmPayPalRefund} from './refund-paypal-modal.mjs';
 
 const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const t=(key,values)=>uiText(`refund.${key}`,values);
@@ -550,10 +551,9 @@ export function installRefundWorkspace(cloud){
   if(a==='quick-refund'){
    // Same safe repeat as the client's request: the key is fixed for this version, so a cut never refunds twice.
    const parent=s.detail?.settlement,snap=s.snapshot;if(!parent||!snap||s.pending||s.storageError)return;
-   s.quickRefunding=true;notify(s);
-   let result;
-   try{result=await cloud.request(`/api/v1/refunds/${parent.id}/refund`,{method:'POST',headers:{'Content-Type':'application/json','Accept-Language':uiLanguage(),'Idempotency-Key':`refund-${parent.id}-${snap.id}`},body:JSON.stringify({expected_snapshot_id:snap.id,confirmed:true})});}
-   finally{s.quickRefunding=false;}
+   // Confirmed and followed in PayPal's window; the page reloads from the server afterwards, whatever happened.
+   const result=await confirmPayPalRefund({doc:cloud.document,amount:money(snap.breakdown.refund_minor),
+    execute:()=>cloud.request(`/api/v1/refunds/${parent.id}/refund`,{method:'POST',headers:{'Content-Type':'application/json','Accept-Language':uiLanguage(),'Idempotency-Key':`refund-${parent.id}-${snap.id}`},body:JSON.stringify({expected_snapshot_id:snap.id,confirmed:true})})});
    if(!current(s))return;
    cloud.historyLoaded=false;
    await openDetail(s,parent.id);if(current(s))await load(s);
@@ -564,10 +564,8 @@ export function installRefundWorkspace(cloud){
    // The button shows the exact amount, so it is the confirmation. The key is fixed per request: repeating it resumes, never refunds twice.
    const req=(s.clientRequests||[]).find(r=>r.id===target.dataset.id&&(quickRefund(s,r)||quickUnfinished(s,r)));
    if(!req||s.pending||s.storageError)return;
-   s.refundingRequest=req.id;notify(s);
-   let result;
-   try{result=await cloud.request(`/api/v1/refunds/client-requests/${req.id}`,{method:'POST',headers:{'Content-Type':'application/json','Accept-Language':uiLanguage(),'Idempotency-Key':`client-request-${req.id}`},body:JSON.stringify({project_id:s.project,confirmed:true})});}
-   finally{s.refundingRequest=null;}
+   const result=await confirmPayPalRefund({doc:cloud.document,amount:money(req.requested_minor),
+    execute:()=>cloud.request(`/api/v1/refunds/client-requests/${req.id}`,{method:'POST',headers:{'Content-Type':'application/json','Accept-Language':uiLanguage(),'Idempotency-Key':`client-request-${req.id}`},body:JSON.stringify({project_id:s.project,confirmed:true})})});
    if(!current(s))return;
    cloud.historyLoaded=false;
    await load(s);

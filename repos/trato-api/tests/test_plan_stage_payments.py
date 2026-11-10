@@ -15,6 +15,7 @@ class StageTests(unittest.TestCase):
   def rows(table,params):
    if table=='project_start_stages':return [{'position':2,'title':'Development','amount':'240.00','payment_condition':'After delivery'}]
    if table=='document_upload_contexts':return [{'stage_position':2,'purpose':'delivery_evidence'}]
+   if table=='project_stage_reviews':return []  # The client has not approved this delivery.
    return [{'contact_email':'client@example.com'}]
   self.repo.rows.side_effect=rows;self.gateway=Mock();self.gateway.receipt.return_value={'status':'ready','generation':'a'*64,'summary_fingerprint':'b'*64};self.gateway.summary.return_value={'summary_fingerprint':'b'*64}
   self.store=Mock();self.flow=StagePayments(SimpleNamespace(),None,2,store=self.store,gateway=self.gateway,paypal=Mock())

@@ -141,3 +141,13 @@
 .refund-thread-closed.is-declined,.refund-thread-closed.is-withdrawn{border-color:#f0c4c4;background:#fdf1f1;color:#a12828}
 .refund-thread-closed.is-declined p,.refund-thread-closed.is-withdrawn p{color:#5c3a3a}
 .refund-thread-closed.is-refunded{border-color:#bfe3cc;background:#eefaf2;color:#1f7a45}
+
+/* PayPal's own buttons next to the payment summary. The box has its final size from the start, so the text beside
+   it never reflows while PayPal loads; the old link only appears if the buttons cannot load. */
+.portal-payment:has(.portal-pay-actions){align-items:flex-start}
+.portal-pay-actions{display:grid;gap:8px;flex:none;width:260px;max-width:100%}
+.portal-paypal-buttons{width:100%;min-height:118px}
+.portal-paypal-buttons:empty{display:none}
+.portal-pay-actions.is-loading .portal-paypal-buttons:empty{display:block;border-radius:6px;background:linear-gradient(90deg,#ffffff00,#ffffff99,#ffffff00) 0 0/200% 100%,var(--surface,#fff);animation:portal-pay-loading 1.2s linear infinite}
+@keyframes portal-pay-loading{to{background-position:-200% 0,0 0}}
+@media(max-width:600px){.portal-pay-actions{width:100%}}

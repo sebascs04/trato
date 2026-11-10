@@ -41,6 +41,8 @@ class ProjectPlanInput(BaseModel):
     output_language:Literal['es','en']
     brief:str=Field(min_length=1,max_length=4000)
     sources:list[PlanSourceInput]=Field(default_factory=list,max_length=5)
+    # A project that started outside Trato: plan only the remaining work, for the remaining amount.
+    ongoing:bool=False
     budget:Decimal=Field(gt=0,le=100000000,max_digits=11,decimal_places=2)
     target_date:date
     @field_validator('target_date')
@@ -64,6 +66,13 @@ class CreatePlannedProject(BaseModel):
     model_config=ConfigDict(extra='forbid')
     client_id:UUID
     name:str=Field(min_length=1,max_length=200)
+    plan_job_id:UUID
+    stages:list[HumanStage]=Field(min_length=1,max_length=8)
+    review_job_id:UUID|None=None
+
+class AttachPlan(BaseModel):
+    # The plan of a project created without one (started outside Trato): same confirmation as CreatePlannedProject.
+    model_config=ConfigDict(extra='forbid')
     plan_job_id:UUID
     stages:list[HumanStage]=Field(min_length=1,max_length=8)
     review_job_id:UUID|None=None
@@ -97,7 +106,8 @@ def plan_context(repo,item):
     return {'client_id':client_id,'draft_id':str(item.draft_id),'brief':item.brief,'budget':str(item.budget),
             'target_date':item.target_date.isoformat(),'today':project_today().isoformat(),
             'sources':[source.model_dump() for source in item.sources],
-            'reviews':reputation_context(repo,profile['id']) if profile else []}
+            'reviews':reputation_context(repo,profile['id']) if profile else [],
+            **({'ongoing':True} if item.ongoing else {})}
 
 def build_ai_router(settings,require_user,repository_factory=None,jobs=None,preferences=None,usage_writer=None):
     router=APIRouter(prefix='/api/v1/ai');jobs=jobs if jobs is not None else AIJobs()
@@ -132,6 +142,7 @@ def build_ai_router(settings,require_user,repository_factory=None,jobs=None,pref
         repo=repository(request)
         if not await run_in_threadpool(repo.rows,'clients',{'select':'id','id':'eq.'+context['client_id'],'owner_id':'eq.'+owner,'deleted_at':'is.null'}):raise ApiError('CLIENT_NOT_FOUND',404)
         data={k:context[k] for k in ('client_id','draft_id','brief','budget','target_date','reviews')}
+        if context.get('ongoing') is True:data['ongoing']=True
         data['sources']=context.get('sources',[])
         return await enqueue(request,owner,{'workflow':'project_plan','mode':'review','source_plan_job_id':str(item.plan_job_id),'output_language':item.output_language,'today':project_today().isoformat(),**data,'original_stages':original['result']['stages'],'confirmed_stages':stages})
     @router.post('/projects')
@@ -142,8 +153,15 @@ def build_ai_router(settings,require_user,repository_factory=None,jobs=None,pref
         context=await run_in_threadpool(jobs.input,owner,str(item.plan_job_id))
         if job['status']!='completed' or context.get('mode')=='review':raise ApiError('AI_PLAN_NOT_READY',409)
         if context['client_id']!=str(item.client_id) or context['draft_id']!=creation_key:raise ApiError('AI_PLAN_CONTEXT_MISMATCH',409)
+        if not item.name.strip():raise ApiError('AI_INVALID_PLAN',422)
+        plan=await confirmed_plan(owner,item,job,context)
+        data=await run_in_threadpool(repository(request).rpc,'create_planned_project',{'p_key':creation_key,'p_client':str(item.client_id),'p_name':item.name.strip(),'p_plan':plan})
+        await run_in_threadpool(usage_writer or record_plan_usage,settings,owner,data['id'],str(item.plan_job_id),context)
+        return JSONResponse({'data':data},status_code=201,headers={'Cache-Control':'no-store'})
+    async def confirmed_plan(owner,item,job,context):
+        # The stages the freelancer confirmed, checked against the AI job (and its review when they changed them).
         if sum(stage.percent for stage in item.stages)!=100:raise ApiError('AI_INVALID_PLAN',422)
-        if not item.name.strip() or any(not st.title.strip() or not st.body.strip() or not st.when.strip() for st in item.stages):raise ApiError('AI_INVALID_PLAN',422)
+        if any(not st.title.strip() or not st.body.strip() or not st.when.strip() for st in item.stages):raise ApiError('AI_INVALID_PLAN',422)
         result=job['result'];confirmed=[st.model_dump() for st in item.stages]
         original_proposal={'source_job_id':str(item.plan_job_id),'stages':result.get('stages',[]),'summary':result['summary'],'model':result['model']}
         if result.get('stages') is not None and confirmed!=result['stages']:
@@ -155,8 +173,21 @@ def build_ai_router(settings,require_user,repository_factory=None,jobs=None,pref
         plan={**{key:context[key] for key in ('brief','budget','target_date','reviews','output_language')},
               **{key:result[key] for key in ('summary','observations','limitations','model')},
               'source_job_id':str(item.plan_job_id),'original_proposal':original_proposal,'stages':[st.model_dump() for st in item.stages]}
-        data=await run_in_threadpool(repository(request).rpc,'create_planned_project',{'p_key':creation_key,'p_client':str(item.client_id),'p_name':item.name.strip(),'p_plan':plan})
-        await run_in_threadpool(usage_writer or record_plan_usage,settings,owner,data['id'],str(item.plan_job_id),context)
+        return plan
+    @router.post('/projects/{project_id}/plan')
+    async def attach_plan(project_id:UUID,request:Request,owner=Depends(require_user)):
+        # A project that started outside Trato gets its Work plan later, from the same planning assistant.
+        item=await parse(request,AttachPlan)
+        repo=repository(request)
+        project=await run_in_threadpool(repo.project,str(project_id))
+        job=await run_in_threadpool(jobs.get,owner,str(item.plan_job_id),'project_plan')
+        context=await run_in_threadpool(jobs.input,owner,str(item.plan_job_id))
+        if job['status']!='completed' or context.get('mode')=='review':raise ApiError('AI_PLAN_NOT_READY',409)
+        # The plan was drafted for this very project and its client, never another one.
+        if context['draft_id']!=str(project_id) or context['client_id']!=str(project.get('client_id')):raise ApiError('AI_PLAN_CONTEXT_MISMATCH',409)
+        plan=await confirmed_plan(owner,item,job,context)
+        data=await run_in_threadpool(repo.rpc,'attach_project_plan',{'p_project':str(project_id),'p_plan':plan})
+        await run_in_threadpool(usage_writer or record_plan_usage,settings,owner,str(project_id),str(item.plan_job_id),context)
         return JSONResponse({'data':data},status_code=201,headers={'Cache-Control':'no-store'})
     @router.get('/projects/{project_id}/plan')
     async def get_plan(project_id:UUID,request:Request,owner=Depends(require_user)):

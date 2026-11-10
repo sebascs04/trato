@@ -19,11 +19,22 @@ class RefundFinanceStore(BackendStore):
     def webhook(self,action,data):
         return self.repo.rpc('refund_webhook_backend',{'p_action':action,'p_data':data})
 
+    def confirm_full_capture_refund(self, owner, payment, capture_id):
+        return self.repo.rpc('refund_full_capture_backend', {
+            'p_owner': str(owner), 'p_payment': payment, 'p_capture': capture_id,
+        })
+
+    def link_dispute_receipt(self, owner, project, receipt_id, dispute_id):
+        return self.repo.rpc('link_dispute_refund_backend', {
+            'p_owner': str(owner), 'p_project': project, 'p_receipt': receipt_id, 'p_dispute': dispute_id,
+        })
+
 
 class RefundFinance:
-    def __init__(self,settings,*,store=None,paypal=None,clock=None):
+    def __init__(self,settings,*,store=None,paypal=None,clock=None,disputes=None):
         self.settings,self.store,self.paypal=settings,store,paypal
         self.clock=clock or (lambda:datetime.now(timezone.utc))
+        self.disputes = disputes
 
     def backend(self):return self.store if self.store is not None else RefundFinanceStore(self.settings)
 
@@ -60,6 +71,7 @@ class RefundFinance:
 
     def observation(self,context,payment_id,client,*,recovery=False):
         pay=self.payment(context,payment_id);frozen=self.allocation(context,payment_id)
+        dispute_refunds = self.ensure_not_disputed(pay['capture_id'])
         if recovery:frozen={**frozen,'local_previous_refunds_minor':pay['previous_refunds_minor']}
         capture=client.get_capture(pay['capture_id'])
         order_id=pay.get('order_id')
@@ -70,7 +82,50 @@ class RefundFinance:
         if not order_id:raise ApiError('REFUND_ORDER_REFERENCE_REQUIRED',409)
         order=client.get_order(provider_id(order_id));unit=order_unit(order,pay)
         records=[client.get_refund(rid) for rid in history_ids(unit,pay)]
-        return capture_evidence(pay,frozen,capture,order,records,client.merchant_id,self.clock())
+        evidence = capture_evidence(pay,frozen,capture,order,records,client.merchant_id,self.clock())
+        # PayPal can report the dispute outcome before its capture and receipts catch up.
+        if dispute_refunds is not None and (not dispute_refunds or not dispute_refunds.issubset(evidence['verified_refund_ids'])):
+            raise ApiError('REFUND_RECONCILIATION_REQUIRED', 409)
+        return evidence
+
+    def ensure_not_disputed(self, capture_id):
+        if self.disputes is not None:
+            return self.disputes(capture_id)
+
+    def check_intake(self, repo, project_id, data):
+        payments = repo.received_payments(project_id, data.get('payment_id'))
+        if data['scope'] == 'project_closure' and {p['id'] for p in payments} != set(data['payment_ids']):
+            raise ApiError('REFUND_PAYMENTS_CHANGED', 409)
+        for payment in payments:
+            self.ensure_not_disputed(payment['capture_id'])
+
+    def sync_project(self, repo, owner, project_id):
+        payments = repo.received_payments(project_id)
+        if not payments:
+            return
+        client, store, recovery = self.provider(), self.backend(), self.recovery()
+        for payment in payments:
+            pay, attempts = self.lookup_capture(store, owner, project_id, payment, client.merchant_id)
+            recovery.scan(owner, pay, attempts, client)
+
+    @staticmethod
+    def lookup_capture(store, owner, project_id, payment, merchant_id):
+        lookup = store.webhook('lookup', {'capture_id': payment['capture_id'], 'merchant_id': merchant_id})
+        pay = lookup.get('payment', {})
+        if (pay.get('id'), pay.get('owner_id'), pay.get('project_id')) != (payment['id'], str(owner), project_id):
+            raise ApiError('REFUND_PAYMENT_CONTEXT_MISMATCH', 409)
+        return pay, lookup['attempts']
+
+    def sync_dispute(self, owner, project_id, dispute_id, payment, refund_refs):
+        client = self.provider()
+        pay, attempts = self.lookup_capture(self.backend(), owner, project_id, payment, client.merchant_id)
+        self.recovery().scan(owner, pay, attempts, client, expected_dispute_refunds=refund_refs, dispute_id=dispute_id)
+
+    def ensure_no_unresolved_refund(self, owner, project_id, payment):
+        client = self.provider()
+        _, attempts = self.lookup_capture(self.backend(), owner, project_id, payment, client.merchant_id)
+        if any(a['status'] in ('dispatching', 'uncertain', 'pending') for a in attempts):
+            raise ApiError('REFUND_PAYMENT_IN_PROGRESS', 409)
 
     def check(self,repo,owner,parent,snapshot):
         context=self.context(repo,owner,parent,snapshot)

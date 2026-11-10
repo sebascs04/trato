@@ -45,6 +45,16 @@ class GraphProjectionTests(unittest.TestCase):
   for field in ('project_start_plans','project_start_stages','plan_stage_evidence','plan_stage_payments'):
    bad=dict(snapshot);bad.pop(field)
    with self.assertRaises(JobError):build_projection(bad,context)
+ def test_a_confirmed_dispute_refund_is_linked_to_its_case(self):
+  context,snapshot=fixture()
+  dispute,receipt=str(uuid4()),str(uuid4())
+  snapshot['project_disputes']=[{'id':dispute,'title':'PP-R-TEST-1','status':'resolved'}]
+  snapshot['dispute_refund_receipts']=[{'id':receipt,'dispute_event_id':dispute,'amount_minor':1000,
+                                      'currency':'USD','confirmed_at':'2026-11-09T06:00:00Z'}]
+  result=build_projection(snapshot,context)
+  self.assertEqual([n['amount_minor'] for n in result['nodes'] if n['kind']=='RefundReceipt'],[1000])
+  self.assertIn(('project_dispute_events:'+dispute,'DISPUTE_CONFIRMED_REFUND','refund_provider_receipts:'+receipt),
+                {(e['source'],e['kind'],e['target']) for e in result['edges']})
  def test_business_kind_does_not_replace_node_label(self):
   context,snapshot=fixture();result=build_projection(snapshot,context)
   document=next(n for n in result['nodes'] if n['kind']=='Document')

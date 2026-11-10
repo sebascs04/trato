@@ -14,6 +14,13 @@ class RefundRepository(Repository):
         self.project(project_id)
         return self.rpc('refund_payments', {'p_project_id': uuid(project_id)})
 
+    def received_payments(self, project_id, payment_id=None):
+        project = self.project(project_id)
+        filters = {'select': 'id,capture_id', 'project_id': 'eq.' + project['id'], 'order': 'id.asc'}
+        if payment_id is not None:
+            filters['id'] = 'eq.' + uuid(payment_id)
+        return self._all_rows('project_received_payments', filters)
+
     def operation(self, project_id, key):
         return self.rpc('refund_command_result', {'p_project_id': uuid(project_id), 'p_key': key})
 

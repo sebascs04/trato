@@ -95,7 +95,7 @@ def public_view(view):
     # Only what the client needs to decide; internal ids stay on the server except the revision being accepted.
     keys = ('project_name', 'client_name', 'revision_id', 'revision_no', 'is_current', 'scope_summary', 'conditions',
             'currency', 'additional_minor', 'deadline', 'addendum_sha256', 'status', 'accepted_at', 'expires_at',
-            'payment_required', 'payment_status', 'change_request')
+            'payment_required', 'payment_status', 'refunded_minor', 'change_request')
     return {key: view.get(key) for key in keys}
 
 

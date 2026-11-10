@@ -61,7 +61,22 @@ SELECTORS = {
   WHERE r.owner_id=p.owner_id AND r.project_id=p.project_id
   RETURN collect(DISTINCT document) AS originals
  }
- WITH anchor,CASE WHEN anchor IS NULL THEN [] ELSE [p]+core+supporting+originals END AS candidates
+ CALL (p,core) {
+  UNWIND core AS payment
+  WITH p,payment WHERE payment.kind='Payment'
+  OPTIONAL MATCH path=(payment)-[:HAS_DISPUTE]->(:TratoEntity:Dispute)-[:DISPUTE_CONFIRMED_REFUND*0..1]->(related)
+  WHERE all(item IN nodes(path) WHERE item.owner_id=p.owner_id AND item.project_id=p.project_id AND item.generation=p.generation)
+  AND all(rel IN relationships(path) WHERE rel.owner_id=p.owner_id AND rel.project_id=p.project_id)
+  RETURN collect(DISTINCT related) AS disputes
+ }
+ CALL (p,core) {
+  UNWIND core AS payment
+  WITH p,payment WHERE payment.kind='Payment'
+  OPTIONAL MATCH (receipt:TratoEntity:RefundReceipt {owner_id:p.owner_id,project_id:p.project_id,generation:p.generation,status:'completed'})-[r:REFUND_APPLIES_TO_PAYMENT]->(payment)
+  WHERE r.owner_id=p.owner_id AND r.project_id=p.project_id
+  RETURN collect(DISTINCT receipt) AS receipts
+ }
+ WITH anchor,CASE WHEN anchor IS NULL THEN [] ELSE [p]+core+supporting+originals+disputes+receipts END AS candidates
  CALL (candidates) { UNWIND candidates AS candidate RETURN collect(DISTINCT candidate) AS chosen }
  RETURN chosen,anchor IS NOT NULL AS scope_found
  }"""

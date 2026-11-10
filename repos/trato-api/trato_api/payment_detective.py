@@ -14,7 +14,7 @@ from .vector_contract import digest
 PAYMENTS_TOOL = {
     'name': 'read_paypal_payments',
     'description': "Asks PayPal now for the live state of this project's payment requests: order status, capture status and its reason, seller protection and disputes, next to what Trato has recorded.",
-    'when_to_use': 'Use when the user asks why a payment has not arrived, is stuck or pending, whether the client has paid or approved it, or what to do about a payment.',
+    'when_to_use': 'Use for current PayPal disputes in the project, or when the user asks whether the client has paid or approved a payment, why it is stuck, or what to do about it.',
     'parameters': {'type': 'object', 'additionalProperties': False, 'required': [], 'properties': {}},
 }
 LIMIT = 12

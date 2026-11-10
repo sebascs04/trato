@@ -46,9 +46,12 @@ export function mountAgreement(root,{api,linkMode=false,inDisputeHint=false}){
  function payment(amount){
   // Paid only when PayPal confirms it (the return page captures and verifies the order).
   if(view.payment_status==='completed'){
+   if(view.refunded_minor>0){
+    const refunded=new Intl.NumberFormat(uiLocale(),{style:'currency',currency:view.currency}).format(view.refunded_minor/100);
+    return `<section class="portal-payment paid">${icon('undo-2')}<div><strong>${t(view.refunded_minor>=view.additional_minor?'refundedTitle':'partialRefundTitle')}</strong><p>${t('refundConfirmed',{amount:refunded})}</p></div></section>`;
+   }
    if(disputeLoading&&!disputeHint)return `<section class="portal-payment" role="status"><div><strong>${t('dispute.checking')}</strong></div></section>`;
-   // The payment happened, but it did not stay: saying only "paid" would contradict the refund below.
-   if(refundedByDispute(dispute))return `<section class="portal-payment paid">${icon('undo-2')}<div><strong>${t('refundedTitle')}</strong><p>${t('refundedCopy',{amount})}</p></div></section>`;
+   if(refundedByDispute(dispute))return `<section class="portal-payment" role="status">${icon('flag')}<div><strong>${t('refundVerificationPending')}</strong></div></section>`;
    const open=dispute?dispute.status!=='RESOLVED':disputeHint;
    return `<section class="portal-payment paid ${open?'in-dispute':''}">${icon(open?'flag':'circle-check')}<div><strong>${t(open?'paidInDisputeTitle':'paidTitle')}</strong><p>${t(open?'paidInDisputeCopy':'paidCopy',{amount})}</p></div></section>`;
   }

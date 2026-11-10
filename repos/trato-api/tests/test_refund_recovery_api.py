@@ -3,15 +3,19 @@ import json
 import os
 from types import SimpleNamespace
 import unittest
-from unittest.mock import patch
+from unittest.mock import Mock, patch
+from fastapi import FastAPI
+from fastapi.responses import JSONResponse
 from fastapi.testclient import TestClient
 
 from trato_api.app import create_app
+from trato_api.disputes import DisputeReader, build_dispute_router
 from trato_api.errors import ApiError
+from trato_api.refunds.disputes import ensure_no_open_dispute
 from trato_api.refunds.financial import RefundFinance
 from trato_api.refunds.financial_domain import refund_evidence
 from trato_api.refunds.webhook import decode_event,refund_capture_id
-from refund_financial_fixtures import OWNER,PARENT,SNAPSHOT,uid,payment,refund_record
+from refund_financial_fixtures import NOW,OWNER,PARENT,SNAPSHOT,uid,payment,refund_record
 
 
 class Services:
@@ -66,7 +70,126 @@ class RecoveryHttpTests(unittest.TestCase):
             self.assertEqual(response.status_code,413);self.assertEqual(handler.call_count,1)
 
 
+class DisputeRefundIntegrationTests(unittest.TestCase):
+    def setUp(self):
+        self.pay, _, capture, order = payment()
+        self.dispute_id = 'PP-R-TEST-123'
+        self.provider = Mock(merchant_id=self.pay['merchant_id'])
+        self.provider.get_capture.return_value = {**capture, 'status': 'PARTIALLY_REFUNDED'}
+        self.provider.get_order.return_value = order
+        self.provider.list_disputes.return_value = {'items': [{'dispute_id': self.dispute_id}]}
+        self.details = {
+            'dispute_id': self.dispute_id, 'status': 'RESOLVED',
+            'disputed_transactions': [{'seller_transaction_id': self.pay['capture_id']}],
+            'dispute_outcome': {'outcome_code': 'RESOLVED_BUYER_FAVOUR'},
+            'refund_details': {'transactions': [{'id': 'REFUND123'}]},
+        }
+        self.provider.get_dispute.return_value = self.details
+        self.store = Mock()
+        self.lookup = {'found': True, 'payment': self.pay, 'attempts': []}
+        self.store.webhook.return_value = self.lookup
+        self.receipt_id = uid(99)
+        self.store.receipt.return_value = {'recorded': True, 'receipt_id': self.receipt_id}
+        repo = Mock()
+        repo.rows.return_value = [self.pay]
+        app = FastAPI()
+
+        @app.exception_handler(ApiError)
+        async def handle(_, error):
+            return JSONResponse({'error': error.code}, status_code=error.status)
+
+        finance = RefundFinance(None, paypal=self.provider, store=self.store)
+        app.include_router(build_dispute_router(None, lambda: OWNER, lambda *_: repo,
+                                                DisputeReader(self.provider), refund_finance=finance))
+        self.client = TestClient(app)
+        self.path = f"/api/v1/projects/{self.pay['project_id']}/disputes"
+
+    def test_dispute_refresh_reconciles_only_a_canonical_refund_on_its_capture(self):
+        self.provider.get_refund.return_value = refund_record(self.pay, 1000, status='PENDING')
+        dispute = self.client.get(self.path).json()['data']['disputes'][0]
+        self.assertEqual(dispute['refund_sync'], 'pending')
+        self.assertNotIn('_refund_refs', dispute)
+        self.assertEqual(self.store.receipt.call_args.args[2]['status'], 'pending')
+        self.store.link_dispute_receipt.assert_not_called()
+
+        self.provider.get_refund.return_value = refund_record(self.pay, 1000)
+        dispute = self.client.get(self.path).json()['data']['disputes'][0]
+        self.assertEqual(dispute['refund_sync'], 'confirmed')
+        self.assertEqual(self.store.receipt.call_args.args[:2], (OWNER, self.pay['id']))
+        self.assertEqual(self.store.receipt.call_args.args[2]['amount_minor'], 1000)
+        self.store.link_dispute_receipt.assert_called_once_with(OWNER, self.pay['project_id'], self.receipt_id, self.dispute_id)
+        self.provider.refund_capture.assert_not_called()
+        self.provider.accept_dispute_claim.assert_not_called()
+
+    def test_dispute_cannot_be_accepted_during_an_unresolved_refund_attempt(self):
+        self.lookup['attempts'] = [{'status': 'uncertain'}]
+        self.provider.get_dispute.return_value = {**self.details, 'status': 'WAITING_FOR_SELLER_RESPONSE',
+                                                  'links': [{'rel': 'accept_claim'}]}
+        response = self.client.post(f'{self.path}/{self.dispute_id}/accept', json={'note': 'Accept claim'})
+        self.assertEqual(response.status_code, 409)
+        self.assertEqual(response.json()['error'], 'REFUND_PAYMENT_IN_PROGRESS')
+        self.provider.accept_dispute_claim.assert_not_called()
+
+
 class RecoveryEvidenceTests(unittest.TestCase):
+    def test_verified_full_refund_without_order_receipts(self):
+        pay, _, capture, order = payment()
+        provider = Mock(merchant_id=pay['merchant_id'])
+        provider.get_order.return_value = order
+        store = Mock()
+        recovery = RefundFinance(None, store=store).recovery()
+
+        provider.get_capture.return_value = capture
+        recovery.scan(OWNER, pay, [], provider)
+        store.confirm_full_capture_refund.assert_not_called()
+
+        provider.get_capture.return_value = {**capture, 'status': 'REFUNDED'}
+        recovery.scan(OWNER, pay, [], provider)
+        store.confirm_full_capture_refund.assert_called_once_with(OWNER, pay['id'], pay['capture_id'])
+        store.receipt.assert_not_called()
+        provider.refund_capture.assert_not_called()
+
+    def test_dispute_guard_distinguishes_open_and_closed_cases(self):
+        capture = 'CAPTURE10'
+        dispute_id = 'PP-R-TEST-123'
+        reader = Mock()
+        client = reader.provider.return_value
+        client.list_disputes.return_value = {'items': [{'dispute_id': dispute_id}]}
+        details = {'dispute_id': dispute_id, 'disputed_transactions': [{'seller_transaction_id': capture}]}
+        client.get_dispute.return_value = {**details, 'status': 'WAITING_FOR_SELLER_RESPONSE'}
+        with self.assertRaises(ApiError) as error:
+            ensure_no_open_dispute(capture, reader)
+        self.assertEqual(error.exception.code, 'REFUND_PAYMENT_IN_DISPUTE')
+
+        client.get_dispute.return_value = {
+            **details, 'status': 'RESOLVED', 'dispute_outcome': {'outcome_code': 'RESOLVED_SELLER_FAVOUR'},
+        }
+        self.assertIsNone(ensure_no_open_dispute(capture, reader))
+
+        client.get_dispute.return_value = {
+            **details, 'status': 'RESOLVED', 'dispute_outcome': {'outcome_code': 'RESOLVED_BUYER_FAVOUR'},
+            'refund_details': {'transactions': [{'id': 'REFUND123'}]},
+        }
+        self.assertEqual(ensure_no_open_dispute(capture, reader), {'REFUND123'})
+
+        client.list_disputes.return_value = {'items': [], 'links': [{'rel': 'next'}]}
+        with self.assertRaises(ApiError) as error:
+            ensure_no_open_dispute(capture, reader)
+        self.assertEqual(error.exception.code, 'INVALID_PROVIDER_RESPONSE')
+
+    def test_dispute_refund_must_be_in_verified_balance_before_a_new_refund(self):
+        pay, allocation, capture, order = payment()
+        provider = Mock(merchant_id=pay['merchant_id'])
+        provider.get_capture.return_value = capture
+        provider.get_order.return_value = order
+        finance = RefundFinance(None, disputes=lambda _: {'REFUND123'}, clock=lambda: NOW)
+        context = {'received_payments': [pay], 'payments': [allocation]}
+
+        with self.assertRaises(ApiError) as error:
+            finance.observation(context, pay['id'], provider)
+        self.assertEqual(error.exception.code, 'REFUND_RECONCILIATION_REQUIRED')
+        provider.refund_capture.assert_not_called()
+
     def test_missing_id_recovery_requires_exact_custom_reference(self):
         pay,*_=payment();record=refund_record(pay,1000)
         with self.assertRaises(ApiError):refund_evidence(record,pay,custom_id='saved',require_custom_id=True)

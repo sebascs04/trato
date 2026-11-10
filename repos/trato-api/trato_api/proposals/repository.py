@@ -41,7 +41,22 @@ class ProposalRepository(Repository):
             proposal['plan_placement']=where['placement'] if where else None
             proposal['plan_stage_position']=where['stage_position'] if where else None
             proposal['business_status']=('Cerrado' if any(c['request_document_id']==proposal['request_document_id'] for c in closures) else 'Finalizado' if proposal['locked_at'] else 'Pendiente de pago' if proposal['status']=='accepted' else 'Cambios pedidos por el cliente' if any(q['revision_id']==revision['id'] for q in portal_requests) else 'Esperando respuesta' if any(d['revision_id']==revision['id'] and d['kind']=='adenda' and d['status']=='accepted_by_gmail' for d in deliveries) else 'Adenda en borrador' if any(a['revision_id']==revision['id'] for a in artifacts) else 'Propuesta en preparación')
+        finished=[p for p in proposals if p['business_status']=='Finalizado']
+        if finished:self._list_refunds(project,finished)
         return proposals
+
+    def _list_refunds(self,project,finished):
+        # Paid and then refunded: the list reads «Refunded» like the client's (business_status stays «Finalizado»). Optional.
+        try:
+            payments=self.rows('proposal_payments',{'select':'id,proposal_id,status,amount_minor','proposal_id':'in.('+','.join(p['id'] for p in finished)+')','status':'eq.completed'})
+            if not payments:return
+            self._with_refunds(project,payments)
+            for proposal in finished:
+                paid=[p for p in payments if p['proposal_id']==proposal['id']]
+                if any(p.get('refunded_minor') for p in paid):
+                    proposal['paid_minor']=sum(p['amount_minor'] for p in paid);proposal['refunded_minor']=sum(p.get('refunded_minor') or 0 for p in paid)
+        except Exception:  # noqa: BLE001
+            pass
 
 
     def get_proposal(self,proposal_id,*,summary=False):
@@ -83,7 +98,21 @@ class ProposalRepository(Repository):
                 'order':'draft_sequence.desc','limit':1})
             if previous:
                 data['previous_sent']={key:value for key,value in previous[0].items() if key!='proposal_deliveries'}
+        if any(p.get('status')=='completed' for p in data.get('payments') or []):self._with_refunds(proposal,data['payments'])
         return {'proposal':proposal,'revision':revision,**data,'payment_required':revision['additional_minor']>0}
+
+    def _with_refunds(self,proposal,payments):
+        # What was refunded of a paid addendum, so the freelancer reads «Refunded» like the client does. Best effort: the
+        # revision still opens if this read fails, as plain «Paid».
+        try:
+            ids=','.join(p['id'] for p in payments if p.get('status')=='completed')
+            received=self.rows('project_received_payments',{'select':'id,proposal_payment_id','proposal_payment_id':f'in.({ids})'})
+            refunded={r['id']:r.get('local_previous_refunds_minor') or 0 for r in self.rpc('refund_payments',{'p_project_id':proposal.get('project_id') or proposal['id']})}
+            by_payment={r['proposal_payment_id']:refunded.get(r['id'],0) for r in received}
+            for p in payments:
+                if p['id'] in by_payment:p['refunded_minor']=min(p['amount_minor'],by_payment[p['id']])
+        except Exception:  # noqa: BLE001 - optional detail, never blocks the change view
+            pass
 
     def command(self,action,data,key):
         return self.rpc('proposal_command',{'p_action':action,'p_data':data,'p_key':key})

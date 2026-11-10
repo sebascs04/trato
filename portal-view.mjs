@@ -3,6 +3,7 @@
 import {uiText,uiLocale} from './i18n.mjs';
 import {icon} from './icons.mjs';
 import {createPortalAssistant} from './portal-assistant.mjs';
+import {PROBLEM_REASONS,PAYPAL_RESOLUTION_CENTER,problemDialogsHtml,problemCardHtml,problemConversationHtml} from './problem-thread.mjs';
 
 const t=(key,values)=>uiText(`portal.${key}`,values);
 const escape=value=>String(value??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -13,9 +14,8 @@ export const canDecide=(accepted,view)=>!accepted&&!view?.change_request;
 export const refundedByDispute=item=>item?.status==='RESOLVED'&&['RESOLVED_BUYER_FAVOUR','ACCEPTED'].includes(item.outcome);
 // Report a problem takes the place of Request changes once PayPal confirmed the payment: a paid addendum is read-only.
 // Not while a PayPal dispute exists: the client is already talking to PayPal.
-export const PROBLEM_REASONS=['not_received','not_as_agreed','quality','other'];
+export {PROBLEM_REASONS,PAYPAL_RESOLUTION_CENTER};
 export const canReportProblem=(view,dispute,problem,disputeLoading=false)=>view?.status==='accepted'&&view?.payment_status==='completed'&&!disputeLoading&&!dispute&&!problem;
-export const PAYPAL_RESOLUTION_CENTER='https://www.sandbox.paypal.com/resolutioncenter';
 export function closedResult(item){
  if(item.status!=='RESOLVED')return '';
  const outcome=['RESOLVED_BUYER_FAVOUR','RESOLVED_SELLER_FAVOUR','CANCELED_BY_BUYER','RESOLVED_WITH_PAYOUT','ACCEPTED','DENIED'].includes(item.outcome)?item.outcome:'OTHER';
@@ -23,7 +23,8 @@ export function closedResult(item){
  const amount=Number.isFinite(value)&&/^[A-Z]{3}$/.test(item.amount?.currency||'')?new Intl.NumberFormat(uiLocale(),{style:'currency',currency:item.amount.currency}).format(value):'';
  return `<p class="portal-dispute-result" role="status">${t(`dispute.resultNote.${outcome}`,{amount})}</p>`;
 }
-export function mountAgreement(root,{api,linkMode=false,inDisputeHint=false}){
+// paidActions (client account only): extra actions for a paid addendum, such as Request a refund, drawn inside this card.
+export function mountAgreement(root,{api,linkMode=false,inDisputeHint=false,paidActions=null}){
  // The hint comes from the list the client just saw, so the state is right at once; PayPal then confirms it.
  let view=null,pdfUrl='',disputeUrl='',dispute=null,disputeError=false,disputeLoading=false,disputeHint=inDisputeHint,conversationHtml='',problem=null,problemError=false,problemChecked=false;
  const doc=root.ownerDocument;
@@ -37,8 +38,7 @@ export function mountAgreement(root,{api,linkMode=false,inDisputeHint=false}){
  <dialog class="portal-dialog portal-confirm-dialog" data-confirm><h2>${t('confirmTitle')}</h2><p data-confirm-copy></p><p class="portal-error" data-confirm-error role="alert"></p><div class="portal-actions"><button type="button" class="portal-button secondary" data-close>${t('cancel')}</button><button type="button" class="portal-button" data-confirm-accept>${t('confirmAccept')}</button></div></dialog>
  <dialog class="portal-dialog portal-side-dialog" data-conditions aria-labelledby="portal-conditions-title"><div class="portal-dialog-head"><strong id="portal-conditions-title">${t('conditions')}</strong><button type="button" class="portal-icon-button" data-close aria-label="${t('close')}" title="${t('close')}">${icon('x')}</button></div><p class="portal-conditions-text" data-conditions-text></p></dialog>
  <dialog class="portal-dialog portal-side-dialog" data-conversation aria-labelledby="portal-conversation-title"><div class="portal-dialog-head"><strong id="portal-conversation-title">${t('dispute.conversationTitle')}</strong><button type="button" class="portal-icon-button" data-close aria-label="${t('close')}" title="${t('close')}">${icon('x')}</button></div><div data-conversation-body></div></dialog>
- <dialog class="portal-dialog portal-confirm-dialog" data-problem-new aria-labelledby="portal-problem-new-title"><h2 id="portal-problem-new-title">${t('problem.newTitle')}</h2><p>${t('problem.newCopy')}</p><label class="portal-field" for="portal-problem-reason">${t('problem.reasonLabel')}</label><select class="portal-select" id="portal-problem-reason" data-problem-reason><option value="">${t('problem.reasonChoose')}</option>${PROBLEM_REASONS.map(r=>`<option value="${r}">${t(`problem.reason.${r}`)}</option>`).join('')}</select><textarea class="portal-textarea" data-problem-notes maxlength="4000" rows="5" aria-label="${t('problem.notesLabel')}" placeholder="${t('problem.notesPlaceholder')}"></textarea><p class="portal-error" data-problem-new-error role="alert"></p><div class="portal-actions"><button type="button" class="portal-button secondary" data-close>${t('cancel')}</button><button type="button" class="portal-button" data-problem-send>${t('problem.send')}</button></div></dialog>
- <dialog class="portal-dialog portal-side-dialog" data-problem aria-labelledby="portal-problem-title"><div class="portal-dialog-head"><strong id="portal-problem-title">${t('problem.conversationTitle')}</strong><button type="button" class="portal-icon-button" data-close aria-label="${t('close')}" title="${t('close')}">${icon('x')}</button></div><div data-problem-body></div></dialog>
+ ${problemDialogsHtml()}
  <dialog class="portal-dialog portal-confirm-dialog" data-dispute-list><div class="portal-dialog-head"><strong data-dispute-list-title></strong><button type="button" class="portal-icon-button" data-close aria-label="${t('closePdf')}">${icon('x')}</button></div><div class="portal-dispute-doc-list" data-dispute-list-rows></div><p class="portal-error" data-dispute-list-error role="alert"></p></dialog>`;
  const card=doc.createElement('section');card.className='portal-card';card.setAttribute('aria-live','polite');
  root.replaceChildren(card,dialogs);
@@ -46,7 +46,10 @@ export function mountAgreement(root,{api,linkMode=false,inDisputeHint=false}){
  // TeTrato drafts the change request; the client reviews it in the same form as always and sends it.
  const assistant=createPortalAssistant({doc,api,onDraft:text=>{q('[data-changes-notes]').value=text;q('[data-changes-error]').textContent='';q('[data-changes]').showModal();},
   // TeTrato drafts the problem report; the client still picks the reason and sends it. Not if one was sent or a PayPal dispute exists.
-  onProblemDraft:text=>{if(canReportProblem(view,dispute,problem,disputeLoading))openNewProblem(text);else{assistant.changesDismissed();if(problem)openProblem();}}});
+  onProblemDraft:text=>{if(canReportProblem(view,dispute,problem,disputeLoading))openNewProblem(text);else{assistant.changesDismissed();if(problem)openProblem();}},
+  // «Accept it» / «pay it»: the same buttons and confirmations the page always shows.
+  onAccept:()=>{const button=doc.querySelector('[data-accept]');if(!button||button.disabled)return false;button.click();return true;},
+  onPay:()=>{const button=doc.querySelector('[data-pay]');if(!button||button.disabled)return false;button.click();return true;}});
  dialogs.append(assistant.element);
 
  function message(kind){
@@ -55,13 +58,16 @@ export function mountAgreement(root,{api,linkMode=false,inDisputeHint=false}){
  function payment(amount){
   // Paid only when PayPal confirms it (the return page captures and verifies the order).
   if(view.payment_status==='completed'){
+   if(view.refunded_minor>0){
+    const refunded=new Intl.NumberFormat(uiLocale(),{style:'currency',currency:view.currency}).format(view.refunded_minor/100);
+    return `<section class="portal-payment paid">${icon('undo-2')}<div><strong>${t(view.refunded_minor>=view.additional_minor?'refundedTitle':'partialRefundTitle')}</strong><p>${t('refundConfirmed',{amount:refunded})}</p></div></section>`;
+   }
    // A report lives in Trato, so it shows at once; if PayPal then answers with a dispute, the card switches to it.
    if(disputeLoading&&!disputeHint&&problem)return problemCard(amount);
    // Until Trato knows whether there is a report, PayPal is not named: the report, not PayPal, may be what this shows.
    if(disputeLoading&&!disputeHint&&!problemChecked)return `<section class="portal-payment" role="status"><div><strong>${t('problem.checkingPayment')}</strong></div></section>`;
    if(disputeLoading&&!disputeHint)return `<section class="portal-payment" role="status"><div><strong>${t('dispute.checking')}</strong></div></section>`;
-   // The payment happened, but it did not stay: saying only "paid" would contradict the refund below.
-   if(refundedByDispute(dispute))return `<section class="portal-payment paid">${icon('undo-2')}<div><strong>${t('refundedTitle')}</strong><p>${t('refundedCopy',{amount})}</p></div></section>`;
+   if(refundedByDispute(dispute))return `<section class="portal-payment" role="status">${icon('flag')}<div><strong>${t('refundVerificationPending')}</strong></div></section>`;
    const open=dispute?dispute.status!=='RESOLVED':disputeHint;
    // A report in Trato is part of the payment's state too, like a dispute: paid, but not settled for the client.
    const reported=!open&&['open','resolved','unresolved'].includes(problem?.status)?problem.status:'';
@@ -93,29 +99,8 @@ export function mountAgreement(root,{api,linkMode=false,inDisputeHint=false}){
   if(!disputeOpen&&view?.payment_required)return '';
   return problemCard(null);
  }
- function problemCard(amount){
-  const reason=PROBLEM_REASONS.includes(problem.reason)?problem.reason:'other';
-  const state=['open','resolved','unresolved'].includes(problem.status)?problem.status:'open';
-  // Registering the report as a new request is the freelancer's answer too: the client may then reply and close.
-  const replied=(problem.messages||[]).some(m=>m.author==='freelancer')||!!problem.registered_as_request;
-  // Paid is not the same as fixed: the reminder asks the client to close it once the fix is delivered.
-  const next=state==='open'?t(problem.request_paid?'problem.next.requestPaid':problem.registered_as_request?'problem.next.registered':replied?'problem.next.replied':'problem.next.waiting'):t(`problem.next.${state}`);
-  const title=amount===null?t('problem.sent',{date:day(problem.created_at)}):t(`problem.paid.${state}Title`);
-  const facts=amount===null?t(`problem.reason.${reason}`):`${t('problem.paid.copy',{amount})} ${t('problem.reportedOn',{reason:t(`problem.reason.${reason}`),date:day(problem.created_at)})}`;
-  return `<section class="portal-payment paid portal-problem is-${state} ${state==='resolved'?'':'in-dispute'}">${icon(state==='resolved'?'circle-check':'flag')}<div><strong>${title}</strong><p>${facts}</p><small>${next}</small>
-   <div class="portal-problem-tools"><button type="button" class="portal-link" data-problem-open aria-haspopup="dialog">${icon('messages-square')}${t('problem.open',{count:(problem.messages||[]).length+1})}</button>${state==='unresolved'?`<a class="portal-button secondary" href="${PAYPAL_RESOLUTION_CENTER}" target="_blank" rel="noopener noreferrer">${icon('arrow-up-right')}${t('problem.paypal')}</a>`:''}</div></div></section>`;
- }
- function problemConversation(){
-  const when=value=>value?new Intl.DateTimeFormat(uiLocale(),{dateStyle:'medium',timeStyle:'short'}).format(new Date(value)):'';
-  const item=(author,body,at)=>`<li class="is-${author==='client'?'mine':'theirs'}"><small>${t(`problem.by.${author==='client'?'client':'freelancer'}`)}${at?` · ${escape(when(at))}`:''}</small><p>${escape(body)}</p></li>`;
-  const list=[item('client',problem.notes,problem.created_at),...(problem.messages||[]).map(m=>item(m.author,m.body,m.created_at))].join('');
-  // Until the freelancer answers there is nothing to judge: the client waits, without closing or adding to it.
-  const open=problem.status==='open',replied=(problem.messages||[]).some(m=>m.author==='freelancer')||!!problem.registered_as_request;
-  const registered=problem.registered_as_request?`<p class="portal-note portal-problem-registered" role="status">${icon('check')}<span>${t(problem.request_paid&&problem.status==='open'?'problem.next.requestPaid':'problem.next.registered')}</span></p>`:'';
-  if(open&&!replied)return `<ol class="portal-dispute-messages">${list}</ol>${registered}<p class="portal-note" role="status">${t('problem.next.waiting')}</p>`;
-  return `<ol class="portal-dispute-messages">${list}</ol>${registered}${open?`<textarea class="portal-textarea" data-problem-reply maxlength="4000" rows="3" aria-label="${t('problem.replyLabel')}" placeholder="${t('problem.replyLabel')}"></textarea><p class="portal-error" data-problem-error role="alert"></p>
-   <div class="portal-actions portal-problem-actions"><button type="button" class="portal-button secondary" data-problem-close="unresolved">${t('problem.unresolved')}</button><button type="button" class="portal-button secondary" data-problem-close="resolved">${icon('check')}${t('problem.resolved')}</button><button type="button" class="portal-button" data-problem-reply-send>${t('problem.reply')}</button></div><p class="portal-note">${t('problem.closeNote')}</p>`:`<p class="portal-note">${t(`problem.next.${problem.status==='resolved'?'resolved':'unresolved'}`)}</p>`}`;
- }
+ const problemCard=amount=>problemCardHtml(problem,{amount});
+ const problemConversation=()=>problemConversationHtml(problem);
  function openProblem(){
   const body=q('[data-problem-body]');body.innerHTML=problemConversation();
   body.querySelector('[data-problem-reply-send]')?.addEventListener('click',()=>problemAction('problem-message',()=>{const text=body.querySelector('[data-problem-reply]').value.trim();return text?{body:text}:null;}));
@@ -149,13 +134,16 @@ export function mountAgreement(root,{api,linkMode=false,inDisputeHint=false}){
   if(superseded&&!accepted)return message('superseded');
   const amount=view.additional_minor>0?money(view.additional_minor):t('noCharge');
   const state=accepted?`<p class="portal-state accepted">${icon('circle-check')}<span>${t('acceptedOn',{date:day(view.accepted_at)})}</span></p>`:view.change_request?`<p class="portal-state waiting">${icon('history')}<span>${t('changesWaiting')}</span></p>`:`<p class="portal-state">${icon('info')}<span>${t('pending')}</span></p>`;
-  card.innerHTML=`<div class="portal-card-head"><div class="portal-card-title"><span class="portal-eyebrow">${t('eyebrow',{number:view.revision_no})}</span><h1>${escape(view.project_name)}</h1><p class="portal-for">${t('forClient',{name:escape(view.client_name)})}</p></div><div class="portal-card-tools" role="group" aria-label="${t('actions.learn')}"><button type="button" class="portal-button secondary" data-open-pdf>${icon('file-text')}${t('viewPdf')}</button><button type="button" class="portal-button secondary" data-ask-assistant aria-haspopup="dialog">${icon('sparkles')}${t('assistant.open')}</button></div></div>${state}
+  card.innerHTML=`<div class="portal-card-head"><div class="portal-card-title"><span class="portal-eyebrow">${t('eyebrow',{number:view.revision_no})}</span><h1>${escape(view.project_name)}</h1><p class="portal-for">${t('forClient',{name:escape(view.client_name)})}</p></div><div class="portal-card-tools" role="group" aria-label="${t('actions.learn')}"><button type="button" class="portal-button secondary" data-open-pdf>${icon('file-text')}${t('viewPdf')}</button><button type="button" class="tetrato-fab tetrato-fab-local" data-ask-assistant aria-haspopup="dialog" aria-label="${t('assistant.open')}" title="${t('assistant.open')}"><img src="/assets/mascot/trato-guide.png" alt="" width="40" height="40"><span>TeTrato</span></button></div></div>${state}
   <dl class="portal-facts"><div><dt>${t('amount')}</dt><dd>${amount}</dd></div><div><dt>${t('deadline')}</dt><dd>${day(view.deadline)}</dd></div><div><dt>${t('version')}</dt><dd>v${escape(view.revision_no)}</dd></div></dl>
   <section class="portal-scope"><h2>${t('scope')}</h2><p class="portal-scope-text" data-scope>${escape(view.scope_summary)}</p><button type="button" class="portal-link" data-scope-more hidden>${t('showMore')}</button>${view.conditions?`<button type="button" class="portal-link" data-open-conditions aria-haspopup="dialog">${t('viewConditions')}</button>`:''}</section>
   ${accepted&&view.payment_required?payment(amount):''}
   ${disputeMarkup()}
   ${problemMarkup()}
-  ${canReportProblem(view,dispute,problem,disputeLoading)&&!problemError?`<div class="portal-actions" role="group" aria-label="${t('actions.decide')}"><button type="button" class="portal-button secondary" data-report-problem aria-haspopup="dialog">${icon('flag')}${t('problem.action')}</button></div>`:''}
+  ${(()=>{const report=canReportProblem(view,dispute,problem,disputeLoading)&&!problemError?`<button type="button" class="portal-button secondary" data-report-problem aria-haspopup="dialog">${icon('flag')}${t('problem.action')}</button>`:'';
+   const extra=view.payment_status==='completed'&&paidActions?paidActions()||{}:{};
+   const shown=extra.hideReport?'':report;
+    return `${extra.notice||''}${shown||extra.button?`<div class="portal-actions" role="group" aria-label="${t('actions.decide')}">${shown}${extra.button||''}</div>`:''}`;})()}
   ${!accepted&&view.change_request?`<section class="portal-request">${icon('messages-square')}<div><strong>${t('changesSent',{date:day(view.change_request.requested_at)})}</strong><p>${escape(view.change_request.notes)}</p><small>${t('changesNext')}</small></div></section>`:''}
   ${!canDecide(accepted,view)?'':`<div class="portal-actions" role="group" aria-label="${t('actions.decide')}"><button type="button" class="portal-button secondary" data-request-changes>${icon('pencil')}${t('changesAction')}</button><button type="button" class="portal-button" data-accept>${icon('check')}${t('accept')}</button></div>`}
   ${accepted?(view.payment_required?'':`<p class="portal-next">${t('acceptedNoPayment')}</p>`):canDecide(accepted,view)?`<p class="portal-note">${t('acceptNote')}</p>`:''}

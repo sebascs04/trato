@@ -112,6 +112,10 @@ test('the client sees that a dispute ended, and whether the money comes back',()
  const text=key=>uiText(key);
  assert.ok(row({status:'RESOLVED',outcome:'RESOLVED_SELLER_FAVOUR'}).includes(text('clientAccount.state.disputeClosed')));
  assert.ok(row({status:'RESOLVED',outcome:'CANCELED_BY_BUYER'}).includes(text('clientAccount.state.disputeClosed')));
+ // A dispute won by the client says «refunded» only once Trato has verified the refund with PayPal (refunded_minor).
+ assert.ok(row({status:'RESOLVED',outcome:'RESOLVED_BUYER_FAVOUR'}).includes(text('clientAccount.state.refundVerificationPending')));
+ item.refunded_minor=12000;
  assert.ok(row({status:'RESOLVED',outcome:'RESOLVED_BUYER_FAVOUR'}).includes(text('clientAccount.state.disputeRefunded')));
+ delete item.refunded_minor;
  assert.ok(row({status:'UNDER_REVIEW',outcome:null}).includes(text('clientAccount.state.inDispute')));
 });

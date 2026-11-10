@@ -15,6 +15,25 @@ from .domain import Contract, SettlementRequest, SettlementTerms, Text, Citation
 from .repository import RefundRepository
 
 
+def prepare_request_evidence(settings, repo, owner, project_id, citations):
+    from ..ai_jobs import AIJobs
+    from ..file_processing import enqueue_processing
+    from ..model_preferences import ModelPreferences
+    from ..vector_routes import VectorGateway
+
+    file_ids = sorted({citation['document_id'] for citation in citations})
+    _, files = VectorGateway(settings).snapshot(repo, owner, project_id, file_ids=file_ids)
+    pending = [file['id'] for file in files if file['status'] != 'ready']
+    if pending:
+        jobs, model = AIJobs(), ModelPreferences().configuration()[1]
+        for file_id in pending:
+            # Registration can change the authorized document context while its
+            # original processing job is running. Queue the new context once.
+            job = enqueue_processing(repo, jobs, owner, project_id, file_id, model)
+            if job['status'] == 'failed':
+                raise ApiError(job.get('error_code') or 'FILE_PROCESSING_FAILED', 409)
+
+
 class DraftEdit(Contract):
     expected_snapshot_id: UUID | None  # null is explicit for the first proposal
     terms: SettlementTerms
@@ -84,7 +103,7 @@ class Close(Contract):
     notes: Text
 
 
-def build_refund_router(settings, require_user, repository_factory=None, workflow=None):
+def build_refund_router(settings, require_user, repository_factory=None, workflow=None, finance=None):
     router = APIRouter(prefix='/api/v1')
 
     def repository(request: Request, user=Depends(require_user)):
@@ -119,6 +138,14 @@ def build_refund_router(settings, require_user, repository_factory=None, workflo
     def payments(project_id: str, repo=Depends(repository)):
         return reply(repo.eligible_payments(uuid(project_id)))
 
+    @router.post('/projects/{project_id}/refund-payments/sync')
+    def sync_payments(project_id: str, repo=Depends(repository), owner=Depends(require_user)):
+        if finance is None:
+            raise ApiError('PAYMENTS_NOT_CONFIGURED', 503)
+        project_id = uuid(project_id)
+        finance.sync_project(repo, owner, project_id)
+        return reply(repo.eligible_payments(project_id))
+
     @router.get('/projects/{project_id}/refund-operations/{key}')
     def operation(project_id: str, key: str, repo=Depends(repository)):
         if not 1 <= len(key) <= 128 or any(ord(c) < 33 or ord(c) > 126 for c in key):
@@ -126,8 +153,23 @@ def build_refund_router(settings, require_user, repository_factory=None, workflo
         return reply(repo.operation(uuid(project_id), key))
 
     @router.post('/projects/{project_id}/refunds')
-    async def create(project_id: str, request: Request, repo=Depends(repository)):
-        return await command(request, repo, 'create', SettlementRequest, {'project_id': uuid(project_id)})
+    async def create(project_id: str, request: Request, repo=Depends(repository), owner=Depends(require_user)):
+        project_id, key = uuid(project_id), operation_key(request)
+        data = await read(request, SettlementRequest)
+
+        def create_request():
+            # Preserve idempotent replays, including if PayPal's state changed later.
+            if finance is not None and repo.operation(project_id, key)['state'] != 'confirmed':
+                finance.check_intake(repo, project_id, data)
+            result = repo.command('create', {**data, 'project_id': project_id}, key)
+            if os.getenv('TRATO_FILE_PROCESSING_ENABLED') == 'true' and os.getenv('TRATO_VECTOR_SEARCH_ENABLED') == 'true':
+                try:
+                    prepare_request_evidence(settings, repo, owner, project_id, data['request_evidence'])
+                except ApiError as error:
+                    return {**result, 'evidence_processing_error': error.code}
+            return result
+
+        return reply(await run_in_threadpool(create_request))
 
     @router.get('/refunds/{settlement_id}')
     def detail(settlement_id: str, repo=Depends(repository)):

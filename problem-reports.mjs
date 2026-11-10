@@ -31,7 +31,7 @@ export function problemAttentionHeading(reports){
 const badge=r=>r.status==='open'?(r.your_turn?['review','badgeYourTurn']:['','badgeWaiting']):[r.status==='resolved'?'ok':'',`status.${known(STATUSES,r.status)}`];
 export function renderProblemReport(r){
  const [tone,key]=badge(r);
- return `<article class="workspace-panel dispute-card problem-card" data-problem-report="${esc(r.id)}"><header><span class="dispute-icon" aria-hidden="true">${icon('flag')}</span><div><small>${t('kind')}${r.revision_no?` · v${esc(r.revision_no)}`:''} · ${esc(date(r.created_at))}</small><h3>${esc(t(`reason.${known(REASONS,r.reason)}`))}</h3></div><span class="badge ${tone}">${t(key)}</span></header>
+ return `<article class="workspace-panel dispute-card problem-card" data-problem-report="${esc(r.id)}"><header><span class="dispute-icon" aria-hidden="true">${icon('flag')}</span><div><small>${t('kind')}${r.stage_position?` · ${esc(t('stage',{number:r.stage_position,title:r.stage_title||''}))}`:r.revision_no?` · v${esc(r.revision_no)}`:''} ·${esc(date(r.created_at))}</small><h3>${esc(t(`reason.${known(REASONS,r.reason)}`))}</h3></div><span class="badge ${tone}">${t(key)}</span></header>
  <p class="problem-notes">${esc(r.notes)}</p>
  <div class="dispute-next"><p>${t(r.status==='open'?(r.your_turn?'next.yourTurn':r.request_document_id&&!r.messages.some(m=>m.author==='freelancer')?'next.registered':'next.waiting'):`next.${known(STATUSES,r.status)}`)}</p><button type="button" class="button ${r.your_turn?'':'secondary'}" data-problem-open="${esc(r.id)}" aria-haspopup="dialog">${icon('messages-square')}${t(r.status==='open'?'reply':'view',{count:r.messages.length+1})}</button></div></article>`;
 }

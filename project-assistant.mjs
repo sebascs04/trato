@@ -117,6 +117,8 @@ export function installProjectAssistant(cloud){
   // Same bottom line as the section guide launcher, placed to its left so neither covers the other.
   const launcher=cloud.document.querySelector?.('.guide-launcher'),width=launcher&&!launcher.hidden?launcher.getBoundingClientRect?.().width:0;
   fab.style.right=width?`${Math.round(28+width+12)}px`:'';
+  // The same spot for the TeTrato a view shows itself (Refunds), so it never moves between screens.
+  cloud.document.documentElement?.style?.setProperty?.('--tetrato-fab-right',fab.style.right||'28px');
  }
  function focusTarget(){
   // Where the user is looking: a change request detail. Verified again by the backend.
@@ -141,6 +143,12 @@ export function installProjectAssistant(cloud){
   void sendKeepingDraft(state,()=>ask(state,uiText('paymentDetective.prompt')));
   renderFloating(state);
  };
+ // Ask the project's TeTrato one prepared question (e.g. whether a client's refund request applies under the policies).
+ cloud.askTeTrato=function(button,{title,question}){
+  const state=openFloating(button,{title});
+  void sendKeepingDraft(state,()=>ask(state,question));
+  renderFloating(state);
+ };
  cloud.openRefundAssistant=function(button,refund){
   const state=openFloating(button,{title:uiText(`refund.wizard.step${refund.step}`),refund});
   const key={request:'requestPrompt',proposal:'proposalPrompt',email:'emailPrompt',reply:'replyPrompt'}[refund.task];
@@ -155,9 +163,10 @@ export function installProjectAssistant(cloud){
   floatingPanel.element.classList.toggle('tetrato-refund',!!refund);
   const next=refund?.task==='guide'&&!state.loading&&!state.historyError&&!state.job.state.uncertain&&!['queued','running'].includes(state.job.state.status)
    ?`<button type="button" class="text-button" data-assistant-action="refund-next">${uiText('refundAI.nextQuestion')}</button>`:'';
-  const clear=refund?`<button type="button" class="text-button" data-assistant-action="clear-refund" ${state.loading||state.applyingRefund||['queued','running','unavailable'].includes(state.job.state.status)?'disabled':''}>${uiText('refundAI.clearConversation')}</button>`:'';
-  const focus=ready&&state.focus?`<div class="tetrato-focus" role="note"><span class="tetrato-focus-icon" aria-hidden="true">${icon(refund?'file-text':'git-compare-arrows')}</span><div><small>${text('focusLabel')}</small><strong title="${esc(state.focus.title)}">${esc(state.focus.title)}</strong></div>${next}${clear}</div>`:'';
-  floatingPanel.render(`<div class="case-agent-shell"><header class="case-agent-header"><div class="case-agent-heading"><img class="case-agent-mascot" src="/assets/mascot/trato-guide.png" alt="" width="44" height="44"><div><span>Trato</span><h2 id="tetrato-floating-title">TeTrato</h2></div></div><button type="button" class="case-agent-close" data-agent-close aria-label="${uiText('Cerrar')}" title="${uiText('Cerrar')}">${icon('x')}</button></header>${refund?focus:''}<div class="case-agent-chat tetrato-floating-body" data-agent-chat>${refund?'':focus}${ready?body.innerHTML:renderAIActivity({label:text('loadingHistory'),compact:true})}</div></div>`);
+  // One TeTrato per project: in a refund it keeps the whole project conversation and only notes what it is looking at,
+  // in the same place as on any other screen.
+  const focus=ready&&state.focus?`<div class="tetrato-focus" role="note"><span class="tetrato-focus-icon" aria-hidden="true">${icon(refund?'file-text':'git-compare-arrows')}</span><div><small>${text('focusLabel')}</small><strong title="${esc(state.focus.title)}">${esc(state.focus.title)}</strong></div>${next}</div>`:'';
+  floatingPanel.render(`<div class="case-agent-shell"><header class="case-agent-header"><div class="case-agent-heading"><img class="case-agent-mascot" src="/assets/mascot/trato-guide.png" alt="" width="44" height="44"><div><span>Trato</span><h2 id="tetrato-floating-title">TeTrato</h2></div></div><button type="button" class="case-agent-close" data-agent-close aria-label="${uiText('Cerrar')}" title="${uiText('Cerrar')}">${icon('x')}</button></header><div class="case-agent-chat tetrato-floating-body" data-agent-chat>${focus}${ready?body.innerHTML:renderAIActivity({label:text('loadingHistory'),compact:true})}</div></div>`);
   restoreChatScroll(floatingPanel.element.querySelector('.project-assistant-log'),state.chatScroll);
  }
  fab?.addEventListener('click',()=>openFloating(fab,focusTarget()));
@@ -351,10 +360,11 @@ export function installProjectAssistant(cloud){
   const job=state.job.state,pending=['queued','running'].includes(job.status);
   const inRefund=!!(floatingOpen()&&state.focus?.refund);
   const currentRefund=focus=>focus&&(focus.conversation_id??null)===state.refundConversation;
-  const showJob=!inRefund||currentRefund(job.payload?.refund_focus);
+  // The whole project conversation, also inside a refund (same TeTrato everywhere).
+  const showJob=true;void currentRefund;
   const failed=showJob&&['failed','unavailable'].includes(job.status);
-  const entries=inRefund?state.entries.filter(entry=>currentRefund(entry.result.refund_focus)):state.entries;
-  const showOlder=state.nextBefore&&(!inRefund||!state.refundConversation||entries.some(entry=>entry.position===state.nextBefore));
+  const entries=state.entries;
+  const showOlder=!!state.nextBefore;
   const citations=value=>{
    // Status quotes are literal fragments of the project's JSON state (that is what is verified); show them as readable facts.
    const status=value.citations.filter(c=>value.sources.find(s=>s.source_id===c.source_id)?.source_kind==='status');

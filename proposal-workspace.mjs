@@ -16,12 +16,16 @@ const deadlineLabel=value=>{const match=/^(\d{4})-(\d{2})-(\d{2})$/.exec(String(
 const paidAmount=payment=>new Intl.NumberFormat(uiLocale(),{style:'currency',currency:payment.currency||'USD'}).format(payment.amount_minor/100);
 // Beside the version, the first thing the freelancer reads.
 export function paidBadge(payment){
- return payment?.status==='completed'?`<span class="badge proposal-paid-badge">${uiIcon('check')}${uiText('proposal.paidBadge',{amount:paidAmount(payment)})}</span>`:'';
+ if(payment?.status!=='completed')return '';
+ // Same words the client reads in their space once money went back.
+ const refunded=payment.refunded_minor>0,key=!refunded?'proposal.paidBadge':payment.refunded_minor>=payment.amount_minor?'proposal.refundedBadge':'proposal.partiallyRefundedBadge';
+ return `<span class="badge proposal-paid-badge">${uiIcon(refunded?'undo-2':'check')}${uiText(key,{amount:paidAmount(refunded?{...payment,amount_minor:payment.refunded_minor}:payment)})}</span>`;
 }
 export function paymentRecord(payment,when){
  if(payment?.status!=='completed')return '';
  const amount=paidAmount(payment);
- return `<article class="client-accepted"><header><span class="client-accepted-icon" aria-hidden="true">${uiIcon('credit-card')}</span><div><strong>${uiText('clientReply.paid',{amount})}</strong><time datetime="${esc(payment.updated_at)}">${uiText('clientReply.paidAt',{date:when(payment.updated_at)})}</time></div></header></article>`;
+ const refund=payment.refunded_minor>0?`<article class="client-accepted"><header><span class="client-accepted-icon" aria-hidden="true">${uiIcon('undo-2')}</span><div><strong>${uiText('clientReply.refunded',{amount:paidAmount({...payment,amount_minor:payment.refunded_minor})})}</strong></div></header></article>`:'';
+ return `<article class="client-accepted"><header><span class="client-accepted-icon" aria-hidden="true">${uiIcon('credit-card')}</span><div><strong>${uiText('clientReply.paid',{amount})}</strong><time datetime="${esc(payment.updated_at)}">${uiText('clientReply.paidAt',{date:when(payment.updated_at)})}</time></div></header></article>${refund}`;
 }
 export function installProposalWorkspace(cloud){
  installCaseAssistant(cloud);
@@ -123,7 +127,7 @@ export function installProposalWorkspace(cloud){
   for(const row of container.children){const id=row.querySelector('[data-request-primary]')?.dataset.cloudId,p=summary(id),closure=this.requestStatus?.closures.find(c=>c.request_document_id===id);
    if(closure&&!p){row.querySelector('[data-request-status]').textContent=uiText("Cerrado");row.querySelector('[data-request-primary]').remove();continue;}
    if(!p)continue;
-   row.querySelector('[data-request-status]').textContent=uiText(p.business_status);
+   row.querySelector('[data-request-status]').textContent=p.refunded_minor>0?uiText(p.refunded_minor>=p.paid_minor?'clientAccount.state.refunded':'clientAccount.state.partiallyRefunded'):uiText(p.business_status);
    const version=row.querySelector('[data-request-version]');version.hidden=false;version.textContent=`${uiText("Adenda v")}${p.revision_no}`;
    const button=row.querySelector('[data-request-primary]');button.dataset.cloudAction='manage-change';button.textContent=['Finalizado','Cerrado'].includes(p.business_status)?uiText("Ver detalles →"):uiText("Continuar cambio →");
   }
@@ -678,13 +682,17 @@ export function installProposalWorkspace(cloud){
     const form=event.target;form.querySelectorAll('button,input,textarea').forEach(b=>b.disabled=true);
     form.insertAdjacentHTML('beforeend',`<div data-invoice-sending style="margin-top:20px">${renderAIActivity({label:uiText('invoice.sending'),compact:true})}</div>`);
     try{await this.request(base(data)+'/invoice',this.json({concept:values.get('concept'),confirmed:true}));}
-    finally{form.querySelectorAll('button,input,textarea').forEach(b=>b.disabled=false);form.querySelector('[data-invoice-sending]')?.remove();}
+    catch(error){form.querySelectorAll('button,input,textarea').forEach(b=>b.disabled=false);form.querySelector('[data-invoice-sending]')?.remove();throw error;}
     // PayPal Sandbox does not email real inboxes: Trato's own payment email carries the invoice link, sent in the same step.
+    // The activity stays until that email is out too, so the window never looks idle while it works.
     let mailed=true;
     try{const mail=await this.request(base(data)+'/email-preview?kind=payment');await this.request(base(data)+'/email?kind=payment',this.json({digest:mail.digest,confirmed:true}));}
     catch{mailed=false;}
-    this.modal.close();this.historyGeneration++;this.historyLoaded=false;this.historyPending=null;this.projectActivity=[];
-    await refresh(this.requestId,undefined,{reloadStatus:true});this.message=uiText(mailed?'invoice.sentWithEmail':'invoice.emailFailed');this.notify();return;
+    // The result in the same window, at once; the request card updates quietly behind it instead of reloading the view.
+    this.show(uiText(mailed?'invoice.sentTitle':'invoice.sentNoEmailTitle'),`<p role="status">${esc(uiText(mailed?'invoice.sentWithEmail':'invoice.emailFailed'))}</p><div class="dialog-actions"><button type="button" class="button" data-cloud-close>${uiText('Cerrar')}</button></div>`);
+    this.historyGeneration++;this.historyLoaded=false;this.historyPending=null;this.projectActivity=[];
+    void refresh(this.requestId,undefined,{reloadStatus:true,quiet:true}).catch(error=>{this.message=error.message;this.notify();});
+    return;
    }
    if(kind==='proposal-close-request'){
     const id=this.closingRequestId;

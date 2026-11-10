@@ -109,6 +109,69 @@ class AccountProblemsTests(unittest.TestCase):
         self.assertEqual(data, {'p1': {'status': 'open', 'request_paid': True}})
 
 
+class StageProblemTests(unittest.TestCase):
+    PROJECT = '66666666-6666-4666-8666-666666666666'
+
+    def client(self):
+        from trato_api.client_portal import build_client_portal_router
+
+        class Rpc:
+            def __init__(self): self.calls = []
+            def rpc(self, name, data):
+                self.calls.append((name, data))
+                if name == 'client_account_report_stage_problem':
+                    return {'report_id': REPORT, 'problem': {'status': 'open', 'messages': []}}
+                if name == 'client_account_stage_problems':
+                    return [{'project_id': 'p', 'position': 1, 'status': 'open', 'request_paid': False}]
+                return {'status': 'open'}
+
+        class Account(Store):
+            def __init__(self): super().__init__(); self.repo = Rpc()
+            def agreements(self, user): return []
+
+        self.store = Account()
+        return app_with(build_client_portal_router(None, self.store, require_user=lambda: '77777777-7777-4777-8777-777777777777'), '/api/v1/portal')
+
+    def test_the_client_reports_a_paid_deliverable_with_the_same_rules(self):
+        with self.client() as client:
+            base = f'/api/v1/portal/account/projects/{self.PROJECT}/stages/1/problem'
+            self.assertEqual(client.post(base, json={'reason': 'quality', 'notes': ' Blurry '}).json()['data'], {'status': 'open', 'messages': []})
+            self.assertEqual(client.post(base, json={'reason': 'refund', 'notes': 'x'}).status_code, 422)
+            self.assertEqual(client.post(base + '/close', json={'status': 'refunded'}).status_code, 422)
+            self.assertEqual(client.post(f'/api/v1/portal/account/projects/{self.PROJECT}/stages/0/problem', json={'reason': 'quality', 'notes': 'x'}).status_code, 422)
+        name, data = self.store.repo.calls[0]
+        self.assertEqual((name, data['p_position'], data['p_notes']), ('client_account_report_stage_problem', 1, 'Blurry'))
+
+    def test_the_client_lists_learn_the_state_of_deliverable_reports(self):
+        with self.client() as client:
+            data = client.get('/api/v1/portal/account/problems').json()['data']
+        self.assertEqual(data, {'stage:p:1': {'status': 'open', 'request_paid': False}})
+
+    def test_the_freelancer_sees_the_deliverable_instead_of_a_version(self):
+        stage = {**report(), 'revision_id': None, 'stage_position': 1}
+
+        class StageRepo(Repo):
+            def rows(self, table, params):
+                if table == 'project_start_stages':
+                    return [{'position': 1, 'title': 'Planning'}]
+                return super().rows(table, params)
+        from trato_api.problem_reports import project_reports
+        row = project_reports(StageRepo([stage], []), PROJECT)['reports'][0]
+        self.assertEqual((row['stage_position'], row['stage_title'], row['revision_no']), (1, 'Planning', None))
+
+    def test_the_freelancer_email_for_a_deliverable_is_claimed_by_report(self):
+        from trato_api.problem_alerts import ProblemAlerts
+
+        class Claim:
+            def __init__(self): self.calls = []
+            def rpc(self, name, data):
+                self.calls.append(name)
+                return {'acquired': False} if name == 'problem_alert_claim_report' else None
+        repo = Claim()
+        self.assertIsNone(ProblemAlerts(None, repo, object()).notify_report(REPORT))
+        self.assertEqual(repo.calls, ['problem_alert_claim_report'])
+
+
 class Repo:
     def __init__(self, reports, messages, projects=()):
         self.reports, self.messages, self.projects, self.rpcs = reports, messages, list(projects), []

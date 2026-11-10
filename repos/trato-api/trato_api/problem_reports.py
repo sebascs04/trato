@@ -15,18 +15,28 @@ from starlette.concurrency import run_in_threadpool
 from .errors import ApiError
 from .persistence import Repository, uuid
 
-REPORT_FIELDS = 'id,project_id,proposal_id,revision_id,reason,notes,status,created_at,updated_at,closed_at,request_document_id'
+REPORT_FIELDS = 'id,project_id,proposal_id,revision_id,reason,notes,status,created_at,updated_at,closed_at,request_document_id,stage_position'
+
+
+def stage_titles(repo, project_id, reports):
+    # A report on a paid Work plan deliverable is named by its stage instead of an addendum version.
+    positions = sorted({r['stage_position'] for r in reports if r.get('stage_position') is not None})
+    if not positions:
+        return {}
+    rows = repo.rows('project_start_stages', {'select': 'position,title', 'project_id': 'eq.' + uuid(project_id),
+                                              'position': 'in.(' + ','.join(str(int(p)) for p in positions) + ')'})
+    return {row['position']: row['title'] for row in rows}
 
 PDF_LABELS = {
-    'es': {'title': 'Reporte del cliente', 'project': 'Proyecto', 'version': 'Adenda pagada', 'date': 'Fecha', 'reason': 'Motivo',
+    'es': {'title': 'Reporte del cliente', 'project': 'Proyecto', 'version': 'Pagado', 'date': 'Fecha', 'reason': 'Motivo',
            'report': 'Lo que reportó el cliente', 'conversation': 'Conversación en Trato', 'client': 'Cliente', 'freelancer': 'Freelancer',
            'not_received': 'No lo recibió', 'not_as_agreed': 'No es lo acordado', 'quality': 'Problema de calidad', 'other': 'Otra cosa'},
-    'en': {'title': 'Client report', 'project': 'Project', 'version': 'Paid addendum', 'date': 'Date', 'reason': 'Reason',
+    'en': {'title': 'Client report', 'project': 'Project', 'version': 'Paid', 'date': 'Date', 'reason': 'Reason',
            'report': 'What the client reported', 'conversation': 'Conversation in Trato', 'client': 'Client', 'freelancer': 'Freelancer',
            'not_received': "Didn't receive it", 'not_as_agreed': 'Not what was agreed', 'quality': 'Quality problem', 'other': 'Something else'}}
 
 
-def render_report_pdf(report, project_name, revision_no, messages, language):
+def render_report_pdf(report, project_name, subject, messages, language):
     """The client's own words as a PDF, so the usual request upload can register it. Same engine and font as other Trato PDFs."""
     from io import BytesIO
     from pathlib import Path
@@ -52,7 +62,7 @@ def render_report_pdf(report, project_name, revision_no, messages, language):
                 raise ApiError('PDF_UNSUPPORTED_CHARACTER', 422)
             story.append(Paragraph(escape(text).replace('\n', '<br/>'), title if heading else style))
         add(labels['title'], True)
-        add(f"{labels['project']}: {project_name}\n{labels['version']}: v{revision_no}\n{labels['date']}: {report['created_at'][:10]}\n"
+        add(f"{labels['project']}: {project_name}\n{labels['version']}: {subject}\n{labels['date']}: {report['created_at'][:10]}\n"
             f"{labels['reason']}: {labels.get(report['reason'], labels['other'])}")
         add(labels['report'], True)
         add(report['notes'])
@@ -76,10 +86,18 @@ def own_report(repo, project_id, report_id):
 def report_pdf(repo, project_id, report_id, language):
     report = own_report(repo, project_id, report_id)
     project = repo.rows('projects', {'select': 'name', 'id': 'eq.' + uuid(project_id)})
-    revision = repo.rows('proposal_revisions', {'select': 'revision_no', 'id': 'eq.' + uuid(report['revision_id'])})
-    if len(project) != 1 or len(revision) != 1:
+    if len(project) != 1:
         raise ApiError('PROBLEM_NOT_FOUND', 404)
-    return render_report_pdf(report, project[0]['name'], revision[0]['revision_no'], messages_by_report(repo, [report['id']])[report['id']], language)
+    if report.get('stage_position') is not None:
+        # A paid Work plan deliverable: named by its stage instead of an addendum version.
+        title = stage_titles(repo, project_id, [report]).get(report['stage_position'], '')
+        subject = ('Entregable ' if language != 'en' else 'Deliverable ') + f"{report['stage_position']} · {title}"
+    else:
+        revision = repo.rows('proposal_revisions', {'select': 'revision_no', 'id': 'eq.' + uuid(report['revision_id'])})
+        if len(revision) != 1:
+            raise ApiError('PROBLEM_NOT_FOUND', 404)
+        subject = f"v{revision[0]['revision_no']}"
+    return render_report_pdf(report, project[0]['name'], subject, messages_by_report(repo, [report['id']])[report['id']], language)
 
 
 def link_request(repo, project_id, report_id, document_id):
@@ -135,11 +153,13 @@ def project_reports(repo, project_id):
                                                    'order': 'created_at.desc', 'limit': 20})
     messages = messages_by_report(repo, [r['id'] for r in reports])
     versions = {}
-    if reports:
-        versions = {r['id']: r['revision_no'] for r in repo.rows('proposal_revisions', {'select': 'id,revision_no',
-                                                                                         'id': in_list({r['revision_id'] for r in reports})})}
+    revisions = {r['revision_id'] for r in reports if r.get('revision_id')}
+    if revisions:
+        versions = {r['id']: r['revision_no'] for r in repo.rows('proposal_revisions', {'select': 'id,revision_no', 'id': in_list(revisions)})}
+    titles = stage_titles(repo, project_id, reports)
     return {'reports': [{'id': r['id'], 'reason': r['reason'], 'notes': r['notes'], 'status': r['status'],
-                         'revision_no': versions.get(r['revision_id']), 'created_at': r['created_at'], 'closed_at': r['closed_at'],
+                         'revision_no': versions.get(r.get('revision_id')), 'stage_position': r.get('stage_position'),
+                         'stage_title': titles.get(r.get('stage_position')), 'created_at': r['created_at'], 'closed_at': r['closed_at'],
                          'messages': messages[r['id']], 'your_turn': your_turn(r, messages[r['id']]),
                          'request_document_id': r.get('request_document_id')} for r in reports]}
 

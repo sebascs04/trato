@@ -11,6 +11,29 @@ from ..errors import ApiError
 from .workflow import InitialPayments
 from .stages import StagePayments
 
+def with_stage_refunds(repository,project_id,progress):
+    """A paid stage also says how much of it PayPal confirmed as refunded: the same total Refunds and the client's Work plan use."""
+    stages=progress.get('stages') if isinstance(progress,dict) else None
+    paid=[s for s in stages or [] if isinstance(s,dict) and s.get('status')=='completed' and s.get('payment_id')]
+    if not paid:return progress
+    payments={p['id']:p for p in repository.rpc('refund_payments',{'p_project_id':project_id}) or [] if isinstance(p,dict)}
+    for stage in paid:
+        payment=payments.get(str(stage['payment_id']))
+        if payment:
+            stage['paid_minor']=payment['amount_minor']
+            stage['refunded_minor']=min(payment['amount_minor'],payment.get('local_previous_refunds_minor') or 0)
+    # The client's own refund request on a paid stage, so the freelancer's tag says it like the client's does. Optional.
+    try:
+        rows=repository.rows('client_refund_requests',{'select':'stage_position,status,settlement_id,created_at','project_id':'eq.'+str(project_id),'stage_position':'not.is.null','order':'created_at.asc'})
+        open_ids=[r['settlement_id'] for r in rows if r.get('settlement_id')]
+        done={s['id'] for s in repository.rows('refund_settlements',{'select':'id','id':'in.('+','.join(open_ids)+')','status':'in.(completed,closed_without_refund,rejected,withdrawn)'})} if open_ids else set()
+        for stage in paid:
+            asked=[r for r in rows if r['stage_position']==stage.get('position') and (r['status']=='open' or r['status']=='registered' and r['settlement_id'] not in done)]
+            if asked:stage['refund_request']=asked[-1]['status']
+    except Exception:  # noqa: BLE001 - the plan still shows without it
+        pass
+    return progress
+
 class PaymentInput(BaseModel):
     model_config=ConfigDict(extra='forbid')
     amount_minor:int=Field(strict=True,ge=1,le=99999999999)
@@ -90,7 +113,7 @@ def build_initial_payment_router(settings,require_user,*,workflow=None,repositor
     @router.get('/projects/{project_id}/plan-progress')
     def progress(project_id:str,repository=Depends(repo),owner=Depends(require_user)):
         repository.project(uuid(project_id))
-        return reply(repository.rpc('project_plan_progress',{'p_project':uuid(project_id)}))
+        return reply(with_stage_refunds(repository,uuid(project_id),repository.rpc('project_plan_progress',{'p_project':uuid(project_id)})))
     @router.get('/projects/{project_id}/stages/{position}/evidence-withdrawals')
     def evidence_pending(project_id:str,position:int,repository=Depends(repo),owner=Depends(require_user)):
         if not 1<=position<=8:raise ApiError('PLAN_STAGE_INVALID',422)

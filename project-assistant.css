@@ -133,3 +133,26 @@ body.case-agent-open{overflow:hidden}
 .tetrato-refund .project-assistant-log{flex:1;min-height:0;margin:0 0 12px}
 .tetrato-refund [data-project-question]{flex:none}
 .tetrato-refund [data-project-question] textarea{max-height:24dvh}
+/* Ask TeTrato inside a view (refunds, a client addendum) is this same floating TeTrato, at the global button spot. */
+.tetrato-fab-local{right:var(--tetrato-fab-right,28px);z-index:121}
+
+/* Ask TeTrato inside a refund conversation: the mascot is big enough to be seen; the decision buttons keep their gap. */
+.tetrato-ask{display:flex;align-items:center;gap:10px;width:fit-content;min-height:48px;padding:5px 16px 5px 8px;margin:10px auto 14px;font-weight:600}.tetrato-ask img{width:36px;height:36px;object-fit:contain}
+.tetrato-decide{display:flex;flex-wrap:wrap;gap:10px;margin-top:14px}
+.problem-side-dialog [hidden]{display:none!important}
+.problem-side-dialog [data-client-thread-declining]{margin-top:14px}
+.problem-side-dialog .dispute-messages{max-height:none}
+/* The refund conversation has more parts than a problem (TeTrato, reply, decision): the messages take the free space and scroll. */
+.problem-conversation.refund-thread{display:flex;flex-direction:column;gap:12px;min-height:0}
+.problem-conversation.refund-thread .dispute-messages{flex:1 1 auto;min-height:150px}
+.problem-conversation.refund-thread>*:not(.dispute-messages){flex:none}
+.problem-conversation.refund-thread .problem-reply{margin:0}
+
+/* A refund request that ended: declined or withdrawn in red, refunded in green. */
+.refund-thread-closed{display:flex;gap:12px;align-items:flex-start;margin-top:14px;padding:14px 16px;border:1px solid #dcd2ef;border-radius:14px;background:#f6f2fc}
+.refund-thread-closed .ui-icon{flex:none;width:22px;height:22px;margin-top:1px}
+.refund-thread-closed strong{display:block;font-size:14px}.refund-thread-closed p{margin:4px 0 0;font-size:13px}
+.refund-thread-closed blockquote{margin:8px 0 0;padding:8px 12px;border-left:3px solid currentColor;border-radius:0 8px 8px 0;background:#ffffffb3;font-size:13px;white-space:pre-wrap;overflow-wrap:anywhere}
+.refund-thread-closed.is-declined,.refund-thread-closed.is-withdrawn{border-color:#f0c4c4;background:#fdf1f1;color:#a12828}
+.refund-thread-closed.is-declined p,.refund-thread-closed.is-withdrawn p{color:#5c3a3a}
+.refund-thread-closed.is-refunded{border-color:#bfe3cc;background:#eefaf2;color:#1f7a45}

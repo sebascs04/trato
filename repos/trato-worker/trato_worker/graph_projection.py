@@ -14,7 +14,7 @@ REFUND_DOCUMENT_LINKS={'source':'REFUND_EVIDENCE','pdf':'REFUND_PDF','acceptance
 RELATIONS={'HAS_DOCUMENT','HAS_EXTRACTION','HAS_PROPOSAL','RESPONDS_TO','HAS_REVISION','CURRENT_REVISION',
  'SUPPORTED_BY','HAS_PDF','HAS_REVIEW','REVIEWED_PDF','ACCEPTS_REVISION','EVIDENCED_BY','FOR_REVISION',
  'FOLLOWS_ACCEPTANCE','REPLACES_DRAFT','REQUESTED_CHANGES_FROM','BASED_ON_ACCEPTANCE','CURRENT_ACCEPTANCE','HAS_PLAN','HAS_STAGE','DELIVERY_EVIDENCE','STAGE_PAYMENT','PAYMENT_EVIDENCE',
- 'HAS_CHANGE_REQUEST','HAS_NEW_WORK','ASKS_TO_CHANGE','ACCEPTED_PDF','HAS_DISPUTE',
+ 'HAS_CHANGE_REQUEST','HAS_NEW_WORK','ASKS_TO_CHANGE','ACCEPTED_PDF','HAS_DISPUTE','DISPUTE_CONFIRMED_REFUND',
  'REPORTS_PROBLEM_ON','HAS_PROBLEM_REPORT','BECAME_REQUEST','CLIENT_STAGE_REVIEW','REVIEWS_DELIVERY',
 
  'HAS_REFUND','HAS_REFUND_VERSION','REFUND_ORIGINAL_PAYMENT','REFUND_CONFIRMED_RECEIPT','REFUND_APPLIES_TO_PAYMENT',*REFUND_DOCUMENT_LINKS.values()}
@@ -184,13 +184,20 @@ def build_projection(snapshot,context):
         dispute=node('project_dispute_events',row['id'],'Dispute',row)
         payments=[key(table,row[field]) for field,table in (('proposal_payment_id','proposal_payments'),('received_payment_id','project_initial_checkouts')) if row.get(field)]
         edge(next((k for k in payments if k in nodes),pk),'HAS_DISPUTE',dispute)
+    for row in snapshot.get('dispute_refund_receipts',[]):
+        receipt=node('refund_provider_receipts',row['id'],'RefundReceipt',{
+            'amount_minor':row['amount_minor'],'currency':row['currency'],
+            'status':'completed','created_at':row['confirmed_at'],
+        })
+        edge(key('project_dispute_events',row['dispute_event_id']),'DISPUTE_CONFIRMED_REFUND',receipt)
     # The client's problem report in Trato, on the paid addendum version it is about, and the new request it became.
     # Like a dispute it never stops the map: without that version in the graph it hangs from the project.
     for row in snapshot.get('client_problem_reports',[]):
-        report=node('client_problem_reports',row['id'],'ProblemReport',{k:row.get(k) for k in ('reason','status','created_at','closed_at')})
-        revision=key('proposal_revisions',row['revision_id'])
+        report=node('client_problem_reports',row['id'],'ProblemReport',{k:row.get(k) for k in ('reason','status','created_at','closed_at','stage_position')})
+        # On a paid addendum version, or on a paid plan deliverable (no addendum): then it hangs from its stage.
+        revision=key('proposal_revisions',row['revision_id']) if row.get('revision_id') else None
         if revision in nodes:edge(report,'REPORTS_PROBLEM_ON',revision)
-        else:edge(pk,'HAS_PROBLEM_REPORT',report)
+        else:edge(stage_keys.get(row.get('stage_position'),pk),'HAS_PROBLEM_REPORT',report)
         if row.get('request_document_id'):
             request=key('documents',row['request_document_id'])
             if request in nodes:edge(report,'BECAME_REQUEST',request)

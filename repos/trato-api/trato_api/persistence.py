@@ -371,7 +371,8 @@ class Repository:
         for row in data['closures']:
             add('closure-'+row['request_document_id'],'request_closed','Pedido cerrado · '+('Rechazado' if row['reason']=='rejected' else 'Retirado'),row['closed_at'],row['request_document_id'],reason=row['reason'])
         # A problem the client reported in Trato before going to PayPal: the report, each reply and how it was closed.
-        reports={row['id']:row for row in data['problems']}
+        # A report on a paid plan deliverable has no addendum: it belongs to the project group, below.
+        reports={row['id']:row for row in data['problems'] if row.get('proposal_id')}
         for row in reports.values():
             request_id,version=context(row)
             add('problem-'+row['id'],'problem_reported',f'Problema reportado por el cliente · v{version}',row['created_at'],request_id,revision_no=version,reason=row['reason'],source='client_portal')
@@ -418,6 +419,20 @@ class Repository:
                 for row in self.rows('project_stage_reviews',{'select':'document_id,stage_position,decision,created_at',**common,'order':'created_at.asc'}):
                     doc=delivered.get(row['document_id'])
                     if doc:start('stage-review-'+doc['id'],'stage_reviewed',row['created_at'],stage_position=row['stage_position'],decision=row['decision'],title=doc['title'],document_id=doc['id'])
+                # The client's problem report on a paid deliverable: opened, each reply, registered as a new request, closed.
+                stage_reports={row['id']:row for row in self.rows('client_problem_reports',{'select':'id,stage_position,reason,status,created_at,closed_at,request_document_id',
+                                                                                          **common,'stage_position':'not.is.null','order':'created_at.asc'})}
+                for row in stage_reports.values():
+                    start('problem-'+row['id'],'problem_reported',row['created_at'],stage_position=row['stage_position'],reason=row['reason'],source='client_account')
+                    if row.get('closed_at'):start('problem-closed-'+row['id'],'problem_closed',row['closed_at'],stage_position=row['stage_position'],status=row['status'])
+                if stage_reports:
+                    for row in self.rows('client_problem_messages',{'select':'id,report_id,author,created_at','report_id':'in.('+','.join(sorted(stage_reports))+')','order':'created_at.asc','limit':1000}):
+                        start('problem-message-'+row['id'],'problem_message',row['created_at'],stage_position=stage_reports[row['report_id']]['stage_position'],author=row['author'])
+                    linked=sorted({row['request_document_id'] for row in stage_reports.values() if row.get('request_document_id')})
+                    created={doc['id']:doc for doc in self.rows('documents',{'select':'id,title,created_at','kind':'eq.email_request','deleted_at':'is.null','id':'in.('+','.join(linked)+')',**common})} if linked else {}
+                    for row in stage_reports.values():
+                        doc=created.get(row.get('request_document_id'))
+                        if doc:start('problem-request-'+row['id'],'problem_request_registered',doc['created_at'],stage_position=row['stage_position'],new_request_title=doc['title'],new_request_id=doc['id'])
                 progress=self.rpc('project_plan_progress',{'p_project':project['id']}) or {}
                 for row in progress.get('stages') or []:
                     stage=stages.get(row.get('position'))

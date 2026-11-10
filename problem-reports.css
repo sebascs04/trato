@@ -1,4 +1,7 @@
 /* Report a problem, freelancer side. Cards, badges and the side panel come from dispute-workspace.css. */
+/* Report a problem inside a paid deliverable's view (client side), same look as on an addendum. */
+.stage-problem{margin-top:14px}
+.stage-problem .portal-problem{margin:0}
 /* Switch between PayPal disputes and client problems in the same tab. */
 .dispute-switch{display:inline-flex;gap:4px;padding:4px;margin:0 0 14px;border:1px solid var(--line);border-radius:12px;background:var(--surface-soft,#f7f5fb);max-width:100%;overflow-x:auto}
 .dispute-switch button{display:inline-flex;align-items:center;gap:8px;min-height:36px;padding:0 14px;border:0;border-radius:9px;background:transparent;color:var(--muted);font:inherit;font-size:14px;font-weight:600;cursor:pointer;white-space:nowrap}

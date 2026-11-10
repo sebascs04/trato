@@ -298,7 +298,7 @@ class DisputeHistoryTests(unittest.TestCase):
         rows = [{'id': '1', 'dispute_id': 'PP-R-1', 'kind': 'dispute_opened', 'details': {'reason': 'X'}, 'happened_at': '2026-11-08T06:00:00+00:00'},
                 {'id': '2', 'dispute_id': 'PP-R-1', 'kind': 'client_message', 'details': {'text': 'Claim'}, 'happened_at': '2026-11-08T07:00:00+00:00'}]
         class History:
-            def rows(self, table, params): return rows
+            def rows(self, table, params): return rows if table == 'project_dispute_events' else []
             def rpc(self, name, params): raise ApiError('RPC_FAILED', 500)
         groups = with_dispute_groups(History(), PROJECT, [{'group_kind': 'project', 'group_id': 'p', 'last_at': '2026-11-01T00:00:00+00:00', 'event_count': 1}])
         self.assertEqual([g['group_kind'] for g in groups], ['dispute', 'project'])
@@ -308,3 +308,17 @@ class DisputeHistoryTests(unittest.TestCase):
         rows.insert(0, {'id': '0', 'dispute_id': 'PP-R-1', 'kind': 'client_message', 'details': {}, 'happened_at': '2026-11-08T06:00:00+00:00'})
         self.assertEqual(dispute_activity(History(), PROJECT, 'PP-R-1')[-1]['kind'], 'dispute_opened', 'the opening is the oldest even at the same time')
         self.assertFalse(record_disputes(History(), PROJECT, [self.dispute]))
+
+    def test_dispute_history_shows_the_linked_provider_receipt(self):
+        from trato_api.dispute_history import dispute_activity
+
+        class History:
+            def rows(self, table, params):
+                if table == 'project_dispute_events':
+                    return [{'id': 'open', 'dispute_id': 'PP-R-TEST-1', 'kind': 'dispute_opened',
+                             'details': {}, 'happened_at': '2026-11-08T06:00:00Z'}]
+                return [{'id': 'receipt', 'dispute_id': 'PP-R-TEST-1', 'amount_minor': 1000,
+                         'currency': 'USD', 'confirmed_at': '2026-11-09T06:00:00Z'}]
+
+        events = dispute_activity(History(), PROJECT, 'PP-R-TEST-1')
+        self.assertEqual((events[0]['kind'], events[0]['amount_minor']), ('dispute_refund_confirmed', 1000))

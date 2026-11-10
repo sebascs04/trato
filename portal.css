@@ -122,3 +122,22 @@
 .portal-assistant .ai-activity .ai-activity-orbit{flex:0 0 36px;width:36px;height:36px;margin:0}
 .portal-assistant .ai-activity .ai-activity-mascot{width:36px;height:36px}
 .portal-assistant .ai-activity>strong{margin:0;font-size:14px;font-weight:500;line-height:1.5}
+
+.portal-assistant-sources{display:flex;flex-wrap:wrap;gap:4px 8px;align-items:baseline;margin-top:8px}
+.portal-assistant-sources>span{color:var(--muted,#71677e)}
+.portal-assistant-sources .portal-link{padding:0;font-size:inherit;text-align:left}
+/* The floating TeTrato on the public addendum page (same look as in the app, see project-assistant.css). */
+.tetrato-fab{position:fixed;right:28px;bottom:24px;z-index:119;display:flex;align-items:center;gap:10px;min-height:56px;padding:6px 18px 6px 8px;border:1px solid #dcd2ef;border-radius:32px;background:var(--surface,#fff);color:var(--purple,#7955d1);font:inherit;font-weight:600;box-shadow:0 10px 30px #4b2f8a26;cursor:pointer}.tetrato-fab:hover{border-color:var(--purple,#7955d1);background:var(--purple-soft,#f2edf9)}.tetrato-fab:focus-visible{outline:2px solid var(--purple,#7955d1);outline-offset:3px}.tetrato-fab img{width:40px;height:40px;object-fit:contain}@media (max-width:560px){.tetrato-fab{padding:6px}.tetrato-fab span{display:none}}
+
+/* Ask TeTrato inside a refund conversation: the mascot is big enough to be seen; the decision buttons keep their gap. */
+.tetrato-ask{display:flex;align-items:center;gap:10px;width:fit-content;min-height:48px;padding:5px 16px 5px 8px;margin:10px auto 14px;font-weight:600}.tetrato-ask img{width:36px;height:36px;object-fit:contain}
+.tetrato-decide{display:flex;flex-wrap:wrap;gap:10px;margin-top:14px}
+
+/* A refund request that ended: declined or withdrawn in red, refunded in green. */
+.refund-thread-closed{display:flex;gap:12px;align-items:flex-start;margin-top:14px;padding:14px 16px;border:1px solid #dcd2ef;border-radius:14px;background:#f6f2fc}
+.refund-thread-closed .ui-icon{flex:none;width:22px;height:22px;margin-top:1px}
+.refund-thread-closed strong{display:block;font-size:14px}.refund-thread-closed p{margin:4px 0 0;font-size:13px}
+.refund-thread-closed blockquote{margin:8px 0 0;padding:8px 12px;border-left:3px solid currentColor;border-radius:0 8px 8px 0;background:#ffffffb3;font-size:13px;white-space:pre-wrap;overflow-wrap:anywhere}
+.refund-thread-closed.is-declined,.refund-thread-closed.is-withdrawn{border-color:#f0c4c4;background:#fdf1f1;color:#a12828}
+.refund-thread-closed.is-declined p,.refund-thread-closed.is-withdrawn p{color:#5c3a3a}
+.refund-thread-closed.is-refunded{border-color:#bfe3cc;background:#eefaf2;color:#1f7a45}

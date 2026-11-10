@@ -106,6 +106,13 @@ class ClientStepsGraphTests(PlanGraphTests):
   self.assertEqual((node["status"],node["reason"]),("resolved","not_received"))
   self.assertNotIn("notes",node)
 
+ def test_problem_report_on_a_paid_deliverable_hangs_from_its_stage(self):
+  context,snapshot,doc=self.plan();report=str(uuid4())
+  snapshot["client_problem_reports"]=[{"id":report,"revision_id":None,"request_document_id":None,"reason":"quality","status":"open","created_at":"2026-11-10T10:00:00Z","closed_at":None,"stage_position":1}]
+  graph=build_projection(snapshot,context)  # Before the fix, a report without addendum stopped the whole map.
+  stage=next(n for n in graph["nodes"] if n["kind"]=="PlanStage")["entity_key"]
+  self.assertIn(("HAS_PROBLEM_REPORT",stage,"client_problem_reports:"+report),{(e["kind"],e["source"],e["target"]) for e in graph["edges"]})
+
  def test_client_stage_decision_hangs_from_its_stage_and_points_at_the_delivery(self):
   context,snapshot,doc=self.plan()
   snapshot["project_stage_reviews"]=[{"document_id":doc,"stage_position":1,"decision":"approved","created_at":"2026-11-09T11:00:00Z"}]

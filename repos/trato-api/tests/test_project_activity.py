@@ -122,3 +122,19 @@ class NewRecordsActivityTest(ActivityTest):
   self.assertEqual((events["stage-payment-email-7"]["kind"],events["stage-payment-email-7"]["invoice"]),("stage_payment_requested",False))
   self.assertEqual((events["stage-payment-email-8"]["invoice"],events["stage-payment-email-8"]["invoice_number"]),(True,"TR-1"))
   self.assertNotIn("invoice_number",events["stage-payment-email-7"])
+
+ def test_problem_report_on_a_paid_deliverable_joins_the_project_group(self):
+  self.plan_tables={"project_start_plans":[{"created_at":"2026-10-25T10:30:00Z","currency":"USD"}],
+   "project_start_stages":[{"position":1,"title":"Design","amount":"180.00"}],"document_upload_contexts":[],
+   "project_plan_progress":{"completed_at":None,"stages":[]},"project_stage_payment_emails":[]}
+  self.problems=[{"id":"stage-rep","proposal_id":None,"revision_id":None,"stage_position":1,"reason":"quality","status":"open",
+                  "created_at":"2026-10-27T09:00:00Z","closed_at":None,"request_document_id":None}]
+  self.problem_messages=[{"id":"m1","report_id":"stage-rep","author":"client","created_at":"2026-10-27T10:00:00Z"}]
+  repo=self.repo();original=repo.rows
+  def rows(table,params):
+   if table=="documents" and params.get("kind")=="eq.delivery":return []
+   return original(table,params)
+  repo.rows=rows;repo.rpc=lambda name,data:self.plan_tables[name]
+  events={e["id"]:e for e in repo.activity(PROJECT)}  # Before the fix, a report without addendum broke the whole history.
+  self.assertEqual((events["problem-stage-rep"]["group_kind"],events["problem-stage-rep"]["stage_position"]),("project",1))
+  self.assertEqual(events["problem-message-m1"]["group_kind"],"project")

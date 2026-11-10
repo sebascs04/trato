@@ -11,9 +11,12 @@ const date=v=>new Intl.DateTimeFormat(uiLocale(),{dateStyle:'medium',timeStyle:'
 const button=(action,key,attrs='')=>`<button type="button" class="button secondary" data-refund-action="${action}" ${attrs}>${t(key)}</button>`;
 const option=(value,label,selected)=>`<option value="${esc(value)}" ${value===selected?'selected':''}>${esc(label)}</option>`;
 const statuses=['draft','awaiting_response','adjustments_requested','accepted','refund_pending','completed','closed_without_refund','rejected','withdrawn'];
+const terminalStatuses=['completed','closed_without_refund','rejected','withdrawn'];
+const detailAction=status=>terminalStatuses.includes(status)?'wizard.viewDetails':'wizard.resume';
 const codes={REFUND_ALLOCATION_REQUIRED:'allocationMismatch',REFUND_ALLOCATION_MISMATCH:'allocationMismatch',REFUND_PAYMENTS_CHANGED:'paymentsChanged',REFUND_PAYMENTS_REVIEW_REQUIRED:'reviewRequired',REFUND_PAYMENT_CONTEXT_MISMATCH:'paymentUnavailable',REFUND_INITIAL_REFERENCE_REQUIRED:'initialReference',REFUND_PAYER_MISMATCH:'payerMismatch',REFUND_PDF_REQUIRED:'pdfRequired',REFUND_REVIEW_REQUIRED:'pdfRequired',REFUND_PDF_LANGUAGE_LOCKED:'pdfLanguageLocked',REFUND_PDF_HASH_MISMATCH:'pdfHashMismatch',REFUND_SEND_REQUIRED:'sendRequired',EMAIL_PREVIEW_CHANGED:'emailChanged',EMAIL_DELIVERY_UNCERTAIN:'emailUncertain',GMAIL_SENDER_CHANGED:'emailChanged',GMAIL_NOT_CONNECTED:'gmailRequired',GMAIL_READ_PERMISSION_REQUIRED:'gmailRequired',GMAIL_READ_NOT_AUTHORIZED:'gmailRequired',GMAIL_SEND_FAILED:'gmailFailed',GMAIL_READ_FAILED:'gmailFailed',INVALID_REFUND_AMOUNT:'invalidMoney',REFUND_DUPLICATE_CONCEPT:'duplicateConcept',REFUND_AMOUNT_OVERFLOW:'invalidMoney',REFUND_PERCENTAGE_MISMATCH:'invalidRate',REFUND_EVIDENCE_REQUIRED:'evidenceRequired',INVALID_IDEMPOTENCY_KEY:'invalidForm',REFUND_EVIDENCE_MISMATCH:'evidenceMismatch',REFUND_REVISION_CONFLICT:'revisionConflict',REFUND_SETTLEMENT_READ_ONLY:'readOnly',REFUND_PAYMENT_NOT_ELIGIBLE:'paymentUnavailable',PAYMENT_NOT_FOUND:'paymentUnavailable',REFUND_NOT_FOUND:'notFound',REFUND_SNAPSHOT_NOT_FOUND:'notFound',PROJECT_HAS_OPEN_REQUEST:'openRequest',REFUND_PROPOSAL_AMOUNT_MISMATCH:'amountMismatch',REFUND_EXCEEDS_AVAILABLE:'exceeds',REFUND_PRIOR_SETTLEMENT_CONFLICT:'priorConflict',IDEMPOTENCY_KEY_CONFLICT:'keyConflict',INVALID_REQUEST:'invalidForm',INVALID_REFUND_INPUT:'invalidForm'};
 function message(error){
  if(error?.code==='GMAIL_RECONNECT_REQUIRED')return t('gmailReconnectRequired');
+ if(error?.code==='REFUND_PAYMENT_IN_DISPUTE')return t('paymentInDispute');
  if(error?.message?.startsWith('refundFinance.')||error?.code&&/^(REFUND_(FINANCIAL|RECOVERY|REPLAY|RECONCILIATION|REFERENCE|EXECUTION|PREVIOUS_OPERATION|RECEIPT|CAPTURE)|PAYPAL_)/.test(error.code))return financeError(error);
  if(error?.code&&codes[error.code])return t(codes[error.code]);
  if(typeof error?.message==='string'&&/^refund\./.test(error.message))return uiText(error.message);
@@ -71,6 +74,27 @@ export function installRefundWorkspace(cloud){
  const storageKey=s=>`trato:refund-operation:${s.owner}:${s.project}`;
  const current=s=>cloud.refundState===s&&cloud.active&&identity()===s.owner&&cloud.projectId===s.project;
  const notify=s=>{if(current(s))cloud.notify();};
+ cloud.invalidateRefundList=project=>{
+  const s=cloud.refundState;
+  if(s?.project===project&&s.owner===identity())s.refreshPayments=true;
+ };
+ // Back on the tab, the refund list reloads by itself (like the rest of Trato), never in the middle of a step.
+ let refundsHidden=cloud.document?.visibilityState==='hidden';
+ cloud.document?.addEventListener?.('visibilitychange',()=>{
+  if(cloud.document.visibilityState==='hidden'){refundsHidden=true;return;}
+  if(!refundsHidden)return;refundsHidden=false;
+  const s=cloud.refundState;
+  if(s&&current(s)&&cloud.tab==='devoluciones'&&s.loaded&&!s.busy&&!s.pending&&!s.wizardOpen&&!cloud.modal?.open)void load(s);
+ });
+ // Never for money or email sends (those keep their explicit recovery): only registering, drafts, reviews and closes.
+ const autoRecoverable=p=>!!p&&!isFinancialAction(p.action)&&p.action!=='send';
+ async function autoRecover(s){
+  try{await queryPending(s);}catch{}
+  if(!current(s)||!s.pending){if(current(s))s.error='';return;}
+  s.error='';
+  if(s.pendingBody){try{await sendPending(s);}catch(error){if(current(s)&&!s.pending)s.error=message(error);}}
+  else clearPending(s);
+ }
  function clearPending(s){cloud.storage.removeItem(storageKey(s));s.pending=null;s.pendingBody=null;}
  async function run(s,fn){
   if(s.busy||!current(s))return;
@@ -79,12 +103,15 @@ export function installRefundWorkspace(cloud){
   finally{if(current(s)){s.busy=false;notify(s);}}
  }
  async function load(s){
-  if(s.loading)return;s.loading=true;s.error='';
+  if(s.loading)return;s.loading=true;s.error='';s.refreshPayments=false;
   try{
-   const [items,payments,status]=await Promise.all([cloud.request(`/api/v1/projects/${s.project}/refunds`),cloud.request(`/api/v1/projects/${s.project}/refund-payments`),cloud.request(`/api/v1/projects/${s.project}/request-status`)]);
+   // Refund requests the client sent from their own space; a failed read is shown, never treated as «none».
+   const [items,payments,status,requests]=await Promise.all([cloud.request(`/api/v1/projects/${s.project}/refunds`),cloud.request(`/api/v1/projects/${s.project}/refund-payments`),cloud.request(`/api/v1/projects/${s.project}/request-status`),
+    cloud.request(`/api/v1/projects/${s.project}/client-refund-requests`).catch(()=>null)]);
    if(!current(s))return;
    if(!Array.isArray(items)||items.some(x=>x.project_id!==s.project||!statuses.includes(x.status))||!Array.isArray(payments)||typeof status?.can_register!=='boolean')throw Error();
    s.items=items;s.payments=payments;s.status=status;s.loaded=true;cloud.requestStatus=status;
+   s.clientRequests=Array.isArray(requests)?requests.filter(r=>r.project_id===s.project):null;
   }catch(error){if(current(s))s.error=message(error);}
   finally{if(current(s)){s.loading=false;notify(s);}}
  }
@@ -108,6 +135,75 @@ export function installRefundWorkspace(cloud){
   if(members.length!==ids.length)return null;
   return {scope:'project_closure',members,amount_minor:members.reduce((n,p)=>n+p.amount_minor,0),local_previous_refunds_minor:members.reduce((n,p)=>n+p.local_previous_refunds_minor,0)};
  }
+ // The client asked for everything still refundable on that payment: one button refunds it, without a proposal email.
+ function quickRefund(s,r){
+  const p=s.payments.find(x=>x.id===r.received_payment_id);
+  return !!p&&r.status==='open'&&r.requested_minor===p.amount_minor-p.local_previous_refunds_minor;
+ }
+ // Registered by that button (no documentary evidence) and not finished yet.
+ function quickUnfinished(s,r){
+  const x=r.status==='registered'&&s.items.find(i=>i.id===r.settlement_id);
+  return !!x&&Array.isArray(x.request_evidence)&&!x.request_evidence.length&&['draft','accepted','refund_pending'].includes(x.status);
+ }
+ // The row opens the conversation, like a reported problem; refunding or declining is decided there.
+ function clientRequestActions(s,r){
+  if(s.refundingRequest===r.id)return `<button type="button" class="button" disabled>${t('clientRequests.refunding')}</button>`;
+  return `<button type="button" class="button" data-refund-action="client-thread" data-id="${esc(r.id)}" ${s.busy||s.pending||s.storageError?'disabled':''}>${icon('messages-square')}${t('clientRequests.open',{count:(r.messages||[]).length+1})}</button>`;
+ }
+ function clientThreadHtml(s,r){
+  const item=(author,body,at)=>`<li class="is-${author==='client'?'buyer':'seller'}"><small>${uiText(author==='client'?'problems.by.client':'problems.by.you')}${at?` · ${esc(date(at))}`:''}</small><p>${esc(body)}</p></li>`;
+  const list=[item('client',r.reason,r.created_at),...(r.messages||[]).map(m=>item(m.author,m.body,m.created_at))].join('');
+  const quick=quickRefund(s,r)||quickUnfinished(s,r),another=r.status==='open'&&s.items.some(x=>!['completed','closed_without_refund','rejected','withdrawn'].includes(x.status));
+  const refund=quick?`<button type="button" class="button" data-client-thread="refund" ${another?'disabled':''}>${t('clientRequests.refund',{amount:money(r.requested_minor)})}</button>`
+   :`<button type="button" class="button" data-client-thread="review" ${s.status?.can_register!==true?'disabled':''}>${t('clientRequests.review')}</button>`;
+  const decide=r.status==='open'?`<div class="refund-actions tetrato-decide" data-client-thread-decide>${refund}<button type="button" class="button secondary" data-client-thread="decline">${t('clientRequests.decline')}</button></div>
+   <div class="problem-register" data-client-thread-declining hidden><label class="field" for="client-thread-note">${t('clientRequests.declineNote')}</label><textarea class="context-box" id="client-thread-note" rows="3" maxlength="4000" data-client-thread-note></textarea><div class="refund-actions tetrato-decide"><button type="button" class="button" data-client-thread="decline-confirm">${t('clientRequests.declineConfirm')}</button><button type="button" class="text-button" data-client-thread="decline-cancel">${uiText('Cancelar')}</button></div></div>`
+   :quick?`<div class="refund-actions tetrato-decide">${refund}</div>`:'';
+  const reply=r.status==='open'?`<form class="problem-reply" data-client-thread-reply><label class="field" for="client-thread-text">${uiText('problems.replyLabel')}</label><textarea class="context-box" id="client-thread-text" rows="3" maxlength="4000" data-client-thread-text></textarea><footer><button type="submit" class="button secondary">${uiText('problems.send')}</button></footer></form>`:'';
+  // TeTrato weighs the request against the project's documents (agreement, deliveries, the freelancer's refund policy) and PayPal's rules.
+  const ask=r.status==='open'&&cloud.askTeTrato?`<button type="button" class="button secondary tetrato-ask" data-client-thread="ask"><img src="/assets/mascot/trato-guide.png" alt="" width="36" height="36">${t('clientRequests.ask')}</button>`:'';
+  return `<header><h2 id="client-thread-title">${t('clientRequests.conversation',{amount:money(r.requested_minor)})}</h2><button type="button" class="text-button" data-client-thread="close" aria-label="${uiText('Cerrar')}" title="${uiText('Cerrar')}">${icon('x')}</button></header><div class="problem-conversation refund-thread"><ol class="dispute-messages">${list}</ol>${ask}${reply}<p class="cloud-error" role="alert" data-client-thread-error></p>${decide}</div>`;
+ }
+ function openClientThread(s,id){
+  const find=()=>(s.clientRequests||[]).find(r=>r.id===id);if(!find())return;
+  const dialog=cloud.document.createElement('dialog');dialog.className='dispute-docs-dialog dispute-side-dialog problem-side-dialog';dialog.setAttribute('aria-labelledby','client-thread-title');
+  const close=()=>{dialog.close();dialog.remove();};
+  const paint=()=>{const r=find();if(r)dialog.innerHTML=clientThreadHtml(s,r);else close();};
+  const post=(suffix,body)=>cloud.request(`/api/v1/projects/${s.project}/client-refund-requests/${id}/${suffix}`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+  const fail=()=>{const error=dialog.querySelector('[data-client-thread-error]');if(error)error.textContent=t('clientRequests.actionError');dialog.querySelectorAll('button').forEach(b=>b.disabled=false);};
+  dialog.addEventListener('click',async event=>{
+   if(event.target===dialog){close();return;}
+   const button=event.target.closest('[data-client-thread]');if(!button)return;
+   const what=button.dataset.clientThread;
+   if(what==='close'){close();return;}
+   if(what==='ask'){
+    const r=find();close();
+    const item=r.stage_position?t('clientRequests.stage',{number:r.stage_position}):t('clientRequests.addendum');
+    cloud.askTeTrato(cloud.document.querySelector(`[data-refund-action="client-thread"][data-id="${id}"]`),{title:t('clientRequests.conversation',{amount:money(r.requested_minor)}),
+     question:t('clientRequests.askPrompt',{amount:money(r.requested_minor),item,reason:r.reason})});
+    return;
+   }
+   if(what==='decline'||what==='decline-cancel'){
+    // Declining shows only its note: the reply box and TeTrato step aside, and what was typed as a reply becomes the note.
+    const declining=what==='decline',replyBox=dialog.querySelector('[data-client-thread-text]'),note=dialog.querySelector('[data-client-thread-note]');
+    dialog.querySelector('[data-client-thread-decide]').hidden=declining;dialog.querySelector('[data-client-thread-declining]').hidden=!declining;
+    for(const el of dialog.querySelectorAll('[data-client-thread-reply],[data-client-thread="ask"]'))el.hidden=declining;
+    if(declining){if(replyBox?.value.trim()&&!note.value){note.value=replyBox.value.trim();replyBox.value='';}note.focus();}
+    return;
+   }
+   if(what==='refund'||what==='review'){close();void run(s,()=>action(s,what==='refund'?'client-refund':'client-request',{dataset:{id}}));return;}
+   if(what==='decline-confirm'){
+    dialog.querySelectorAll('button').forEach(b=>b.disabled=true);
+    try{s.clientRequests=await post('decline',{note:dialog.querySelector('[data-client-thread-note]').value});close();s.notice=t('clientRequests.declined');notify(s);}catch{fail();}
+   }
+  });
+  dialog.addEventListener('submit',async event=>{
+   event.preventDefault();const text=dialog.querySelector('[data-client-thread-text]').value.trim();if(!text)return;
+   dialog.querySelectorAll('button').forEach(b=>b.disabled=true);
+   try{s.clientRequests=await post('messages',{body:text});paint();notify(s);}catch{fail();}
+  });
+  paint();cloud.document.body.append(dialog);dialog.showModal();
+ }
  function editable(s){return ['draft','adjustments_requested'].includes(s.detail?.settlement.status)&&(!s.snapshot||s.snapshot.id===s.detail.settlement.current_snapshot_id);}
  async function acceptResult(s,result){
   if(!current(s))return;
@@ -115,11 +211,27 @@ export function installRefundWorkspace(cloud){
   if(!result?.settlement?.id||result.settlement.project_id!==s.project||s.pending?.settlementId&&result.settlement.id!==s.pending.settlementId)throw Error();
   if(s.pending?.action==='edit_draft'&&!result.snapshot)throw Error();
   const financial=isFinancialAction(s.pending?.action),reviewRequired=result.application_recorded===false;
+  const clientRequest=s.pending?.action==='create'?s.pending.client_request_id:null;
+  const created=s.pending?.action==='create';
   clearPending(s);
   s.items=[result.settlement,...s.items.filter(x=>x.id!==result.settlement.id)];
+  // Registered from the client's own request: it now points to this refund, so the client sees it in progress.
+  if(clientRequest)try{s.clientRequests=await cloud.request(`/api/v1/projects/${s.project}/client-refund-requests/${clientRequest}/registered`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({settlement_id:result.settlement.id})});}
+   catch{if(current(s))s.notice=t('clientRequests.linkFailed');}
   s.editor=null;s.request=null;s.pick=null;
   await openDetail(s,result.settlement.id);await load(s);
   if(result.delivery?.status==='failed'&&current(s))s.error=message({code:result.delivery.error_code||'GMAIL_SEND_FAILED'});
+  if(result.evidence_processing_error&&current(s))s.error=t('evidenceProcessingError');
+  // Registering a request proposes the full refund by default, so the next screen is already Refund.
+  if(created&&current(s)&&s.detail?.settlement.status==='draft'&&!s.snapshot&&payment(s)){
+   try{
+    let editor={items:[],conditions:t('create.fullRefundTerms')};
+    if(s.autoRefund){s.editor={simple:true,...s.autoRefund};try{editor=simpleEditor(s);}finally{s.editor=null;s.autoRefund=null;}}
+    const {terms}=buildRefundTerms(editor,payment(s));await write(s,'edit_draft',{expected_snapshot_id:null,terms});
+   }
+   catch{if(current(s))s.step=2;}
+   return;
+  }
   if(financial&&current(s)){s.financeNotice=uiText(reviewRequired?'refundFinance.reviewNeeded':'refundFinance.recorded');cloud.historyLoaded=false;}
  }
  async function write(s,action,body,metadata={}){
@@ -159,8 +271,43 @@ export function installRefundWorkspace(cloud){
   if(data.document?.id!==id||data.document.project_id!==s.project||data.extraction?.status!=='ready'||!data.extraction.id||!data.document.sha256||!Array.isArray(data.segments))throw Error('refund.evidenceMismatch');
   pick.data=data;pick.segment=0;pick.quote=data.segments[0]?.text.slice(0,4000)||'';
  }
+ // The request's proof in one go: save the PDF as a project document, wait until Trato has read it and cite its text.
+ async function attachProof(s,file){
+  if(!file?.size||file.size>10485760||!/\.pdf$/i.test(file.name))throw Error('refund.create.proofInvalid');
+  s.registering='uploading';notify(s);
+  const meta={filename:file.name,title:t('create.proofTitle'),kind:'reference',...uploadContext(s)};
+  if(s.proofUpload?.command!==JSON.stringify([meta,file.size,file.lastModified]))s.proofUpload={command:JSON.stringify([meta,file.size,file.lastModified]),key:crypto.randomUUID()};
+  const saved=await cloud.request(`/api/v1/projects/${s.project}/documents?${new URLSearchParams(meta)}`,{method:'POST',body:file,headers:{'Content-Type':'application/pdf','Idempotency-Key':s.proofUpload.key}});
+  const id=saved?.document?.id;if(!id)throw Error('refund.evidenceMismatch');
+  if(!cloud.documents.some(d=>d.id===id))cloud.documents=[saved.document,...cloud.documents];
+  s.registering='reading';notify(s);
+  for(let attempt=0;attempt<60;attempt++){
+   let data=null;
+   try{data=await cloud.request(`/api/v1/documents/${id}/extraction`);}catch(error){if(error.status&&error.status<500&&![404,409].includes(error.status))throw error;}
+   if(!current(s))throw Error('refund.evidenceMismatch');
+   if(data?.extraction?.status==='failed')throw Error('refund.create.proofUnreadable');
+   const text=data?.extraction?.status==='ready'?data.segments?.find(x=>x.text?.trim())?.text:null;
+   if(text&&data.document?.sha256)return {document_id:id,extraction_id:data.extraction.id,document_sha256:data.document.sha256,quote:text.trim().slice(0,4000)};
+   if(data?.extraction?.status==='ready')throw Error('refund.create.proofUnreadable');
+   await new Promise(resolve=>setTimeout(resolve,2000));
+  }
+  throw Error('refund.create.proofSlow');
+ }
+ // The agreed amount as the usual terms: what is not refunded is one retained item, backed by the request's proof.
+ function simpleEditor(s){
+  const pay=payment(s),left=pay.amount_minor-pay.local_previous_refunds_minor,refund=parseRefundMoney(s.editor.refund),note=s.editor.note.trim();
+  if(!(refund>=0)||refund>left)throw Error('refund.simple.amountInvalid');
+  if(!note)throw Error('refund.conditionsRequired');
+  const proof=(s.detail.settlement.request_evidence||[]).slice(0,1).map(c=>({...c}));
+  const kept=left-refund,previous=s.snapshot?.terms.adjustments?.[0]?.concept_id;
+  return {conditions:note,items:kept>0?[{concept_id:previous||crypto.randomUUID(),kind:'other',beneficiary:'seller',description:note,mode:'fixed',amount:(kept/100).toFixed(2),base:'',rate:'',evidence:proof}]:[]};
+ }
  function percentAmount(item){try{return money(percentageMinor(item.base,item.rate).amount_minor);}catch{return t('invalidRate');}}
  function evidenceHtml(refs,target,readOnly=false){
+  if(readOnly){
+   const ids=[...new Set(refs.map(c=>c.document_id))];
+   return ids.map(id=>`<button type="button" class="text-button refund-view-pdf" data-refund-action="download" data-document="${esc(id)}">${icon('file-text')}${t('viewPdf')}</button>`).join('');
+  }
   const sources=refs.map((c,i)=>{
    const title=cloud.documents.find(d=>d.id===c.document_id)?.title;
    return `<li><details class="refund-fold"><summary>${icon('file-text')}<span>${esc(title||t('evidenceTitle'))}</span>${icon('chevron-down')}</summary><div class="refund-fold-body"><blockquote>${esc(c.quote)}</blockquote><div class="refund-actions">${button('download','original',`data-document="${esc(c.document_id)}"`)}${readOnly?'':button('remove-evidence','remove',`data-target="${esc(target)}" data-index="${i}"`)}</div></div></details></li>`;
@@ -186,19 +333,40 @@ export function installRefundWorkspace(cloud){
  function editorHtml(s){
   const e=s.editor;
   if(!e)return '';
-  return `<form data-refund-form="draft"><h3>${t('editProposal')}</h3><p>${t('deductionsHelp')}</p>${e.items.map((x,i)=>`<fieldset class="refund-concept" data-concept="${x.concept_id}"><legend>${t('conceptNumber',{number:i+1})}</legend><div class="refund-grid"><label>${t('kind')}<select data-refund-item="${x.concept_id}" name="kind">${['recognized_work','expense','penalty','other'].map(k=>option(k,t('kind.'+k),x.kind)).join('')}</select></label><label>${t('beneficiary')}<select data-refund-item="${x.concept_id}" name="beneficiary">${['seller','customer'].map(k=>option(k,t('beneficiary.'+k),x.beneficiary)).join('')}</select></label></div><label>${t('description')}<input data-refund-item="${x.concept_id}" name="description" value="${esc(x.description)}" maxlength="4000" required></label><label>${t('method')}<select data-refund-item="${x.concept_id}" name="mode">${['fixed','percent'].map(k=>option(k,t(k),x.mode)).join('')}</select></label>${x.mode==='fixed'?`<label>${t('amount')}<input data-refund-item="${x.concept_id}" name="amount" inputmode="decimal" value="${esc(x.amount)}" required></label>`:`<div class="refund-grid"><label>${t('base')}<input data-refund-item="${x.concept_id}" name="base" inputmode="decimal" value="${esc(x.base)}" required></label><label>${t('rate')}<input data-refund-item="${x.concept_id}" name="rate" inputmode="decimal" value="${esc(x.rate)}" required></label></div><p>${t('rounding')}</p><output data-refund-item-total="${x.concept_id}">${percentAmount(x)}</output>`}${evidenceHtml(x.evidence,x.concept_id)}${button('remove-concept','removeConcept',`data-id="${x.concept_id}"`)}</fieldset>`).join('')}${button('add-concept','addConcept')}<label>${t('conditions')}<textarea name="conditions" maxlength="4000" required>${esc(e.conditions)}</textarea></label><output data-refund-preview aria-live="polite">${preview(s)}</output><label class="refund-checkbox"><input name="reviewed" type="checkbox" required ${e.reviewed?'checked':''}>${t('reviewed')}</label><button class="button" type="submit" ${s.pending||!payment(s)?'disabled':''}>${t('wizard.saveContinue')}</button>${button('cancel-edit','cancel')}</form>`;
+  if(e.simple){
+   const pay=payment(s),left=pay?pay.amount_minor-pay.local_previous_refunds_minor:0;
+   return `<form data-refund-form="draft" class="refund-create"><label class="field">${t('simple.amount')}<input class="context-box" name="refund" inputmode="decimal" required value="${esc(e.refund)}"><small class="field-help">${t('simple.amountHelp',{amount:money(left)})}</small></label><label class="field">${t('simple.note')}<textarea class="context-box" name="note" rows="2" maxlength="4000" required>${esc(e.note)}</textarea></label><div class="dialog-actions"><button type="button" class="button secondary" data-refund-action="cancel-edit">${t('cancel')}</button><button class="button" type="submit" ${s.pending||!pay?'disabled':''}>${t('wizard.saveContinue')}</button></div></form>`;
+  }
+  return `<form data-refund-form="draft" class="refund-create"><p class="refund-wizard-help">${t('deductionsHelp')}</p>${e.items.map((x,i)=>`<fieldset class="refund-concept" data-concept="${x.concept_id}"><legend>${t('conceptNumber',{number:i+1})}</legend><div class="refund-grid"><label>${t('kind')}<select data-refund-item="${x.concept_id}" name="kind">${['recognized_work','expense','penalty','other'].map(k=>option(k,t('kind.'+k),x.kind)).join('')}</select></label><label>${t('beneficiary')}<select data-refund-item="${x.concept_id}" name="beneficiary">${['seller','customer'].map(k=>option(k,t('beneficiary.'+k),x.beneficiary)).join('')}</select></label></div><label>${t('description')}<input data-refund-item="${x.concept_id}" name="description" value="${esc(x.description)}" maxlength="4000" required></label><label>${t('method')}<select data-refund-item="${x.concept_id}" name="mode">${['fixed','percent'].map(k=>option(k,t(k),x.mode)).join('')}</select></label>${x.mode==='fixed'?`<label>${t('amount')}<input data-refund-item="${x.concept_id}" name="amount" inputmode="decimal" value="${esc(x.amount)}" required></label>`:`<div class="refund-grid"><label>${t('base')}<input data-refund-item="${x.concept_id}" name="base" inputmode="decimal" value="${esc(x.base)}" required></label><label>${t('rate')}<input data-refund-item="${x.concept_id}" name="rate" inputmode="decimal" value="${esc(x.rate)}" required></label></div><p>${t('rounding')}</p><output data-refund-item-total="${x.concept_id}">${percentAmount(x)}</output>`}${evidenceHtml(x.evidence,x.concept_id)}${button('remove-concept','removeConcept',`data-id="${x.concept_id}"`)}</fieldset>`).join('')}${button('add-concept','addConcept')}<label>${t('conditions')}<textarea name="conditions" maxlength="4000" required>${esc(e.conditions)}</textarea></label><output data-refund-preview aria-live="polite">${preview(s)}</output><div class="refund-step-next"><button type="button" class="text-button" data-refund-action="cancel-edit">${t('cancel')}</button><button class="button" type="submit" ${s.pending||!payment(s)?'disabled':''}>${t('wizard.saveContinue')}</button></div></form>`;
  }
  function requestHtml(s){
   const r=s.request;if(!r)return '';
-  return `<form data-refund-form="create"><h3>${t('register')}</h3>${s.status?.can_register===false?`<div class="refund-notice"><p role="status">${uiText('refundAI.intakeBlocked')}</p>${s.status.active_request?.title?`<p><strong>${esc(s.status.active_request.title)}</strong></p>`:''}${button('reload','refresh')}</div>`:''}<label>${t('scope')}<select name="scope">${['payment_only','project_closure'].map(k=>option(k,t('scope.'+k),r.scope)).join('')}</select></label>${r.scope==='project_closure'?`<ul>${s.payments.map(p=>`<li>${t(p.origin==='initial'?'origin.initial':'origin.change')} · ${money(p.amount_minor)}</li>`).join('')}</ul><label class="refund-checkbox"><input name="payments_reviewed" type="checkbox" ${r.payments_reviewed?'checked':''} required>${t('allPaymentsReviewed')}</label>`:`<label>${t('payment')}<select name="payment_id" required><option value="">${t('choosePayment')}</option>${s.payments.map(p=>option(p.id,`${money(p.amount_minor)} · ${date(p.updated_at)} · ${p.id.slice(0,8)}`,r.payment_id)).join('')}</select></label>`}<label>${t('reason')}<textarea name="reason" maxlength="4000" required>${esc(r.reason)}</textarea></label><label>${t('requestedBy')}<select name="requested_by">${['customer','seller','mutual'].map(k=>option(k,t('requestedBy.'+k),r.requested_by)).join('')}</select></label>${evidenceHtml(r.evidence,'request')}${r.evidence.length?assistantButton('request','prepareRequest'):''}<button class="button" type="submit" ${s.pending||s.status?.can_register!==true?'disabled':''}>${t('register')}</button>${button('cancel-create','cancel')}</form>`;
+  // One short form: what is refunded, why, and the proof. Payments with nothing left are not offered;
+  // closing the whole project is the last choice of the same list, and who asked stays folded (the client, by default).
+  const left=p=>p.amount_minor-Math.min(p.amount_minor,p.local_previous_refunds_minor||0);
+  const payments=s.payments.filter(p=>left(p)>0||p.id===r.payment_id),total=payments.reduce((n,p)=>n+left(p),0);
+  const blocked=s.status?.can_register===false?`<div class="refund-notice"><p role="status">${uiText('refundAI.intakeBlocked')}</p>${s.status.active_request?.title?`<p><strong>${esc(s.status.active_request.title)}</strong></p>`:''}</div>`:'';
+  const target=r.scope==='project_closure'?'__project__':r.payment_id||'';
+  const what=`<label class="field">${t('create.what')}<select class="context-box" name="refund_target" required><option value="">${t('choosePayment')}</option>${payments.map(p=>option(p.id,`${t(p.origin==='initial'?'origin.initial':'origin.change')} · ${money(left(p))} · ${date(p.updated_at)}`,target)).join('')}${payments.length>1?option('__project__',`${t('create.wholeProject')} · ${money(total)}`,target):''}</select></label>`;
+  const chosen=r.scope==='payment_only'?payments.find(p=>p.id===r.payment_id):null;
+  const amount=chosen?`<label class="field">${t('simple.amount')}<input class="context-box" name="amount" inputmode="decimal" required value="${esc(r.amount??(left(chosen)/100).toFixed(2))}"><small class="field-help">${t('simple.amountHelp',{amount:money(left(chosen))})}</small></label>`:'';
+  const closure=r.scope==='project_closure'?`<label class="refund-checkbox"><input name="payments_reviewed" type="checkbox" ${r.payments_reviewed?'checked':''} required>${t('create.wholeProjectConfirm')}</label>`:'';
+  // The proof is attached right here: on Register, Trato uploads it, reads it and cites it. Nothing else to open.
+  const proof=r.evidence.length?`<p class="refund-create-file">${evidenceHtml(r.evidence,'request',true)}<button type="button" class="text-button" data-refund-action="clear-evidence">${t('create.changeProof')}</button></p>`
+   :r.file?`<p class="refund-create-file">${icon('file-text')}<span>${esc(r.file.name)}</span><button type="button" class="text-button" data-refund-action="clear-evidence">${t('create.changeProof')}</button></p>`
+   :`<input class="context-box" type="file" name="evidence_file" accept=".pdf,application/pdf" required><button type="button" class="text-button" data-refund-action="pick" data-target="request">${t('create.useProjectDocument')}</button>`;
+  const working=s.registering?`<p class="refund-create-progress" role="status" aria-busy="true">${t('create.'+s.registering)}</p>`:'';
+  return `<form data-refund-form="create" class="refund-create">${blocked}${what}${amount}${closure}<label class="field">${t('reason')}<textarea class="context-box" name="reason" maxlength="4000" rows="3" required>${esc(r.reason)}</textarea></label>
+   <div class="field refund-create-evidence">${t('create.evidence')}${proof}</div>${working}
+   <div class="dialog-actions"><button type="button" class="button secondary" data-refund-action="cancel-create">${t('cancel')}</button><button class="button" type="submit" ${s.pending||s.status?.can_register!==true?'disabled':''}>${t('register')}</button></div></form>`;
  }
  function activeStep(s){
   if(s.view==='create'||s.view==='initial')return 1;
+  // Three steps: Request → Proposal → Refund. Registering the request is already the agreement, so
+  // there is no proposal email nor reply to wait for; the last step refunds with one click. Internally it keeps number 6.
   const status=s.detail?.settlement.status;
-  if(['completed','closed_without_refund','rejected','withdrawn','refund_pending'].includes(status))return 6;
-  if(status==='accepted')return s.financeData?.authorizations?.some(a=>a.snapshot_id===s.snapshot?.id)?6:5;
-  if(status==='awaiting_response')return 4;
-  return s.snapshot&&!s.editor&&status!=='adjustments_requested'?3:2;
+  if(['completed','closed_without_refund','rejected','withdrawn','refund_pending','accepted','awaiting_response'].includes(status))return 6;
+  return s.snapshot&&!s.editor&&status!=='adjustments_requested'?6:2;
  }
  function assistantFocus(s,task='guide',response=null,support=null){
   const step=s.step||activeStep(s);
@@ -258,58 +426,94 @@ export function installRefundWorkspace(cloud){
  };
  function assistantButton(task,key){
   const main=task==='guide'||task==='list';
+  // Ask TeTrato is the floating TeTrato of every screen, bottom right, not one more button inside the view.
+  if(main)return `<button type="button" class="tetrato-fab tetrato-fab-local" data-refund-assistant="${task}" aria-haspopup="dialog" aria-label="${uiText(`refundAI.${key}`)}" title="${uiText(`refundAI.${key}`)}"><img src="/assets/mascot/trato-guide.png" alt="" width="40" height="40"><span>TeTrato</span></button>`;
   return `<button type="button" class="button refund-ai-trigger ${main?'refund-ai-primary':'secondary'}" data-refund-assistant="${task}" aria-haspopup="dialog">${main?'<img src="/assets/mascot/trato-guide.png" alt="" width="28" height="28">':icon('sparkles')}${uiText(`refundAI.${key}`)}</button>`;
  }
+ // Rarely needed actions go in «…»: linking an initial payment Trato has not seen, and reading refunds made in PayPal.
+ // The list reloads by itself when the user comes back to the tab, so it has no refresh button.
+ function listMore(s){
+  const item=(action,label)=>`<button type="button" class="cloud-reply-menu-item" role="menuitem" data-refund-action="${action}">${label}</button>`;
+  const items=[item('add-policy',t('policy.add')),s.status?.can_register===true&&!s.pending?item('doc-initial',uiText('refundDoc.initial')):'',s.payments.length?item('sync-payments',t('syncPayments')):''].join('');
+  return items?`<details class="cloud-reply-other"><summary class="button secondary" aria-label="${t('clientRequests.more')}" title="${t('clientRequests.more')}">…</summary><div class="cloud-reply-menu" role="menu">${items}</div></details>`:'';
+ }
  function listHtml(s){
+  const external=s.payments.filter(p=>p.external_refund_minor>0);
   const actions=`<div class="refund-actions">
    <button type="button" class="button" data-refund-action="new" ${s.status?.can_register!==true||!s.payments.length||s.pending||s.storageError?'disabled':''}>${t('register')}</button>
-   ${s.view!=='list'?button('wizard-resume','wizard.resume'):''}
-   ${s.status?.can_register===true&&!s.pending?`<button type="button" class="button secondary" data-refund-action="doc-initial">${uiText('refundDoc.initial')}</button>`:''}
-   ${button('reload','refresh')}
+   ${listMore(s)}
   </div>`;
   const hint=s.status?.can_register===false?'openRequest':s.payments.length?'':'noPayments';
-  return `${actions}${hint?`<p class="refund-list-hint">${t(hint)}</p>`:''}${s.items.length?`<ul class="refund-list">${s.items.map(x=>`<li>
+  // Requests the client sent from their space, waiting for the freelancer to register them as a refund.
+  // A one-click refund that was cut halfway stays here, so the same button finishes it.
+  const open=(s.clientRequests||[]).filter(r=>r.status==='open'||quickUnfinished(s,r));
+  const requests=s.clientRequests===null?`<p class="cloud-error" role="alert">${t('clientRequests.error')}</p>`:open.length?`<section class="refund-client-requests" aria-label="${t('clientRequests.title')}"><h4>${t('clientRequests.title')}</h4><ul class="refund-list">${open.map(r=>`<li>
+   <div class="refund-list-record"><span class="refund-mark">${icon('messages-square')}</span><div><strong>${esc(r.reason.length>120?r.reason.slice(0,120)+'…':r.reason)}</strong><small>${r.stage_position?t('clientRequests.stage',{number:r.stage_position}):t('clientRequests.addendum')} · ${date(r.created_at)}</small></div></div>
+   <div class="refund-list-meta"><strong>${money(r.requested_minor)}</strong></div>
+   ${clientRequestActions(s,r)}
+  </li>`).join('')}</ul></section>`:'';
+  return `${actions}${requests}${hint?`<p class="refund-list-hint">${t(hint)}</p>`:''}${s.items.length||external.length?`<ul class="refund-list">${external.map(p=>`<li>
+   <div class="refund-list-record"><span class="refund-mark">${icon('undo-2')}</span><div><strong>${t('externalRefund')}</strong><small>${t(p.origin==='initial'?'origin.initial':'origin.change')} · ${t('originalPaymentDate',{date:date(p.updated_at)})}</small></div></div>
+   <div class="refund-list-meta"><span class="refund-status" data-status="completed">${t('status.completed')}</span><strong>${money(p.external_refund_minor)}</strong></div>
+  </li>`).join('')}${s.items.map(x=>`<li>
    <div class="refund-list-record"><span class="refund-mark">${icon('undo-2')}</span><div><strong>${esc(x.reason)}</strong><small>${t('scope.'+x.scope)}</small></div></div>
    <div class="refund-list-meta"><span class="refund-status" data-status="${esc(x.status)}">${t('status.'+x.status)}</span>${x.status==='completed'&&x.confirmed_refund_minor>0?`<strong>${money(x.confirmed_refund_minor)}</strong>`:''}</div>
-   <button type="button" class="button secondary" data-refund-action="open" data-id="${esc(x.id)}">${t('wizard.resume')}${icon('chevron-right')}</button>
-  </li>`).join('')}</ul>`:`<div class="refund-empty"><span class="refund-mark">${icon('undo-2')}</span><p>${t('empty')}</p></div>`}`;
+   <button type="button" class="button secondary" data-refund-action="open" data-id="${esc(x.id)}">${t(detailAction(x.status))}${icon('chevron-right')}</button>
+  </li>`).join('')}</ul>`:open.length?'':`<div class="refund-empty"><span class="refund-mark">${icon('undo-2')}</span><p>${t('empty')}</p></div>`}`;
  }
+ const WIZARD_STEPS=[1,6];
  function wizardHeader(s){
   const step=s.step||activeStep(s),project=cloud.projects.find(p=>p.id===s.project);
   const item=s.view==='detail'?s.detail?.settlement:null;
   const total=s.snapshot&&item?(item.status==='completed'?item.confirmed_refund_minor:s.snapshot.breakdown.refund_minor):null;
   return `<header class="refund-wizard-header"><div>
-   <span class="eyebrow">${s.view==='initial'?t('title'):t('wizard.progress',{step})}</span>
+   <span class="eyebrow">${s.view==='initial'?t('title'):t('wizard.progress',{step:WIZARD_STEPS.indexOf(step)+1||step})}</span>
    <h2 tabindex="-1">${s.view==='initial'?uiText('refundDoc.initial'):t('wizard.step'+step)}</h2>
    <div class="refund-wizard-meta">${esc(project?.name||'')}${item?`<span class="refund-status" data-status="${esc(item.status)}">${t('status.'+item.status)}</span>`:''}</div>
   </div><div class="refund-wizard-tools">${s.view==='initial'?'':assistantButton('guide','open')}<button type="button" data-refund-action="wizard-close" aria-label="${t('wizard.close')}" title="${t('wizard.close')}">${icon('x')}</button></div></header>
-  ${s.view==='initial'?'':`<nav class="refund-wizard-steps" aria-label="${t('wizard.stages')}">${[1,2,3,4,5,6].map(i=>`<button type="button" data-refund-action="wizard-step" data-step="${i}" ${i>activeStep(s)||s.editor||s.pending||s.view!=='detail'?'disabled':''} ${step===i?'aria-current="step"':''}><span>${i}</span>${t('wizard.step'+i)}</button>`).join('')}</nav><p class="refund-wizard-help">${t('wizard.help'+step)}</p>`}
-  ${Number.isSafeInteger(total)&&(step!==6||!s.financeData)?`<div class="refund-wizard-total"><span>${item.status==='completed'?uiText('refundFinance.confirmed'):t('proposed')}</span><strong>${money(total)}</strong></div>`:''}`;
+  ${s.view==='initial'?'':`<nav class="refund-wizard-steps" aria-label="${t('wizard.stages')}">${WIZARD_STEPS.map((i,n)=>`<button type="button" data-refund-action="wizard-step" data-step="${i}" ${i>activeStep(s)||s.editor||s.pending||s.view!=='detail'?'disabled':''} ${step===i?'aria-current="step"':''} ${i<step?'data-done':''}><span>${i<step?icon('check'):n+1}</span>${t('wizard.step'+i)}</button>`).join('')}</nav><p class="refund-wizard-help">${t('wizard.help'+step)}</p>`}`;void total;
  }
  async function previewDocument(s,id){
   const blob=await cloud.request(`/api/v1/documents/${id}/file`,{},true);if(!current(s))return;
   releaseReader(s);s.reader={url:URL.createObjectURL(blob),pdf:blob.type.split(';')[0]==='application/pdf'};
  }
+ // The last step: one button refunds the saved proposal (PDF kept in the project, PayPal check, authorization and
+ // execution happen behind it). Afterwards, only what matters: how much went back and the record.
+ function refundStepHtml(s,parent,snap,saved){
+  const amount=parent.status==='completed'?parent.confirmed_refund_minor:snap?.breakdown.refund_minor;
+  const pdf=s.documentData?.artifacts?.find(a=>a.document_id);
+  const record=pdf?`<button type="button" class="text-button" data-refund-action="download" data-document="${esc(pdf.document_id)}">${icon('file-text')}${t('wizard.viewRecord')}</button>`:'';
+  if(parent.status==='completed')return `<article class="refund-card refund-result-card"><span class="refund-result-check" aria-hidden="true">${icon('check')}</span><strong class="refund-result-amount">${money(amount)}</strong><h3>${t('wizard.refundedShort')}</h3><p>${t('wizard.refundedCopy')}</p>${record}</article>`;
+  if(['closed_without_refund','rejected','withdrawn'].includes(parent.status))return `<article class="refund-card"><h3>${t('status.'+parent.status)}</h3>${record}</article>`;
+  const zero=!(amount>0),busy=s.quickRefunding;
+  const details=parent.status==='refund_pending'&&s.financeData?`<details class="refund-fold"><summary>${icon('file-text')}<span>${t('wizard.paymentDetails')}</span>${icon('chevron-down')}</summary><div class="refund-fold-body">${renderRefundFinance(s,6)}</div></details>`:'';
+  const label=busy?t('clientRequests.refunding'):zero?t('wizard.closeNoRefund'):t('clientRequests.refund',{amount:money(amount)});
+  return `<article class="refund-card refund-confirm-card"><h3>${zero?t('wizard.closeNoRefundTitle'):t('wizard.refundTitle',{amount:money(amount)})}</h3><p>${t(zero?'wizard.closeNoRefundCopy':'wizard.refundCopy')}</p>${saved}<div class="refund-actions"><button type="button" class="button" data-refund-action="quick-refund" ${busy?'disabled':''}>${label}</button></div></article>${details}`;
+ }
  function detailHtml(s){
   const parent=s.detail?.settlement;if(!parent)return '';
   const snap=s.snapshot,original=payment(s)?.amount_minor??snap?.breakdown.gross_minor;
-  const step=s.step||activeStep(s),terminal=['completed','closed_without_refund','rejected','withdrawn'].includes(parent.status);
-  const saved=snap?`<article class="refund-card refund-proposal-summary"><h3>${t('snapshotTitle',{version:snap.version_no,sequence:snap.draft_sequence})}</h3>
+  const step=s.step||activeStep(s),terminal=terminalStatuses.includes(parent.status);
+  // The amount first, then the terms: what the freelancer needs to read at a glance.
+  const saved=snap?`<article class="refund-card refund-proposal-summary"><header class="refund-amount-head"><span>${parent.status==='completed'?uiText('refundFinance.confirmed'):t('proposed')}</span><strong>${money(parent.status==='completed'?parent.confirmed_refund_minor:snap.breakdown.refund_minor)}</strong></header>
    <p class="refund-preserved">${esc(snap.terms.conditions)}</p>
    ${snap.terms.adjustments.length?`<ul class="refund-adjustment-list">${snap.terms.adjustments.map(x=>`<li><div><strong>${esc(x.description)}</strong><span>${money(x.amount_minor)}</span></div>${evidenceHtml(x.evidence,x.concept_id,true)}</li>`).join('')}</ul>`:''}</article>`:`<p class="refund-list-hint">${t('noProposal')}</p>`;
   const history=`<details class="refund-fold"><summary>${icon('history')}<span>${t('history')}</span>${icon('chevron-down')}</summary><ul class="refund-history refund-fold-body">${s.detail.snapshots.map(x=>`<li><span>${date(x.created_at)}</span><button type="button" class="button secondary" data-refund-action="snapshot" data-id="${esc(x.id)}" ${s.editor?'disabled':''}>${t('snapshotTitle',{version:x.version_no,sequence:x.draft_sequence})}</button></li>`).join('')}</ul></details>`;
   let content='';
-  if(step===1)content=`<div class="refund-request-summary">
-   <article class="refund-card"><h3>${t('reason')}</h3><p class="refund-reason">${esc(parent.reason)}</p><span class="refund-status">${t('scope.'+parent.scope)}</span></article>
-   ${Number.isSafeInteger(original)?`<article class="refund-card refund-original"><span class="refund-mark">${icon('credit-card')}</span><h3>${t(parent.scope==='project_closure'?'originalTotal':'gross')}</h3><strong>${money(original)}</strong></article>`:''}
-  </div>${evidenceHtml(parent.request_evidence||[],'request',true)}${button('wizard-step','wizard.next',`data-step="2"`)}`;
-  if(step===2)content=`${editable(s)?assistantButton('proposal','prepareProposal'):''}${s.editor?editorHtml(s):`${saved}<div class="refund-actions">${editable(s)?button('edit','editProposal'):''}${snap?button('wizard-step','wizard.next',`data-step="3"`):''}</div>`}${history}`;
+  const next=to=>`<div class="refund-step-next"><button type="button" class="button" data-refund-action="wizard-step" data-step="${to}">${t('wizard.next')}${icon('arrow-right')}</button></div>`;
+  if(step===1)content=`<article class="refund-card refund-request-card">
+   ${Number.isSafeInteger(original)?`<header class="refund-amount-head"><span>${t(parent.scope==='project_closure'?'originalTotal':'gross')} · ${t('scope.'+parent.scope)}</span><strong>${money(original)}</strong></header>`:''}
+   <h3>${t('reason')}</h3><blockquote class="refund-reason">${esc(parent.reason)}</blockquote>
+   ${(parent.request_evidence||[]).length?evidenceHtml(parent.request_evidence,'request',true):''}
+  </article>${next(6)}`;
+  if(step===2)content=`${s.editor?`${s.editor.simple?'':assistantButton('proposal','prepareProposal')}${editorHtml(s)}`:`${saved}${snap?next(6):''}`}`;void history;
+  if(step===6)content=refundStepHtml(s,parent,snap,saved);
   if(step===3||step===4)content=renderRefundDocuments(s,cloud,evidenceHtml,step);
   if(step===3&&activeStep(s)>=4&&s.documentData?.deliveries?.some(d=>d.status==='accepted_by_gmail'))content+=`<div class="refund-response-actions"><button type="button" class="button" data-refund-action="wizard-step" data-step="4">${t('wizard.toReply')}</button></div>`;
   if(step===4)content+=`${activeStep(s)<5?`<p>${t('wizard.acceptFirst')}</p>`:''}<div class="refund-response-actions"><button type="button" class="button" data-refund-action="wizard-step" data-step="${snap?.breakdown.refund_minor===0?6:5}" ${activeStep(s)<5?'disabled':''}>${t('wizard.toAuthorize')}</button></div>`;
-  if(step===5||step===6)content=`${terminal&&!s.financeData?`<p class="refund-result" role="status">${t('status.'+parent.status)}</p>`:''}${renderRefundFinance(s,step)}<details class="refund-fold"><summary>${icon('file-text')}<span>${t('wizard.proposalDetails')}</span>${icon('chevron-down')}</summary><div class="refund-fold-body">${saved}${history}${renderRefundDocuments(s,cloud,evidenceHtml,6)}</div></details>`;
+  if(step===5)content=`${terminal&&!s.financeData?`<p class="refund-result" role="status">${t('status.'+parent.status)}</p>`:''}${renderRefundFinance(s,step)}<details class="refund-fold"><summary>${icon('file-text')}<span>${t('wizard.proposalDetails')}</span>${icon('chevron-down')}</summary><div class="refund-fold-body">${saved}${history}${renderRefundDocuments(s,cloud,evidenceHtml,6)}</div></details>`;
   if(step===5&&s.financeData?.authorizations.some(a=>a.snapshot_id===s.snapshot?.id))content+=`<div class="refund-response-actions"><button type="button" class="button" data-refund-action="wizard-step" data-step="6">${t('wizard.toExecute')}</button></div>`;
-  const close=parent.status==='draft'&&!s.editor?`<details class="refund-fold refund-other-actions"><summary><span>${t('wizard.otherActions')}</span>${icon('chevron-down')}</summary><div class="refund-fold-body"><h4>${t('close')}</h4><form data-refund-form="close"><label>${t('closureReason')}<select name="reason">${['withdrawn','rejected'].map(k=>option(k,t('status.'+k),s.closure?.reason||'withdrawn')).join('')}</select></label><label>${t('notes')}<textarea name="notes" maxlength="4000" required>${esc(s.closure?.notes||'')}</textarea></label><label class="refund-checkbox"><input type="checkbox" name="confirmed" required>${t('closeConfirm')}</label><button class="button" type="submit">${t('confirmClose')}</button></form></div></details>`:'';
+  const close=parent.status==='draft'&&!s.editor?`<details class="refund-cancel-request"><summary class="text-button">${t('wizard.cancelRequest')}</summary><form data-refund-form="close" class="refund-create"><input type="hidden" name="reason" value="withdrawn"><label class="field">${t('wizard.cancelWhy')}<textarea class="context-box" name="notes" maxlength="4000" rows="2" required>${esc(s.closure?.notes||'')}</textarea></label><div class="dialog-actions"><button class="button secondary" type="submit">${t('wizard.cancelConfirm')}</button></div></form></details>`:'';
   return `<section class="refund-stage">${content}</section>${close}`;
  }
  async function action(s,a,target){
@@ -319,6 +523,11 @@ export function installRefundWorkspace(cloud){
   if(a==='reader-close'){releaseReader(s);return;}
 
   if(a==='reload'){await load(s);if(current(s)&&s.view==='detail'&&s.detail&&!s.pending)await openDetail(s,s.detail.settlement.id);return;}
+  if(a==='sync-payments'){
+   try{await cloud.request(`/api/v1/projects/${s.project}/refund-payments/sync`,{method:'POST'});}
+   finally{if(current(s))await load(s);}
+   return;
+  }
   if(a==='query'){await queryPending(s);return;}
   if(a==='reconcile-send'){
    const op=s.pending;const data=await cloud.request(`/api/v1/refunds/${op.settlementId}/snapshots/${op.snapshotId}/email/reconcile`,{method:'POST',headers:{'Idempotency-Key':op.key}});
@@ -329,10 +538,68 @@ export function installRefundWorkspace(cloud){
   if(await documentAction(s,cloud,a,target,{write,openDetail,load,current,acceptResult,preview:id=>previewDocument(s,id),upload:()=>{s.resumeAfterUpload=true;wizard.close();cloud.openSource('reference',uploadContext(s));}}))return;
   if(a==='download'){await previewDocument(s,target.dataset.document);return;}
   if(a==='new'){if(s.status?.can_register!==true||s.pending||s.storageError)return;s.request={scope:'payment_only',payments_reviewed:false,payment_id:'',reason:'',requested_by:'customer',evidence:[]};s.view='create';s.wizardOpen=true;s.step=null;}
+  if(a==='client-thread'){openClientThread(s,target.dataset.id);return;}
+  if(a==='clear-evidence'&&s.request){s.request.evidence=[];s.request.file=null;return;}
+  if(a==='add-policy'){
+   // The freelancer's refund policy as one more project document: TeTrato reads and cites it when weighing a request.
+   cloud.openSource('reference');
+   const title=cloud.modal?.open?cloud.modal.querySelector('[data-cloud-form="upload"] input[name="title"]'):null;
+   if(title)title.value=t('policy.documentTitle');
+   return;
+  }
+  if(a==='quick-refund'){
+   // Same safe repeat as the client's request: the key is fixed for this version, so a cut never refunds twice.
+   const parent=s.detail?.settlement,snap=s.snapshot;if(!parent||!snap||s.pending||s.storageError)return;
+   s.quickRefunding=true;notify(s);
+   let result;
+   try{result=await cloud.request(`/api/v1/refunds/${parent.id}/refund`,{method:'POST',headers:{'Content-Type':'application/json','Accept-Language':uiLanguage(),'Idempotency-Key':`refund-${parent.id}-${snap.id}`},body:JSON.stringify({expected_snapshot_id:snap.id,confirmed:true})});}
+   finally{s.quickRefunding=false;}
+   if(!current(s))return;
+   cloud.historyLoaded=false;
+   await openDetail(s,parent.id);if(current(s))await load(s);
+   if(current(s)&&result?.settlement?.status!=='completed'&&result?.settlement?.status!=='closed_without_refund')s.notice=t('clientRequests.refundPending',{amount:money(snap.breakdown.refund_minor)});
+   return;
+  }
+  if(a==='client-refund'){
+   // The button shows the exact amount, so it is the confirmation. The key is fixed per request: repeating it resumes, never refunds twice.
+   const req=(s.clientRequests||[]).find(r=>r.id===target.dataset.id&&(quickRefund(s,r)||quickUnfinished(s,r)));
+   if(!req||s.pending||s.storageError)return;
+   s.refundingRequest=req.id;notify(s);
+   let result;
+   try{result=await cloud.request(`/api/v1/refunds/client-requests/${req.id}`,{method:'POST',headers:{'Content-Type':'application/json','Accept-Language':uiLanguage(),'Idempotency-Key':`client-request-${req.id}`},body:JSON.stringify({project_id:s.project,confirmed:true})});}
+   finally{s.refundingRequest=null;}
+   if(!current(s))return;
+   cloud.historyLoaded=false;
+   await load(s);
+   if(current(s))s.notice=t(result?.settlement?.status==='completed'?'clientRequests.refunded':'clientRequests.refundPending',{amount:money(req.requested_minor)});
+   return;
+  }
+  if(a==='client-request'){
+   // The usual «Register refund request», filled from the client's request, with their own words as a PDF to cite as evidence.
+   const req=(s.clientRequests||[]).find(r=>r.id===target.dataset.id&&r.status==='open');
+   if(!req||s.status?.can_register!==true||s.pending||s.storageError)return;
+   if(!s.payments.some(p=>p.id===req.received_payment_id))throw Error('refund.paymentUnavailable');
+   const blob=await cloud.request(`/api/v1/projects/${s.project}/client-refund-requests/${req.id}/pdf`,{},true);
+   if(!current(s))return;
+   s.request={scope:'payment_only',payments_reviewed:false,payment_id:req.received_payment_id,reason:req.reason,requested_by:'customer',evidence:[],client_request_id:req.id};
+   s.view='create';s.step=null;s.notice=t('clientRequests.addEvidence');
+   s.resumeAfterUpload=true;wizard.close();cloud.openSource('reference',uploadContext(s));
+   const form=cloud.modal?.open?cloud.modal.querySelector('[data-cloud-form="upload"]'):null;
+   if(!form){s.resumeAfterUpload=false;s.wizardOpen=true;return;}
+   const title=form.querySelector('input[name="title"]');if(title)title.value=t('clientRequests.documentTitle');
+   const files=new DataTransfer();files.items.add(new File([blob],`client-refund-request-${req.id.slice(0,8)}.pdf`,{type:'application/pdf'}));
+   const input=form.querySelector('input[name="file"]');if(input){input.files=files.files;input.dispatchEvent(new Event('change',{bubbles:true}));}
+   return;
+  }
   if(a==='open'){if(s.detail?.settlement.id===target.dataset.id&&s.editor)s.wizardOpen=true;else await openDetail(s,target.dataset.id);}
   if(a==='list'){s.view='list';s.pick=null;s.wizardOpen=false;}
   if(a==='cancel-create'){s.request=null;s.pick=null;s.view='list';s.wizardOpen=false;}
-  if(a==='edit'&&editable(s)&&!s.pending){s.step=2;s.editor={items:(s.snapshot?.terms.adjustments||[]).map(editItem),conditions:s.snapshot?.terms.conditions||'',reviewed:false};}
+  if(a==='edit'&&editable(s)&&!s.pending){
+   s.step=2;
+   const kept=s.snapshot?.terms.adjustments||[],proof=s.detail?.settlement.request_evidence||[];
+   if(proof.length&&kept.length<=1&&payment(s))s.editor={simple:true,refund:s.snapshot?(s.snapshot.breakdown.refund_minor/100).toFixed(2):'',note:kept[0]?.description||''};
+   else s.editor={items:kept.map(editItem),conditions:s.snapshot?.terms.conditions||'',reviewed:false};
+  }
   if(a==='cancel-edit'){s.editor=null;s.pick=null;s.step=null;}
   if(a==='add-concept'&&s.editor&&s.editor.items.length<100){s.editor.items.push(emptyItem());s.editor.reviewed=false;}
   if(a==='remove-concept'&&s.editor){s.editor.items=s.editor.items.filter(x=>x.concept_id!==target.dataset.id);s.editor.reviewed=false;}
@@ -356,28 +623,29 @@ export function installRefundWorkspace(cloud){
   const s=state(),host=panel;wizard.setAttribute('aria-label',t('wizard.title'));
   if(s.resumeAfterUpload){host.innerHTML=`<p>${t('wizard.uploading')}</p>`;return;}
   if(s.wizardOpen){
-   host.innerHTML=`<section class="workspace-panel"><h3>${t('title')}</h3><p>${t('wizard.inProgress')}</p>${button('wizard-resume','wizard.resume')}</section>`;
+   const status=s.detail?.settlement.status;
+   host.innerHTML=`<section class="workspace-panel"><h3>${t('title')}</h3><p>${t(terminalStatuses.includes(status)?'status.'+status:'wizard.inProgress')}</p>${button('wizard-resume',detailAction(status))}</section>`;
    host.onclick=()=>{if(!wizard.open)wizard.showModal();};
    panel=wizard;
   }else{
    if(wizard.open)wizard.close();
    wizard.innerHTML='';
   }
-  if(!s.loaded&&!s.loading&&!s.error)void load(s);
+  if(!s.loading&&(s.refreshPayments||!s.loaded&&!s.error))void load(s);
   const oldFocus=cloud.document.activeElement;const focusState=panel.contains(oldFocus)?{tag:oldFocus.tagName,name:oldFocus.name,data:{...oldFocus.dataset},start:oldFocus.selectionStart,end:oldFocus.selectionEnd}:null;
   const heading=s.wizardOpen?wizardHeader(s):`<header class="refund-list-heading"><div class="refund-list-record"><span class="refund-mark">${icon('undo-2')}</span><div><span class="eyebrow">${t('realRecords')}</span><h3>${t('title')}</h3></div></div>${assistantButton('list','open')}</header>`;
-  const recovery=s.pending?`<aside class="refund-notice" role="status"><p>${t('uncertain')}</p><div class="refund-actions">${button('query','query')}${s.pending.action==='send'?button('reconcile-send','reconcileSend'):''}${isFinancialAction(s.pending.action)?renderFinancialPending(s):s.pendingBody?button('retry-operation','retrySame'):''}</div></aside>`:'';
+  if(autoRecoverable(s.pending)&&!s.busy&&s.recoverTried!==s.pending.key){s.recoverTried=s.pending.key;queueMicrotask(()=>void run(s,()=>autoRecover(s)));}
+  const recovery=s.pending&&!(autoRecoverable(s.pending)&&(s.busy||s.recoverTried!==s.pending.key))?`<aside class="refund-notice" role="status"><p>${t('uncertain')}</p><div class="refund-actions">${button('query','query')}${s.pending.action==='send'?button('reconcile-send','reconcileSend'):''}${isFinancialAction(s.pending.action)?renderFinancialPending(s):s.pendingBody?button('retry-operation','retrySame'):''}</div></aside>`:'';
   const body=s.loaded?(!s.wizardOpen?listHtml(s):s.view==='create'?requestHtml(s):s.view==='initial'?renderInitialPayment(s,evidenceHtml):detailHtml(s)):'';
   panel.innerHTML=`<section class="workspace-panel cloud-refunds refund-workspace" aria-label="${t('title')}">
    ${heading}${s.notice?`<p role="status">${esc(s.notice)}</p>`:''}${s.error?`<p role="alert" class="cloud-error">${esc(s.error)}</p>${button('reload',s.editor?'reloadDiscard':'retry')}`:''}
-   ${s.storageError?`<p role="alert">${t('storageError')}</p>`:''}${recovery}${s.loading||s.busy?`<p role="status" aria-busy="true">${t('loading')}</p>`:''}
+   ${s.storageError?`<p role="alert">${t('storageError')}</p>`:''}${recovery}${s.loading&&!s.loaded?(cloud.renderSkeleton?.('list',t('loading'))||''):''}
    <fieldset class="refund-body" ${s.busy||s.loading||s.pending||s.storageError?'disabled':''}>${body}</fieldset>
   </section>`;
 
   if(s.wizardOpen){
    if(s.pick)panel.querySelector('.refund-body').innerHTML=picker(s);
-   if(s.reader)panel.querySelector('.refund-body').innerHTML=`<section class="refund-reader">${button('reader-close','wizard.backToForm')}<a class="button secondary" href="${esc(s.reader.url)}" download="document.pdf">${t('wizard.download')}</a>${s.reader.pdf?`<iframe title="${t('original')}" src="${esc(s.reader.url)}"></iframe>`:''}</section>`;
-   panel.insertAdjacentHTML('beforeend',`<footer class="refund-wizard-footer"><p>${t('wizard.keepHelp')}</p>${button('wizard-close','wizard.close')}</footer>`);
+   if(s.reader)panel.querySelector('.refund-body').innerHTML=`<section class="refund-reader"><button type="button" class="text-button" data-refund-action="reader-close">${icon('arrow-left')}${t('wizard.back')}</button>${s.reader.pdf?`<iframe title="${t('original')}" src="${esc(s.reader.url)}"></iframe>`:''}</section>`;
    if(!wizard.open)wizard.showModal();
    if(focusState){const match=[...panel.querySelectorAll('button,input,select,textarea')].find(el=>el.tagName===focusState.tag&&el.name===focusState.name&&Object.entries(focusState.data).every(([k,v])=>el.dataset[k]===v));if(match&&!match.disabled){match.focus();if(typeof focusState.start==='number'&&match.setSelectionRange&&['text','search','url','tel','password','textarea'].includes(match.type))match.setSelectionRange(focusState.start,focusState.end);}else panel.querySelector('h2')?.focus();}
   }
@@ -397,8 +665,11 @@ export function installRefundWorkspace(cloud){
    const docChange=documentInput(s,el);if(docChange){if(docChange==='render')notify(s);return;}
    if(el.dataset.refundField==='quote'&&s.pick){s.pick.quote=el.value;return;}
    const kind=el.closest('[data-refund-form]')?.dataset.refundForm;
+   if(kind==='create'&&s.request&&el.name==='evidence_file'){s.request.file=el.files?.[0]||null;notify(s);return;}
+   if(kind==='create'&&s.request&&el.name==='refund_target'){const all=el.value==='__project__';s.request.scope=all?'project_closure':'payment_only';s.request.payment_id=all?'':el.value;s.request.amount=undefined;if(!all)s.request.payments_reviewed=false;notify(s);return;}
    if(kind==='create'&&s.request&&el.name){s.request[el.name]=el.type==='checkbox'?el.checked:el.value;if(el.name==='scope')notify(s);}
    if(kind==='close'&&el.name){s.closure={...(s.closure||{}),[el.name]:el.value};}
+   if(kind==='draft'&&s.editor?.simple){if(el.name)s.editor[el.name]=el.value;return;}
    if(kind==='draft'&&s.editor){
 
     const item=el.dataset.refundItem?s.editor.items.find(x=>x.concept_id===el.dataset.refundItem):null;
@@ -423,14 +694,27 @@ export function installRefundWorkspace(cloud){
     if(await documentSubmit(s,cloud,form,{write}))return;
     if(form.dataset.refundForm==='create'){
      if(s.status?.can_register!==true)throw Error('refund.openRequest');
-     const r=s.request;if((r.scope==='payment_only'&&!s.payments.some(p=>p.id===r.payment_id))||!r.evidence.length||!r.reason.trim())throw Error('refund.evidenceRequired');
-     await write(s,'create',{...(r.scope==='payment_only'?{payment_id:r.payment_id}:{payment_ids:s.payments.map(p=>p.id),payments_reviewed:r.payments_reviewed}),scope:r.scope,reason:r.reason.trim(),requested_by:r.requested_by,request_evidence:r.evidence});
+     const r=s.request;if((r.scope==='payment_only'&&!s.payments.some(p=>p.id===r.payment_id))||!r.evidence.length&&!r.file||!r.reason.trim())throw Error('refund.evidenceRequired');
+     s.autoRefund=null;
+     if(r.scope==='payment_only'){
+      const pay=s.payments.find(p=>p.id===r.payment_id),left=pay.amount_minor-Math.min(pay.amount_minor,pay.local_previous_refunds_minor||0);
+      const asked=r.amount===undefined?left:parseRefundMoney(r.amount);
+      if(!(asked>0)||asked>left)throw Error('refund.simple.amountInvalid');
+      if(asked<left)s.autoRefund={refund:(asked/100).toFixed(2),note:r.reason.trim()};
+     }
+     if(!r.evidence.length){
+      try{r.evidence=[await attachProof(s,r.file)];r.file=null;}
+      finally{s.registering=null;}
+      if(!current(s))return;
+     }
+     await write(s,'create',{...(r.scope==='payment_only'?{payment_id:r.payment_id}:{payment_ids:s.payments.map(p=>p.id),payments_reviewed:r.payments_reviewed}),scope:r.scope,reason:r.reason.trim(),requested_by:r.requested_by,request_evidence:r.evidence},
+      r.client_request_id?{client_request_id:r.client_request_id}:{});
     }else if(form.dataset.refundForm==='draft'){
-     if(!editable(s)||!s.editor?.reviewed)throw Error('refund.reviewRequired');
-     const {terms}=buildRefundTerms(s.editor,payment(s));
+     if(!editable(s)||!s.editor)throw Error('refund.reviewRequired');
+     const {terms}=buildRefundTerms(s.editor.simple?simpleEditor(s):s.editor,payment(s));
      await write(s,'edit_draft',{expected_snapshot_id:s.detail.settlement.current_snapshot_id,terms});
     }else if(form.dataset.refundForm==='close'){
-     const values=new FormData(form);if(!values.get('confirmed'))throw Error('refund.reviewRequired');
+     const values=new FormData(form);
      await write(s,'close',{reason:values.get('reason'),notes:values.get('notes').trim()});
     }
    });

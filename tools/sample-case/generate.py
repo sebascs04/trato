@@ -1,4 +1,4 @@
-"""Regenerates the Café Aurora sample PDFs in ejemplos/cafe-aurora-en from their editable Markdown sources."""
+"""Regenerates the Café Aurora sample PDFs in examples/cafe-aurora from their editable Markdown sources."""
 from pathlib import Path
 from xml.sax.saxutils import escape
 import json
@@ -9,7 +9,7 @@ from reportlab.platypus import SimpleDocTemplate, Paragraph
 
 ROOT = Path(__file__).resolve().parent
 # The PDFs go to the judges' folder; this generator and its sources stay out of their way.
-OUTPUT = (ROOT / '..' / '..' / 'ejemplos' / 'cafe-aurora-en').resolve()
+OUTPUT = (ROOT / '..' / '..' / 'examples' / 'cafe-aurora').resolve()
 PURPLE = colors.HexColor('#7051c6')
 INK = colors.HexColor('#302837')
 MUTED = colors.HexColor('#766c82')

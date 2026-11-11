@@ -1,34 +1,32 @@
 # Trato File Processor
 
-Servicio privado que valida documentos y extrae texto sin IA. PDF mediante Poppler, DOCX mediante lectura acotada de ZIP/XML. Word antiguo `.doc`, OCR, imágenes, hojas de cálculo y presentaciones no están implementados.
+The file processor is a private service that validates documents and extracts their text. It reads PDF files with Poppler and DOCX files through a bounded reading of their XML, then returns the text split into located segments: physical pages for PDF and paragraph numbers for DOCX. It also hosts the vector search that lets TeTrato cite passages from a project's documents.
 
-## Ejecutar
+## Run it
 
-Python 3.12 y Poppler (`pdftotext`) deben estar disponibles. En Debian/Ubuntu, el paquete de sistema es `poppler-utils`.
+It needs Python 3.12 and Poppler (`pdftotext`); on Debian or Ubuntu, install `poppler-utils`.
 
 ```bash
-python3 -m venv .venv
+python3.12 -m venv .venv
 .venv/bin/pip install -r requirements.lock.txt
-export FILE_PROCESSOR_TOKEN="una-clave-local-larga-y-aleatoria"
-.venv/bin/uvicorn file_processor.app:app --host 127.0.0.1 --port 8101 --limit-concurrency 8
+export FILE_PROCESSOR_TOKEN="a-long-random-local-token"
+.venv/bin/uvicorn file_processor.app:app --host 127.0.0.1 --port 8101
 ```
 
-`GET /health` informa salud y formatos soportados. `POST /v1/extractions?filename=correo.pdf` requiere `Authorization: Bearer <FILE_PROCESSOR_TOKEN>`, el MIME de PDF/DOCX y el archivo original como cuerpo binario. El token pertenece a la API, nunca al navegador. Dockerfile disponible; la imagen aún no se ha construido en esta entrega.
+`GET /health` reports the service and its supported formats. `POST /v1/extractions?filename=request.pdf` takes the original file as the request body and requires `Authorization: Bearer <FILE_PROCESSOR_TOKEN>`. Only the API holds that token.
 
-También puedes probar el parser sin API ni sesión:
+You can also try the parser on its own:
 
 ```bash
 .venv/bin/python -m file_processor tests/fixtures/request.pdf
 ```
 
-## Resultado v1
+## Output and limits
 
-Devuelve hash SHA-256 del original, tamaño, formato, parser, texto y segmentos con localizador. PDF usa páginas físicas; DOCX usa ordinales de párrafo, incluyendo texto de tablas. No inventa paginación de Word. No lee encabezados, notas, imágenes ni comentarios de DOCX. Subir documentos no verifica identidad ni firmas.
+Each result includes the SHA-256 of the original file, its size, format and parser, the full text and its located segments. Files can be up to 10 MB, with 250 KB of text; a PDF is read within 12 seconds, and temporary files are closed as soon as the work ends.
 
-Límites: archivo 10 MB, texto 250 KB, XML 4 MB, ZIP descomprimido 32 MB, 2048 entradas y proporción de compresión 200. PDF tiene un tiempo máximo de 12 segundos. No se descomprime a rutas del disco ni se siguen enlaces del documento. Los archivos temporales se cierran al terminar. No persiste documentos ni resultados.
+## Tests
 
 ```bash
 .venv/bin/python -m unittest discover -s tests -v
 ```
-
-La fixture `tests/fixtures/request.pdf` procede de la demo ficticia de Trato.

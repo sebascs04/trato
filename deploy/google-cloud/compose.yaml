@@ -71,6 +71,14 @@ services:
       start_period: 30s
   api:
     <<: *api
+    # Live meetings: the API streams the call to Gemini Live on Vertex AI with the same service account as the workers.
+    environment:
+      <<: *api-environment
+      TRATO_GEMINI_BACKEND: vertex
+      TRATO_GOOGLE_CREDENTIALS_FILE: /run/secrets/google-cloud-worker.json
+    secrets:
+      - source: gemini_credentials
+        target: google-cloud-worker.json
     # Bind to the VM's private IP for Direct VPC egress. Never use 0.0.0.0 here.
     ports: ["${TRATO_API_BIND_IP:?Set the VM private IPv4}:8100:8100"]
     mem_limit: 1g

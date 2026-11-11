@@ -17,6 +17,8 @@ const allowedMeetingOrigins = new Set([
   'http://localhost:3000',
   'http://127.0.0.1:3000'
   , ...String(process.env.TRATO_MEETING_ALLOWED_ORIGINS || '').split(',').map(value => value.trim()).filter(Boolean)
+  // The deployed site itself: a meeting opened from the official web connects from its own origin.
+  , ...(process.env.WEB_ORIGIN ? [process.env.WEB_ORIGIN.trim().replace(/\/$/, '')] : [])
 ]);
 function meetingOriginAllowed(origin) {
   if (allowedMeetingOrigins.has(origin)) return true;
@@ -130,7 +132,8 @@ for (const doc of demo.documents) {
 }
 relaySocketServer.on('connection', (socket, req) => {
   const requestUrl = new URL(req.url, 'http://localhost');
-  const backend = process.env.TRATO_MEETING_BACKEND_URL || `http://127.0.0.1:${localPorts.api}`;
+  // In the cloud the relay reaches the same private API as every other request (TRATO_API_URL).
+  const backend = process.env.TRATO_MEETING_BACKEND_URL || process.env.TRATO_API_URL || `http://127.0.0.1:${localPorts.api}`;
   const upstreamUrl = new URL(`/api/v1/meeting-copilot/ws/copilot${requestUrl.search}`, backend);
   upstreamUrl.protocol = upstreamUrl.protocol === 'https:' || upstreamUrl.protocol === 'wss:' ? 'wss:' : 'ws:';
   const upstream = new WebSocket(upstreamUrl, {headers: {origin: req.headers.origin || ''}});

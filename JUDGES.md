@@ -24,7 +24,7 @@
 
 ## Step-by-step test (about 15 minutes)
 
-Follow **[ejemplos/cafe-aurora-en/README.md](ejemplos/cafe-aurora-en/README.md)**. It uses ready-made fictional PDFs for a small website project (Café Aurora). You will:
+Please start by reading **[ejemplos/cafe-aurora-en/README.md](ejemplos/cafe-aurora-en/README.md)**: it is the user manual for testing Trato with that folder and its sample documents. It tells the story of a small website project for Café Aurora and shows, for every PDF, where it goes in Trato and which button to press. Along the way you will:
 
 1. Create a client and a project from the agreement. AI proposes a plan with three paid deliverables.
 2. Get paid for each deliverable. Send the delivery, approve it as the client, and send the payment request. The client pays through PayPal Sandbox.

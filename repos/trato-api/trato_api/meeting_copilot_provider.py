@@ -42,6 +42,30 @@ def gemini_live_config(language: str = 'es') -> dict[str, Any]:
     }
 
 
+def normalize_summary(value: Any) -> dict[str, Any] | None:
+    """The four lists and two texts of a meeting summary. Gemini sometimes wraps a text in a list or a point in an
+    object; those keep their words. Only an answer with none of the four lists is not a summary."""
+    if not isinstance(value, dict):
+        return None
+    def text(item: Any) -> str:
+        if isinstance(item, str):
+            return item.strip()
+        if isinstance(item, dict):
+            return ' '.join(text(v) for v in item.values() if isinstance(v, (str, list, dict))).strip()
+        if isinstance(item, list):
+            return ' '.join(text(v) for v in item).strip()
+        return ''
+    keys = ('decisions', 'action_items', 'risks', 'next_steps')
+    if not any(isinstance(value.get(key), (list, str)) for key in keys):
+        return None
+    summary: dict[str, Any] = {'title': text(value.get('title'))[:200], 'closing': text(value.get('closing'))[:2_000]}
+    for key in keys:
+        items = value.get(key)
+        items = items if isinstance(items, list) else [items] if items else []
+        summary[key] = [t[:1_000] for t in (text(i) for i in items) if t][:30]
+    return summary
+
+
 def build_suggestion_prompt(
     *, transcript: list[dict[str, str]], kind: str, mode: str, context: dict[str, Any], language: str
 ) -> str:
@@ -242,17 +266,15 @@ class GeminiMeetingProvider:
             f'Mode: {mode if mode in SUPPORTED_MODES else "general"}. Context: '
             f"{json.dumps(context, ensure_ascii=False)[:8_000]}. Transcript: "
             f"{json.dumps(transcript[-80:], ensure_ascii=False)[:MAX_TRANSCRIPT_CHARS]}. "
-            'Return JSON with title, decisions, action_items, risks, next_steps, closing. Use arrays of strings. '
+            'Return one JSON object: "title" and "closing" are each a single string; "decisions", "action_items", '
+            '"risks" and "next_steps" are each an array of plain strings (use [] when there is nothing). '
             'Do not infer agreements or facts absent from the transcript.'
         )
         value = await self._generate_json(prompt, max_output_tokens=4096)
-        required_arrays = ('decisions', 'action_items', 'risks', 'next_steps')
-        if not isinstance(value.get('title'), str) or not isinstance(value.get('closing'), str) or any(
-            not isinstance(value.get(key), list) or any(not isinstance(item, str) for item in value[key])
-            for key in required_arrays
-        ):
+        summary = normalize_summary(value)
+        if summary is None:
             raise MeetingProviderError('INVALID_SUMMARY_RESPONSE', 'Gemini returned an invalid summary contract.')
-        return value
+        return summary
 
     async def close(self) -> None:
         if self.closed:

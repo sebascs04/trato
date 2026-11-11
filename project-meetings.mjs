@@ -4,6 +4,8 @@
 import {uiText,uiLocale,uiLanguage} from './i18n.mjs';
 import {icon} from './icons.mjs';
 const t=(key,values)=>uiText(['meetings',key].join('.'),values);
+// Past meetings open on the latest few; the rest are one click away, so the list never grows without end.
+const RECENT_RECORDS=3;
 const esc=value=>String(value??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 export const MEET_URL=/^https:\/\/meet\.google\.com\/[a-z]{3}-[a-z]{4}-[a-z]{3}$/;
 export function meetingWhen(meeting){
@@ -21,7 +23,7 @@ export function renderMeetingRow(m){
 export function renderRecordRow(r){
  const d=new Date(r.created_at),when=Number.isFinite(d.getTime())?new Intl.DateTimeFormat(uiLocale(),{dateStyle:'medium',timeStyle:'short'}).format(d):'';
  const points=['decisions','actionItems','risks','nextSteps'].reduce((n,k)=>n+(r.summary?.[k]?.length||0),0);
- return `<li class="project-meeting is-record"><div><strong>${esc(r.title)}</strong><small>${esc(when)} · ${esc(t('recordCounts',{lines:peopleLines(r).length,points}))}</small></div><div class="project-meeting-actions"><button type="button" class="button secondary" data-meeting-record="${esc(r.id)}" aria-haspopup="dialog">${icon('eye')}${t('recordOpen')}</button></div></li>`;
+ return `<li class="project-meeting is-record"><div><strong>${esc(r.title)}</strong><small>${esc(when)} · ${esc((points===1?t('recordCountsOnePoint',{lines:peopleLines(r).length}):t('recordCounts',{lines:peopleLines(r).length,points})))}</small></div><div class="project-meeting-actions"><button type="button" class="button secondary" data-meeting-record="${esc(r.id)}" aria-haspopup="dialog">${icon('eye')}${t('recordOpen')}</button></div></li>`;
 }
 // TeTrato's help kept with a meeting: 'tetrato-answer', 'tetrato-question', 'tetrato-risk' or 'tetrato-tip'.
 const tetratoKind=speaker=>{const k=String(speaker||'').startsWith('tetrato-')?speaker.slice(8):'';return ['answer','question','risk','tip'].includes(k)?k:'';};
@@ -96,7 +98,7 @@ export function installProjectMeetings(cloud){
   const choice=(value,label,count)=>`<button type="button" data-meeting-view="${value}" aria-pressed="${view===value}">${label}${count?`<span class="dispute-switch-count">${count}</span>`:''}</button>`;
   const switcher=`<div class="dispute-switch" role="group" aria-label="${esc(t('dialogTitle'))}">${choice('upcoming',t('upcoming'),s.meetings?.length||0)}${choice('past',t('pastTitle'),s.records?.length||0)}</div>`;
   const past=s.records===undefined?`<p class="dispute-muted" role="status">${t('loading')}</p>`
-   :s.records.length?`<ul class="project-meetings">${s.records.map(renderRecordRow).join('')}</ul>`
+   :s.records.length?`<ul class="project-meetings">${(s.allRecords?s.records:s.records.slice(0,RECENT_RECORDS)).map(renderRecordRow).join('')}</ul>${s.records.length>RECENT_RECORDS?`<button type="button" class="button secondary project-meetings-more" data-meeting-records-more aria-expanded="${!!s.allRecords}">${s.allRecords?t('showFewer'):t('showAll',{count:s.records.length})}</button>`:''}`
    :`<div class="empty-state project-meetings-empty">${icon('history')}<strong>${t('pastEmpty')}</strong><span>${t('pastEmptyHint')}</span></div>`;
   const body=s.meetings===undefined?`<p class="dispute-muted" role="status">${t('loading')}</p>`
    :s.error?`<p class="cloud-error" role="alert">${esc(s.error)}</p>`
@@ -171,7 +173,8 @@ export function installProjectMeetings(cloud){
   }
  });
  doc.addEventListener('click',async event=>{
-  const target=event.target.closest?.('[data-meeting-new],[data-meeting-join],[data-meeting-invite],[data-meeting-cancel],[data-meeting-send],[data-meeting-copilot],[data-meeting-record],[data-meeting-record-ask],[data-meeting-record-delete],[data-meeting-view],[data-meeting-record-addendum]');if(!target||!cloud.projectId)return;
+  const target=event.target.closest?.('[data-meeting-new],[data-meeting-join],[data-meeting-invite],[data-meeting-cancel],[data-meeting-send],[data-meeting-copilot],[data-meeting-record],[data-meeting-record-ask],[data-meeting-record-delete],[data-meeting-view],[data-meeting-record-addendum],[data-meeting-records-more]');if(!target||!cloud.projectId)return;
+  if(target.matches('[data-meeting-records-more]')){const s=state();s.allRecords=!s.allRecords;cloud.notify();return;}
   if(target.matches('[data-meeting-view]')){state().view=target.dataset.meetingView==='past'?'past':'upcoming';cloud.notify();return;}
   if(target.matches('[data-meeting-record]')){void showRecord(state(),target.dataset.meetingRecord);return;}
   if(target.matches('[data-meeting-record-addendum]')){

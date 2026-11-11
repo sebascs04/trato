@@ -129,3 +129,6 @@
 .ma-speaker:hover,.ma-speaker:focus-visible{color:var(--purple,#7555b5);border-bottom-color:currentColor;outline:none}
 .ma-speaker::after{content:"⇄";font-size:10px;opacity:.6}
 .cloud-error.is-draft{margin:16px 0 4px;color:var(--subtle,#5f5868);background:#f2faf5;border:1px solid #cfe8d9;border-radius:10px;padding:10px 12px}
+
+/* Past meetings: the button that shows the older ones sits under the list, quiet and full width. */
+.project-meetings-more{display:flex;width:100%;justify-content:center;margin-top:8px}

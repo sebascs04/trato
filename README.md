@@ -37,6 +37,47 @@ Scope changes are usually agreed in loose messages. The work grows, the price do
 - A paid change is read-only. New work becomes a separate request.
 - Agent output is JSON validated in code. If a step fails, Trato shows the error and never fakes a result.
 
+## PayPal and AI in Trato, at a glance
+
+The hackathon asks for a working project that meaningfully uses **both PayPal and AI**. This is where each one lives.
+
+**Requirements**
+
+| Requirement | In Trato |
+|---|---|
+| Meaningful PayPal integration | Every payment in the product runs on PayPal: checkout, invoices, refunds, disputes and webhooks (table below) |
+| Meaningful AI | Gemini agents plan the work, draft addenda, write invoice concepts, explain stuck payments, decide refunds and answer disputes, always citing project documents |
+| Working prototype | Live demo on Google Cloud, PayPal Sandbox, a judge account with three loaded projects ([JUDGES.md](JUDGES.md)) |
+| Documented | This README, [JUDGES.md](JUDGES.md) and a step-by-step guide with sample PDFs ([ejemplos/cafe-aurora-en](ejemplos/cafe-aurora-en/README.md)) |
+
+**PayPal capabilities used**
+
+| PayPal capability | What Trato does with it | Code |
+|---|---|---|
+| JavaScript SDK (Buttons) | PayPal's own buttons inside Trato on every client payment: deliverables and addenda | `paypal-buttons.mjs` |
+| Orders v2 (REST) | The backend creates each order and only counts a capture it verified (order, amount, merchant, currency) | `repos/trato-api/paypal/client.py` |
+| Invoicing | TeTrato writes the concept and issues a PayPal invoice for a deliverable or an addendum; a paid invoice completes the payment | `repos/trato-api/trato_api/proposals/invoices.py` |
+| Refunds | One-step refund of the original capture, full or partial, after the freelancer confirms | `repos/trato-api/paypal/client.py` (`refund_capture`) |
+| Disputes | New disputes flagged on the home page; TeTrato prepares the response; send message, provide evidence, accept claim or escalate, after the freelancer approves | `repos/trato-api/trato_api/disputes.py` |
+| Webhooks | Signature-verified events for payments, invoices, refunds and disputes update Trato without a refresh | `payment_webhook.py`, `refunds/webhook.py`, `dispute_webhook.py` |
+| PayPal Agent Toolkit | TeTrato's PayPal tools: read orders and disputes, create, send and read invoices | `repos/trato-api/paypal/agent_toolkit.py` |
+
+**AI that acts, with a person's approval (agentic commerce)**
+
+- **Plans and addenda:** Gemini agents in background workers read the project's PDFs and propose staged payments or an addendum, quoting the passages they used (`business_ai.py`, `change_proposal.py`).
+- **Invoices:** TeTrato drafts the invoice and issues it in PayPal through the Agent Toolkit once the freelancer confirms (`invoice_concept.py`).
+- **Payment detective:** TeTrato reads the payment's live state in PayPal and explains why it has not gone through (`payment_detective.py`).
+- **Disputes and refunds:** TeTrato builds a dispute response from the project's evidence (the stage's terms, the delivered file, the client's approval, the payment) and drafts refund decisions (`dispute_defense.py`).
+- **The client's TeTrato:** answers "How much have I paid?" from the client's records, and can accept or pay an addendum after the client confirms (`client_assistant.py`, `portal_assistant.py`).
+
+No agent moves money or sends anything on its own: every PayPal action waits for a person's click, and only a capture the backend verifies counts as paid.
+
+**Hackathon themes it covers**
+
+- **AI Agents or Automation:** agents that transact through PayPal (invoices, refunds, dispute responses) on the freelancer's behalf, after approval.
+- **Money Movement:** a freelancer is paid per deliverable the moment the client approves it, and sees every payment across clients.
+- **Business Solutions:** an invoicing and agreement tool built for freelancers, where every change becomes a paid addendum.
+
 ## How it is built
 
 ```

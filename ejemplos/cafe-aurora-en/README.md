@@ -22,7 +22,7 @@ You need:
 
 Open the demo URL and sign in with the Trato login from Devpost. If the interface is in Spanish, switch it in **Profile → Language → English**.
 
-Your account already has a finished project built with these same documents: client **Café Aurora (example)**, project **Café Aurora website — completed example**. Open it first. All three deliverables and the store addendum are paid, and its map, history and documents are complete. Then build your own copy from scratch with the steps below.
+Your account already has a finished project built with these same documents: client **Café Aurora (example)**, project **Café Aurora website (completed example)**. Open it first. All three deliverables and the store addendum are paid, and its map, history and documents are complete. Then build your own copy from scratch with the steps below.
 
 ## 2. Create the client
 

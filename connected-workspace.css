@@ -870,6 +870,11 @@ body:not(.cloud-client-account) .sidebar nav a.nav-client-only{display:none}
 .cloud-client-projects{display:grid;gap:16px}
 .cloud-client-freelancer header{display:flex;align-items:center;gap:12px;margin-bottom:12px}
 .cloud-client-freelancer header strong{display:block;overflow-wrap:anywhere}
+.cloud-client-freelancer header .cloud-directory-count{margin-top:2px}
+.cloud-client-freelancer ul{list-style:none;margin:0;padding:0;display:grid;gap:8px}
+/* How much of the plan is paid, under each project. */
+.cloud-client-progress{display:block;width:min(220px,100%);height:4px;margin-top:8px;border-radius:999px;background:var(--line);overflow:hidden}
+.cloud-client-progress>span{display:block;height:100%;border-radius:inherit;background:#2f7d55}
 .cloud-client-project{border-top:1px solid var(--line);padding:10px 0 4px}
 .cloud-client-project summary{display:flex;justify-content:space-between;gap:12px;cursor:pointer;padding:4px 0 10px}
 .cloud-client-project summary span{font-size:12px;color:var(--muted)}

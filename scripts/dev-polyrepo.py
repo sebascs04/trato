@@ -103,7 +103,8 @@ if __name__ == '__main__':
             service_env=api_env.copy() if name=='trato-api' else environment(repo)
             if name=='trato-api':service_env['FILE_PROCESSOR_URL']=f'http://127.0.0.1:{args.processor_port}'
             children.append(subprocess.Popen([str(PYTHON), '-m', 'uvicorn', module, '--host', '127.0.0.1',
-                '--port', service_port, '--limit-concurrency', '8', '--no-access-log'], cwd=repo, env=service_env))
+                # The API waits on PayPal and Supabase: a few slow reads must not fill it. The processor stays small (CPU work).
+                '--port', service_port, '--limit-concurrency', '8' if name=='trato-file-processor' else '64', '--no-access-log'], cwd=repo, env=service_env))
         if queue_requested:
             worker_env=environment(REPOS/'trato-worker')
             worker_env['TRATO_API_URL']=f'http://127.0.0.1:{args.api_port}'

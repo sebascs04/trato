@@ -88,6 +88,13 @@ class Repository:
         return self.rows('clients', {'select': 'id,name,contact_email,created_at', 'order': 'created_at.desc', 'limit': 100})
 
     def create_client(self, name, email):
+        # One client per contact email for each freelancer: a client already has many projects, so a second record with
+        # the same email only splits them. Row-level security limits the check to the signed-in freelancer's clients.
+        if email:
+            # Exact match, ignoring case: LIKE wildcards in the address are escaped.
+            pattern = ''.join('\\' + c if c in '\\_%*' else c for c in email.strip())
+            if self.rows('clients', {'select': 'id', 'contact_email': 'ilike.' + pattern, 'deleted_at': 'is.null', 'limit': 1}):
+                raise ApiError('CLIENT_EMAIL_EXISTS', 409)
         return self.call('POST', '/rest/v1/clients', json={'name': name, 'contact_email': email},
                          headers={'Prefer': 'return=representation'})[0]
 

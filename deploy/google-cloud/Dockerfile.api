@@ -15,4 +15,4 @@ COPY local-ports.json /app/local-ports.json
 RUN useradd --uid 10001 --create-home api && mkdir -p /var/lib/trato/gmail /var/lib/trato/paypal && chown api:api /var/lib/trato/gmail /var/lib/trato/paypal
 USER api
 EXPOSE 8100
-CMD ["uvicorn", "trato_api.app:app", "--host", "0.0.0.0", "--port", "8100", "--limit-concurrency", "8", "--proxy-headers", "--forwarded-allow-ips", ""]
+CMD ["uvicorn", "trato_api.app:app", "--host", "0.0.0.0", "--port", "8100", "--limit-concurrency", "64", "--proxy-headers", "--forwarded-allow-ips", ""]

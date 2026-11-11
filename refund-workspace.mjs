@@ -106,9 +106,14 @@ export function installRefundWorkspace(cloud){
  async function load(s){
   if(s.loading)return;s.loading=true;s.error='';s.refreshPayments=false;
   try{
-   // Refund requests the client sent from their own space; a failed read is shown, never treated as «none».
-   const [items,payments,status,requests]=await Promise.all([cloud.request(`/api/v1/projects/${s.project}/refunds`),cloud.request(`/api/v1/projects/${s.project}/refund-payments`),cloud.request(`/api/v1/projects/${s.project}/request-status`),
+   // A busy or briefly unavailable server (for example while PayPal Sandbox is slow) is retried quietly a few times;
+   // only a failure that persists is shown. A screen already loaded keeps its data meanwhile.
+   const read=async()=>{for(let attempt=0;;attempt++){try{return await readAll();}catch(error){
+    if(attempt>=3||error?.status&&error.status<500&&error.status!==429||!current(s))throw error;
+    await new Promise(resolve=>setTimeout(resolve,1500*(attempt+1)));}}};
+   const readAll=()=>Promise.all([cloud.request(`/api/v1/projects/${s.project}/refunds`),cloud.request(`/api/v1/projects/${s.project}/refund-payments`),cloud.request(`/api/v1/projects/${s.project}/request-status`),
     cloud.request(`/api/v1/projects/${s.project}/client-refund-requests`).catch(()=>null)]);
+   const [items,payments,status,requests]=await read();
    if(!current(s))return;
    if(!Array.isArray(items)||items.some(x=>x.project_id!==s.project||!statuses.includes(x.status))||!Array.isArray(payments)||typeof status?.can_register!=='boolean')throw Error();
    s.items=items;s.payments=payments;s.status=status;s.loaded=true;cloud.requestStatus=status;
@@ -157,10 +162,10 @@ export function installRefundWorkspace(cloud){
   const quick=quickRefund(s,r)||quickUnfinished(s,r),another=r.status==='open'&&s.items.some(x=>!['completed','closed_without_refund','rejected','withdrawn'].includes(x.status));
   const refund=quick?`<button type="button" class="button" data-client-thread="refund" ${another?'disabled':''}>${t('clientRequests.refund',{amount:money(r.requested_minor)})}</button>`
    :`<button type="button" class="button" data-client-thread="review" ${s.status?.can_register!==true?'disabled':''}>${t('clientRequests.review')}</button>`;
-  const decide=r.status==='open'?`<div class="refund-actions tetrato-decide" data-client-thread-decide>${refund}<button type="button" class="button secondary" data-client-thread="decline">${t('clientRequests.decline')}</button></div>
-   <div class="problem-register" data-client-thread-declining hidden><label class="field" for="client-thread-note">${t('clientRequests.declineNote')}</label><textarea class="context-box" id="client-thread-note" rows="3" maxlength="4000" data-client-thread-note></textarea><div class="refund-actions tetrato-decide"><button type="button" class="button" data-client-thread="decline-confirm">${t('clientRequests.declineConfirm')}</button><button type="button" class="text-button" data-client-thread="decline-cancel">${uiText('Cancelar')}</button></div></div>`
+  // One row of actions under the reply: send the reply, decline, or the main step (refund or review), last and primary.
+  const decide=r.status==='open'?`<div class="problem-register" data-client-thread-declining hidden><label class="field" for="client-thread-note">${t('clientRequests.declineNote')}</label><textarea class="context-box" id="client-thread-note" rows="3" maxlength="4000" data-client-thread-note></textarea><div class="refund-actions tetrato-decide"><button type="button" class="button" data-client-thread="decline-confirm">${t('clientRequests.declineConfirm')}</button><button type="button" class="text-button" data-client-thread="decline-cancel">${uiText('Cancelar')}</button></div></div>`
    :quick?`<div class="refund-actions tetrato-decide">${refund}</div>`:'';
-  const reply=r.status==='open'?`<form class="problem-reply" data-client-thread-reply><label class="field" for="client-thread-text">${uiText('problems.replyLabel')}</label><textarea class="context-box" id="client-thread-text" rows="3" maxlength="4000" data-client-thread-text></textarea><footer><button type="submit" class="button secondary">${uiText('problems.send')}</button></footer></form>`:'';
+  const reply=r.status==='open'?`<form class="problem-reply" data-client-thread-reply><label class="field" for="client-thread-text">${uiText('problems.replyLabel')}</label><textarea class="context-box" id="client-thread-text" rows="3" maxlength="4000" data-client-thread-text></textarea><footer class="refund-actions tetrato-decide refund-thread-actions" data-client-thread-decide><button type="submit" class="button secondary">${uiText('problems.send')}</button><button type="button" class="button secondary" data-client-thread="decline">${t('clientRequests.decline')}</button>${refund}</footer></form>`:'';
   // TeTrato weighs the request against the project's documents (agreement, deliveries, the freelancer's refund policy) and PayPal's rules.
   const ask=r.status==='open'&&cloud.askTeTrato?`<button type="button" class="button secondary tetrato-ask" data-client-thread="ask"><img src="/assets/mascot/trato-guide.png" alt="" width="36" height="36">${t('clientRequests.ask')}</button>`:'';
   return `<header><h2 id="client-thread-title">${t('clientRequests.conversation',{amount:money(r.requested_minor)})}</h2><button type="button" class="text-button" data-client-thread="close" aria-label="${uiText('Cerrar')}" title="${uiText('Cerrar')}">${icon('x')}</button></header><div class="problem-conversation refund-thread"><ol class="dispute-messages">${list}</ol>${ask}${reply}<p class="cloud-error" role="alert" data-client-thread-error></p>${decide}</div>`;
@@ -282,6 +287,10 @@ export function installRefundWorkspace(cloud){
   const id=saved?.document?.id;if(!id)throw Error('refund.evidenceMismatch');
   if(!cloud.documents.some(d=>d.id===id))cloud.documents=[saved.document,...cloud.documents];
   s.registering='reading';notify(s);
+  return citeWhenReady(s,id);
+ }
+ // Waits until Trato has read a project document and cites its first passage, as the request's proof.
+ async function citeWhenReady(s,id){
   for(let attempt=0;attempt<60;attempt++){
    let data=null;
    try{data=await cloud.request(`/api/v1/documents/${id}/extraction`);}catch(error){if(error.status&&error.status<500&&![404,409].includes(error.status))throw error;}
@@ -301,7 +310,7 @@ export function installRefundWorkspace(cloud){
   if(!note)throw Error('refund.conditionsRequired');
   const proof=(s.detail.settlement.request_evidence||[]).slice(0,1).map(c=>({...c}));
   const kept=left-refund,previous=s.snapshot?.terms.adjustments?.[0]?.concept_id;
-  return {conditions:note,items:kept>0?[{concept_id:previous||crypto.randomUUID(),kind:'other',beneficiary:'seller',description:note,mode:'fixed',amount:(kept/100).toFixed(2),base:'',rate:'',evidence:proof}]:[]};
+  return {conditions:note,items:kept>0?[{concept_id:previous||crypto.randomUUID(),kind:'other',beneficiary:'seller',description:t('simple.kept'),mode:'fixed',amount:(kept/100).toFixed(2),base:'',rate:'',evidence:proof}]:[]};
  }
  function percentAmount(item){try{return money(percentageMinor(item.base,item.rate).amount_minor);}catch{return t('invalidRate');}}
  function evidenceHtml(refs,target,readOnly=false){
@@ -353,7 +362,8 @@ export function installRefundWorkspace(cloud){
   const amount=chosen?`<label class="field">${t('simple.amount')}<input class="context-box" name="amount" inputmode="decimal" required value="${esc(r.amount??(left(chosen)/100).toFixed(2))}"><small class="field-help">${t('simple.amountHelp',{amount:money(left(chosen))})}</small></label>`:'';
   const closure=r.scope==='project_closure'?`<label class="refund-checkbox"><input name="payments_reviewed" type="checkbox" ${r.payments_reviewed?'checked':''} required>${t('create.wholeProjectConfirm')}</label>`:'';
   // The proof is attached right here: on Register, Trato uploads it, reads it and cites it. Nothing else to open.
-  const proof=r.evidence.length?`<p class="refund-create-file">${evidenceHtml(r.evidence,'request',true)}<button type="button" class="text-button" data-refund-action="clear-evidence">${t('create.changeProof')}</button></p>`
+  const proof=r.fixedProof?(r.evidence.length?`<p class="refund-create-file">${evidenceHtml(r.evidence,'request',true)}</p>`:'')
+   :r.evidence.length?`<p class="refund-create-file">${evidenceHtml(r.evidence,'request',true)}<button type="button" class="text-button" data-refund-action="clear-evidence">${t('create.changeProof')}</button></p>`
    :r.file?`<p class="refund-create-file">${icon('file-text')}<span>${esc(r.file.name)}</span><button type="button" class="text-button" data-refund-action="clear-evidence">${t('create.changeProof')}</button></p>`
    :`<input class="context-box" type="file" name="evidence_file" accept=".pdf,application/pdf" required><button type="button" class="text-button" data-refund-action="pick" data-target="request">${t('create.useProjectDocument')}</button>`;
   const working=s.registering?`<p class="refund-create-progress" role="status" aria-busy="true">${t('create.'+s.registering)}</p>`:'';
@@ -577,16 +587,25 @@ export function installRefundWorkspace(cloud){
    const req=(s.clientRequests||[]).find(r=>r.id===target.dataset.id&&r.status==='open');
    if(!req||s.status?.can_register!==true||s.pending||s.storageError)return;
    if(!s.payments.some(p=>p.id===req.received_payment_id))throw Error('refund.paymentUnavailable');
-   const blob=await cloud.request(`/api/v1/projects/${s.project}/client-refund-requests/${req.id}/pdf`,{},true);
-   if(!current(s))return;
-   s.request={scope:'payment_only',payments_reviewed:false,payment_id:req.received_payment_id,reason:req.reason,requested_by:'customer',evidence:[],client_request_id:req.id};
-   s.view='create';s.step=null;s.notice=t('clientRequests.addEvidence');
-   s.resumeAfterUpload=true;wizard.close();cloud.openSource('reference',uploadContext(s));
-   const form=cloud.modal?.open?cloud.modal.querySelector('[data-cloud-form="upload"]'):null;
-   if(!form){s.resumeAfterUpload=false;s.wizardOpen=true;return;}
-   const title=form.querySelector('input[name="title"]');if(title)title.value=t('clientRequests.documentTitle');
-   const files=new DataTransfer();files.items.add(new File([blob],`client-refund-request-${req.id.slice(0,8)}.pdf`,{type:'application/pdf'}));
-   const input=form.querySelector('input[name="file"]');if(input){input.files=files.files;input.dispatchEvent(new Event('change',{bubbles:true}));}
+   // Filled from the client's request: the amount they asked for, and their own request as the proof, fixed. Trato saves that
+   // PDF once (the request id is the upload's idempotency key), waits until it is read and cites it; no upload window opens.
+   s.request={scope:'payment_only',payments_reviewed:false,payment_id:req.received_payment_id,reason:req.reason,requested_by:'customer',evidence:[],
+    client_request_id:req.id,amount:(req.requested_minor/100).toFixed(2),fixedProof:true};
+   s.view='create';s.step=null;s.wizardOpen=true;s.registering='reading';notify(s);
+   try{
+    const filename=`client-refund-request-${req.id.slice(0,8)}.pdf`;
+    let doc=(cloud.documents||[]).find(d=>d.original_filename===filename&&!d.deleted_at);
+    if(!doc){
+     const blob=await cloud.request(`/api/v1/projects/${s.project}/client-refund-requests/${req.id}/pdf`,{},true);
+     if(!current(s))return;
+     const meta={filename,title:t('clientRequests.documentTitle'),kind:'reference',...uploadContext(s)};
+     const saved=await cloud.request(`/api/v1/projects/${s.project}/documents?${new URLSearchParams(meta)}`,{method:'POST',body:blob,headers:{'Content-Type':'application/pdf','Idempotency-Key':req.id}});
+     doc=saved?.document;if(!doc?.id)throw Error('refund.evidenceMismatch');
+     if(!cloud.documents.some(d=>d.id===doc.id))cloud.documents=[doc,...cloud.documents];
+    }
+    const citation=await citeWhenReady(s,doc.id);
+    if(current(s)&&s.request?.client_request_id===req.id)s.request.evidence=[citation];
+   }finally{if(current(s))s.registering=null;}
    return;
   }
   if(a==='open'){if(s.detail?.settlement.id===target.dataset.id&&s.editor)s.wizardOpen=true;else await openDetail(s,target.dataset.id);}
@@ -595,7 +614,7 @@ export function installRefundWorkspace(cloud){
   if(a==='edit'&&editable(s)&&!s.pending){
    s.step=2;
    const kept=s.snapshot?.terms.adjustments||[],proof=s.detail?.settlement.request_evidence||[];
-   if(proof.length&&kept.length<=1&&payment(s))s.editor={simple:true,refund:s.snapshot?(s.snapshot.breakdown.refund_minor/100).toFixed(2):'',note:kept[0]?.description||''};
+   if(proof.length&&kept.length<=1&&payment(s))s.editor={simple:true,refund:s.snapshot?(s.snapshot.breakdown.refund_minor/100).toFixed(2):'',note:s.snapshot?.terms.conditions||kept[0]?.description||''};
    else s.editor={items:kept.map(editItem),conditions:s.snapshot?.terms.conditions||'',reviewed:false};
   }
   if(a==='cancel-edit'){s.editor=null;s.pick=null;s.step=null;}
@@ -634,11 +653,14 @@ export function installRefundWorkspace(cloud){
   const heading=s.wizardOpen?wizardHeader(s):`<header class="refund-list-heading"><div class="refund-list-record"><span class="refund-mark">${icon('undo-2')}</span><div><span class="eyebrow">${t('realRecords')}</span><h3>${t('title')}</h3></div></div>${assistantButton('list','open')}</header>`;
   if(autoRecoverable(s.pending)&&!s.busy&&s.recoverTried!==s.pending.key){s.recoverTried=s.pending.key;queueMicrotask(()=>void run(s,()=>autoRecover(s)));}
   const recovery=s.pending&&!(autoRecoverable(s.pending)&&(s.busy||s.recoverTried!==s.pending.key))?`<aside class="refund-notice" role="status"><p>${t('uncertain')}</p><div class="refund-actions">${button('query','query')}${s.pending.action==='send'?button('reconcile-send','reconcileSend'):''}${isFinancialAction(s.pending.action)?renderFinancialPending(s):s.pendingBody?button('retry-operation','retrySame'):''}</div></aside>`:'';
-  const body=s.loaded?(!s.wizardOpen?listHtml(s):s.view==='create'?requestHtml(s):s.view==='initial'?renderInitialPayment(s,evidenceHtml):detailHtml(s)):'';
+  // Inside the window, work in progress (saving, reading the PDF, registering, recovering) shows one loading state and then
+  // the next step, instead of each intermediate message in turn.
+  const working=s.wizardOpen&&!s.error&&(s.busy||s.registering||autoRecoverable(s.pending));
+  const body=s.loaded?(working?(cloud.renderSkeleton?.('list',t('wizard.working'))||`<p role="status">${t('wizard.working')}</p>`):!s.wizardOpen?listHtml(s):s.view==='create'?requestHtml(s):s.view==='initial'?renderInitialPayment(s,evidenceHtml):detailHtml(s)):'';
   panel.innerHTML=`<section class="workspace-panel cloud-refunds refund-workspace" aria-label="${t('title')}">
-   ${heading}${s.notice?`<p role="status">${esc(s.notice)}</p>`:''}${s.error?`<p role="alert" class="cloud-error">${esc(s.error)}</p>${button('reload',s.editor?'reloadDiscard':'retry')}`:''}
-   ${s.storageError?`<p role="alert">${t('storageError')}</p>`:''}${recovery}${s.loading&&!s.loaded?(cloud.renderSkeleton?.('list',t('loading'))||''):''}
-   <fieldset class="refund-body" ${s.busy||s.loading||s.pending||s.storageError?'disabled':''}>${body}</fieldset>
+   ${heading}${s.notice&&!working?`<p role="status">${esc(s.notice)}</p>`:''}${s.error?`<p role="alert" class="cloud-error">${esc(s.error)}</p>${button('reload',s.editor?'reloadDiscard':'retry')}`:''}
+   ${s.storageError?`<p role="alert">${t('storageError')}</p>`:''}${working?'':recovery}${s.loading&&!s.loaded?(cloud.renderSkeleton?.('list',t('loading'))||''):''}
+   <fieldset class="refund-body" ${s.busy||(s.loading&&!s.loaded)||s.pending||s.storageError?'disabled':''}>${body}</fieldset>
   </section>`;
 
   if(s.wizardOpen){
@@ -681,7 +703,12 @@ export function installRefundWorkspace(cloud){
   };
   panel.onchange=event=>{
    const el=event.target;
-   if(el.dataset.refundField==='document')void run(s,()=>chooseDocument(s,el.value));
+   // The choice is kept at once, so a redraw never shows «Choose document» again, and the document's text loads on its own:
+   // another action in progress no longer swallows the choice. chooseDocument ignores answers for an older choice.
+   if(el.dataset.refundField==='document'&&s.pick){
+    s.pick.docid=el.value;s.pick.data=null;s.pick.quote='';s.error='';notify(s);
+    void chooseDocument(s,el.value).then(()=>{if(current(s))notify(s);},error=>{if(current(s)){s.error=message(error);notify(s);}});
+   }
    if(el.dataset.refundField==='segment'&&s.pick){s.pick.segment=Number(el.value);s.pick.quote=s.pick.data?.segments[s.pick.segment]?.text.slice(0,4000)||'';notify(s);}
   };
   panel.onsubmit=event=>{

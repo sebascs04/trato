@@ -61,9 +61,16 @@ class PortalDisputeTests(unittest.TestCase):
 
 
 class AccountDisputeTests(unittest.TestCase):
-    def client(self, paypal, user='client-1'):
+    def client(self, paypal, user='client-1', stages=()):
+        class Checkouts:
+            def __init__(self): self.reads = []
+            def rows(_, table, params):
+                _.reads.append((table, params))
+                return [{'capture_id': CAPTURE}]
+
         class AccountStore:
-            def __init__(self): self.links = []
+            def __init__(self): self.links, self.repo = [], Checkouts()
+            def plans(_, owner): return list(stages)
             def agreements(_, owner):
                 return [{'proposal_id': 'paid-1', 'payment_status': 'completed'}, {'proposal_id': 'open-1', 'payment_status': None}]
             def link_hash(s, owner, proposal_id): s.links.append((owner, proposal_id)); return 'digest'
@@ -78,6 +85,16 @@ class AccountDisputeTests(unittest.TestCase):
         data = self.client(Listing()).get('/api/v1/portal/account/disputes').json()['data']
         self.assertEqual(self.store.links, [('client-1', 'paid-1')])
         self.assertEqual(data, {'paid-1': {'dispute_id': 'PP-R-VHD-10197086', 'status': 'WAITING_FOR_SELLER_RESPONSE', 'reason': 'MERCHANDISE_OR_SERVICE_NOT_AS_DESCRIBED', 'outcome': None}})
+
+    def test_a_paid_deliverable_shows_its_dispute_too(self):
+        stages = [{'project_id': 'project-1', 'position': 2, 'payment_status': 'completed'},
+                  {'project_id': 'project-1', 'position': 3, 'payment_status': 'pending_approval'}]
+        data = self.client(Listing(), stages=stages).get('/api/v1/portal/account/disputes').json()['data']
+        self.assertEqual(data['stage:project-1:2']['dispute_id'], 'PP-R-VHD-10197086')
+        self.assertNotIn('stage:project-1:3', data)  # an unpaid deliverable never asks PayPal
+        table, params = self.store.repo.reads[0]
+        self.assertEqual((table, params['project_id'], params['stage_position'], params['status']),
+                         ('project_initial_checkouts', 'eq.project-1', 'eq.2', 'eq.completed'))
 
     def test_without_disputes_the_answer_is_empty(self):
         class Empty(PayPal):

@@ -571,11 +571,22 @@ def build_client_portal_router(settings, store=None, payments=None, require_user
                 view = service.view(service.link_hash(user, proposal_id))
                 found = client_dispute(reader, service.capture(view['revision_id']))
                 return (proposal_id, found) if found else None
+            # Paid deliverables too: client_account_project_plans already limits them to this verified account's projects,
+            # and each capture is read for exactly that project and stage. Keyed like the client's stage problems.
+            stages = [(s['project_id'], s['position']) for s in service.plans(user) or [] if s.get('payment_status') == 'completed']
+
+            def stage(key):
+                project, position = key
+                rows = service.repo.rows('project_initial_checkouts', {'select': 'capture_id', 'project_id': 'eq.' + project,
+                                                                        'stage_position': 'eq.' + str(position), 'status': 'eq.completed'})
+                found = client_dispute(reader, rows[0]['capture_id']) if len(rows) == 1 and rows[0].get('capture_id') else None
+                return (f'stage:{project}:{position}', found) if found else None
             started = time.monotonic()
             with ThreadPoolExecutor(max_workers=4) as pool:
                 rows = [row for row in pool.map(one, paid) if row] if paid else []
+                rows += [row for row in pool.map(stage, stages) if row] if stages else []
             # Timing and counts only: no business data or identifiers.
-            logging.getLogger(__name__).warning(json.dumps({'event': 'client_account_disputes', 'ms': round(1000 * (time.monotonic() - started)), 'paid_agreements': len(paid), 'disputes': len(rows)}))
+            logging.getLogger(__name__).warning(json.dumps({'event': 'client_account_disputes', 'ms': round(1000 * (time.monotonic() - started)), 'paid_agreements': len(paid), 'paid_stages': len(stages), 'disputes': len(rows)}))
             return {proposal_id: {'dispute_id': found['dispute_id'], 'status': found['status'], 'reason': found['reason'], 'outcome': found['outcome']} for proposal_id, found in rows}
         return reply(await run_in_threadpool(read))
 

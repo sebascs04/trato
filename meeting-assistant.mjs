@@ -42,7 +42,7 @@ export function assistantHtml(s,context){
  const help=index=>s.feed.filter(f=>f.at===index).map(f=>`<li class="ma-help is-${f.kind}${f.shown?'':' is-new'}"><small><img src="/assets/mascot/trato-guide.png" alt="" width="18" height="18">TeTrato · ${t(f.kind)}</small><p>${esc(f.text)}</p></li>`).join('');
  // In a live meeting the speaker can be corrected with one click: You ⇄ Client.
  const label=l=>`<small>${who(l.speaker)}</small>`;
- const lines=help(-1)+s.transcript.map((l,i)=>`<li class="is-${l.speaker==='you'?'mine':'theirs'}">${label(l,i)}<p>${esc(l.text)}</p></li>${help(i)}`).join('')+(s.interim?`<li class="is-theirs is-partial"><p>${esc(s.interim)}</p></li>`:'');
+ const lines=help(-1)+s.transcript.map((l,i)=>`<li class="is-${l.speaker==='you'?'mine':'theirs'}">${label(l,i)}<p>${esc(l.text)}</p></li>${help(i)}`).join('')+(s.interim?`<li class="is-theirs is-partial"><p>${esc(s.interim)}</p></li>`:'')+help(null);
  const quick=['running','paused'].includes(s.phase)?`<div class="ma-quick"><h3>${icon('sparkles')}${t('askTeTrato')}</h3><div>${QUICK.map(k=>`<button type="button" data-ma-quick="${k}" ${s.asking?'disabled':''} class="${s.asking===k?'is-loading':''}" ${s.asking===k?'aria-busy="true"':''}>${s.asking===k?`<span class="ma-spinner" aria-hidden="true"></span>${t('thinking')}`:mt(`quick.${k}`)}</button>`).join('')}</div></div>`:'';
  const conversation=busy||s.transcript.length?`<section class="ma-card"><h3>${t('conversation')}</h3>${lines?`<ol class="ma-transcript" data-ma-transcript aria-live="polite">${lines}</ol>`:`<p class="ma-empty">${t('emptyConversation')}</p>`}${quick}</section>`:'';
  const feed='';
@@ -90,6 +90,8 @@ export function mountMeetingAssistant(root,{context,meeting='',meetingId=null}){
  // Each piece of help is tied to the latest client message (or the latest one at all), and quotes its start.
  const add=(kind,text)=>{
   if(!text)return;
+  // TeTrato can answer before the client's sentence closes: the help then belongs to that line, still on its way.
+  if(s.awaitingLine&&kind!=='tip'){const line=s.interim||'';s.feed.push({kind,text,at:null,about:line.length>70?line.slice(0,67).trimEnd()+'…':line});return;}
   let at=s.transcript.length-1;
   // A next-step tip is about where the conversation got to; the rest answer the client.
   if(kind!=='tip')for(let i=at;i>=0;i-=1){if(s.transcript[i].speaker!=='you'){at=i;break;}}
@@ -108,13 +110,14 @@ export function mountMeetingAssistant(root,{context,meeting='',meetingId=null}){
    if(who==='client'&&/[?¿]/.test(s.interim)&&Date.now()-lastAuto>8000&&!s.asking&&live){
     const ctx=transcriptContext();ctx.transcript.push({speaker:'Client',text:s.interim});
     try{live.send(ctx);}catch{}
-    autoSuggest();
+    s.awaitingLine=true;autoSuggest();
    }
    return;
   }
   if(event.phase!=='final'||!event.text)return;
   if(s.interimWho===who)s.interim='';
   addHeardLine(s.transcript,who,event.text,Date.now());
+  if(who==='client'&&s.awaitingLine){for(const f of s.feed)if(f.at===null)f.at=s.transcript.length-1;s.awaitingLine=false;}
   try{live?.send(transcriptContext());}catch{}
   // When the client asks something, TeTrato suggests the answer by itself: one at a time, at most every 8 s.
   if(who==='client'&&/[?¿]/.test(event.text)&&Date.now()-lastAuto>8000)autoSuggest();
@@ -171,7 +174,7 @@ export function mountMeetingAssistant(root,{context,meeting='',meetingId=null}){
  const keptLines=()=>{
   const line=l=>({speaker:l.speaker==='you'?'you':l.speaker==='client'?'client':'call',text:l.text});
   const tips=at=>s.feed.filter(f=>f.at===at&&f.text).map(f=>({speaker:'tetrato-'+f.kind,text:f.text}));
-  return [...tips(-1),...s.transcript.flatMap((l,i)=>[line(l),...tips(i)])].slice(0,400);
+  return [...tips(-1),...s.transcript.flatMap((l,i)=>[line(l),...tips(i)]),...tips(null)].slice(0,400);
  };
  async function keep(){
   if(!s.transcript.length||!context.saveRecord)return;
@@ -190,7 +193,7 @@ export function mountMeetingAssistant(root,{context,meeting='',meetingId=null}){
   const b=event.target.closest('button');if(!b||!root.contains(b))return;
   // Changing mode starts clean: a practice conversation never carries over into a live meeting, nor the other way round.
   if(b.dataset.maMode){if(b.dataset.maMode!==s.mode){clearTimeout(timer);dialog.close();s={...fresh(),mode:b.dataset.maMode,source:s.source,objective:s.objective,type:s.type,meeting:s.meeting};}paint();return;}
-  if(b.matches('[data-ma-start]')){s.transcript=[];s.feed=[];s.summary=null;if(s.mode==='practice'){s.phase='running';paint();playPractice();}else void startLive();return;}
+  if(b.matches('[data-ma-start]')){s.transcript=[];s.feed=[];s.summary=null;s.awaitingLine=false;if(s.mode==='practice'){s.phase='running';paint();playPractice();}else void startLive();return;}
   if(b.matches('[data-ma-pause]')){
    const pausing=s.phase==='running';s.phase=pausing?'paused':'running';
    for(const capture of [live,mine])if(capture){try{pausing?capture.pause():capture.resume();}catch{}}

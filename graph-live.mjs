@@ -130,7 +130,7 @@ export function projectGraphMilestone(node){
 export function assignProjectGraphCases(graph){
  const requests=graph.nodes.filter(caseRoot).sort((a,b)=>(a.created_at||'').localeCompare(b.created_at||'')||a.entity_key.localeCompare(b.entity_key));
  const palette=[['#7350b5','#f2edf9'],['#1476a8','#eaf5fc'],['#b15c13','#fff3e8'],['#14806e','#e8f7f3'],['#bd3c6c','#fceef4'],['#5168b5','#eef1fc'],['#7a771a','#f6f5e7'],['#a4472b','#fcf0eb']];
- const cases=requests.map((n,index)=>{const [color,soft]=palette[index]||[`hsl(${(index*137.508)%360} 55% 37%)`,`hsl(${(index*137.508)%360} 60% 96%)`];return {id:n.entity_key,index,title:n.kind==='Plan'?uiText('graph.initialPlan'):n.kind==='Refund'?uiText('graph.refundCase',{number:index+1}):n.title||uiText('graph.unnamedRequest',{number:index+1}),color,soft};});
+ const cases=requests.map((n,index)=>{const [color,soft]=palette[index]||[`hsl(${(index*137.508)%360} 55% 37%)`,`hsl(${(index*137.508)%360} 60% 96%)`];return {id:n.entity_key,index,title:n.kind==='Plan'?uiText('graph.initialPlan'):n.kind==='Refund'?uiText('graph.refundCase',{number:requests.slice(0,index+1).filter(x=>x.kind==='Refund').length}):n.title||uiText('graph.unnamedRequest',{number:index+1}),color,soft};});
  const memberships=new Map(graph.nodes.map(n=>[n.entity_key,new Set(caseRoot(n)?[n.entity_key]:[])]));
  for(let pass=0;pass<graph.nodes.length;pass++){
   let changed=false;
@@ -373,7 +373,7 @@ export async function openProjectGraph({projectId,request,returnFocus,isCurrent=
   }catch(error){if(!current(mapRun))return;scopeBusy=false;scopeError=error;render();}
  }
  function render(){
- const requests=scopeOptions.map((o,index)=>({entity_key:o.key,label:o.scope==='plan'?uiText('graph.initialPlan'):o.scope==='refund'?uiText('graph.refundCase',{number:index+1}):o.title||uiText('graph.unnamedRequest',{number:index+1})}));
+ const requests=scopeOptions.map((o,index)=>({entity_key:o.key,label:o.scope==='plan'?uiText('graph.initialPlan'):o.scope==='refund'?uiText('graph.refundCase',{number:scopeOptions.slice(0,index+1).filter(x=>x.scope==='refund').length}):o.title||uiText('graph.unnamedRequest',{number:index+1})}));
  const toolbar=`<div class="gd-toolbar"><label>${uiText("Ver")} <select data-live-request aria-label="${uiText("graph.filterStory")}"><option value="all" ${requestFilter==='all'?'selected':''}>${uiText("Todo el proyecto")}</option>${requests.map(n=>`<option value="${esc(n.entity_key)}" ${n.entity_key===requestFilter?'selected':''}>${esc(n.label)}</option>`).join('')}</select></label>`;
  if(scopeBusy||scopeError){
   resizeObserver?.disconnect();viewport=null;scene=null;

@@ -204,11 +204,26 @@ def run_tool_agent(model, runtime, messages, final_schema, *, maximum_context_by
             raise ToolError('INVALID_AGENT_TOOL_RESPONSE')
         if index == max_tool_calls:
             raise ToolError('TOOL_CALL_LIMIT')
-        result = runtime.execute(reply['tool'], reply['params'])
+        try:
+            result = runtime.execute(reply['tool'], reply['params'])
+        except ToolError as error:
+            # Rejected before anything ran (malformed parameters on an allowed tool): the model gets the error and the
+            # tool definitions to correct its call, within the same call limit. Any other failure still stops the job.
+            if error.code not in CORRECTABLE_TOOL_ERRORS:
+                raise
+            history.append({'role': 'assistant', 'content': json.dumps(reply)})
+            history.append({'role': 'user', 'content': json.dumps({'tool_error': {'tool': reply['tool'], 'error_code': error.code,
+                'instruction': 'Call one of the tools again with exactly the parameters its definition requires.',
+                'tools': runtime.definitions()}}, ensure_ascii=False)})
+            continue
         history.append({'role': 'assistant', 'content': json.dumps(reply)})
         history.append({'role': 'user', 'content': json.dumps({'tool_result': {
             'tool': reply['tool'], 'data': result}}, ensure_ascii=False)})
     raise ToolError('TOOL_CALL_LIMIT')
+
+
+# Only malformed parameters on an allowed tool. A forbidden tool (TOOL_NOT_ALLOWED) may come from injected text: it stops the job.
+CORRECTABLE_TOOL_ERRORS = ('AI_TOOL_INVALID',)
 
 
 # The model sometimes writes a synonym for the reply type ("result" for "final", "call" for "tool_call") while the

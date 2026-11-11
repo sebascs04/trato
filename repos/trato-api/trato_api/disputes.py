@@ -279,6 +279,42 @@ def evidence_pack(repo, replies, owner, project_id, payment):
     return evidence
 
 
+def stage_evidence_pack(repo, checkouts, owner, project_id, payment):
+    """The records behind a paid plan stage, read with the freelancer's session: what the stage promised, the file
+    delivered to the client, the client's approval in Trato and PayPal's capture. Client addresses stay out.
+    Stage checkouts are service-role only (checkouts): read after the caller proved ownership, filtered by owner and project."""
+    paid = only_row(checkouts.rows('project_initial_checkouts', {'select': 'stage_position,status,capture_id,amount_minor,currency,paid_at',
+                                                                'owner_id': 'eq.' + owner, 'project_id': 'eq.' + project_id,
+                                                                'capture_id': 'eq.' + payment['capture_id']}))
+    position = paid['stage_position']
+    if paid['status'] != 'completed' or not isinstance(position, int):
+        raise ApiError('DISPUTE_EVIDENCE_UNAVAILABLE', 409)
+    stage = only_row(repo.rows('project_start_stages', {'select': 'title,deliverables,payment_condition,amount',
+                                                        'project_id': 'eq.' + project_id, 'position': 'eq.' + str(position)}))
+    plan = only_row(repo.rows('project_start_plans', {'select': 'summary,created_at', 'project_id': 'eq.' + project_id}))
+    lines = [f'Plan stage {position}: {stage["title"]}', 'Deliverables: ' + (stage['deliverables'] or 'none'),
+             'Payment condition: ' + (stage['payment_condition'] or 'none'), 'Amount: ' + money(paid['amount_minor'], paid['currency'])]
+    if (plan.get('summary') or '').strip():
+        lines.append('Project plan: ' + plan['summary'].strip()[:1500])
+    evidence = [{'id': 'stage', 'kind': 'stage', 'at': plan['created_at'], 'text': '\n'.join(lines)}]
+    titles = {d['id']: d['title'] for d in repo.rows('documents', {'select': 'id,title', 'project_id': 'eq.' + project_id, 'deleted_at': 'is.null', 'limit': 200})}
+    shares = repo.rows('project_stage_delivery_shares', {'select': 'document_id,shared_at', 'project_id': 'eq.' + project_id,
+                                                         'stage_position': 'eq.' + str(position), 'order': 'shared_at.asc'})
+    for n, row in enumerate([r for r in shares if r['document_id'] in titles], 1):
+        evidence.append({'id': f'delivery-{n}', 'kind': 'stage_delivery', 'at': row['shared_at'], 'document_id': row['document_id'],
+                         'text': f"Delivery file \"{titles[row['document_id']]}\" for stage {position} shared with the client in Trato on {project_time(row['shared_at'])}"})
+    reviews = repo.rows('project_stage_reviews', {'select': 'decision,notes,created_at', 'project_id': 'eq.' + project_id,
+                                                  'stage_position': 'eq.' + str(position), 'order': 'created_at.asc'})
+    for n, row in enumerate(reviews, 1):
+        verb = 'approved' if row['decision'] == 'approved' else 'asked for changes to'
+        note = f" Client notes: {row['notes'].strip()[:1000]}" if (row.get('notes') or '').strip() else ''
+        evidence.append({'id': f'review-{n}', 'kind': 'stage_approval' if row['decision'] == 'approved' else 'stage_review', 'at': row['created_at'],
+                         'text': f"The client {verb} the delivery of stage {position} in Trato's client portal on {project_time(row['created_at'])}.{note}"})
+    evidence.append({'id': 'payment', 'kind': 'payment', 'at': payment.get('verified_at'),
+                     'text': f"PayPal confirmed a payment of {money(paid['amount_minor'], paid['currency'])} for plan stage {position} ({stage['title']}) on {project_time(payment.get('verified_at'))}"})
+    return evidence
+
+
 def documents_to_send(repo, project_id, document_ids):
     """Every file is checked and downloaded before anything goes out; download() rejects a file whose hash no longer matches."""
     files, total = [], 0
@@ -479,7 +515,8 @@ def validate_defense(result, data, sources, documents):
     if not set(choices) <= {d['id'] for d in documents}:
         raise ApiError('AI_INVALID_RESPONSE', 502)
     consulted = {s.get('file_id') for s in sources.values()}
-    required = {item.get('document_id') for item in evidence.values() if item.get('kind') == 'document'}  # The exact PDF the client accepted.
+    # The exact PDF the client accepted, or the file delivered for the disputed stage.
+    required = {item.get('document_id') for item in evidence.values() if item.get('kind') in ('document', 'stage_delivery')}
     # An opinion about a document needs its content: without a passage from it in this job, only the accepted PDF is proposed, with no reason.
     output['documents'] = [{
         'id': d['id'], 'title': d['title'], 'kind': d['kind'], 'created_at': d.get('created_at'), 'consulted': d['id'] in consulted,
@@ -630,13 +667,20 @@ def build_dispute_router(settings, require_user, repository_factory=None, reader
         messages = dispute['messages']
         if any(m['by'] == 'SELLER' for m in messages) and messages[-1]['by'] != 'BUYER' and 'provide_evidence' not in actions:
             raise ApiError('DISPUTE_ANALYSIS_NOT_NEEDED', 409)
-        if dispute['payment']['origin'] != 'change' or not dispute['payment'].get('proposal_payment_id') or replies is None:
+        payment = dispute['payment']
+        if payment['origin'] == 'initial' and payment.get('capture_id'):
+            from .thread_store import ThreadStore
+            repo.project(project_id)  # Ownership first: 404 unless the signed-in freelancer owns this active project.
+            evidence = stage_evidence_pack(repo, ThreadStore(settings).repo, owner, project_id, payment)  # Its delivery, approval and payment.
+        elif payment['origin'] == 'change' and payment.get('proposal_payment_id') and replies is not None:
+            evidence = evidence_pack(repo, replies, owner, project_id, payment)
+        else:
             raise ApiError('DISPUTE_EVIDENCE_UNAVAILABLE', 409)
         project = repo.project(project_id)
         return {'workflow': 'dispute_defense', 'owner_id': owner, 'client_id': project['client_id'], 'project_id': project_id, 'dispute_id': dispute_id, 'output_language': language,
                 'dispute': {**{k: dispute[k] for k in ('reason', 'status', 'stage', 'amount', 'response_due')}, 'actions': actions,
                             'client_messages': [m['text'] for m in messages if m['by'] == 'BUYER'], 'conversation': messages},
-                'evidence': evidence_pack(repo, replies, owner, project_id, dispute['payment'])}
+                'evidence': evidence}
 
     @router.post('/projects/{project_id}/disputes/{dispute_id}/defense')
     async def prepare_defense(project_id: UUID, dispute_id: str, request: Request, owner=Depends(require_user)):

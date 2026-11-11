@@ -51,7 +51,8 @@ function closedResult(d){
  const result=t(`resultNote.${outcome}`,{amount:money(d.amount.value,d.amount.currency)});
  return `<p class="dispute-result is-${tone}" role="status">${icon(tone==='good'?'check':tone==='lost'?'undo-2':'info')}<span>${result}${tone==='lost'?' '+t(`refundSync.${refundKey}`):''}</span></p>`;
 }
-const canDefend=d=>d.status!=='RESOLVED'&&d.payment.origin==='change'&&(d.status==='UNDER_REVIEW'||d.actions.some(a=>DEFENSE_ACTIONS.includes(a)||SANDBOX_ACTIONS.includes(a)));
+// Addendum payments and plan stage payments: both have records TeTrato can cite.
+const canDefend=d=>d.status!=='RESOLVED'&&['change','initial'].includes(d.payment.origin)&&(d.status==='UNDER_REVIEW'||d.actions.some(a=>DEFENSE_ACTIONS.includes(a)||SANDBOX_ACTIONS.includes(a)));
 // Home warning: open disputes on any project, so the freelancer learns of one without opening Disputes. Facts come from PayPal via the backend.
 export function validateAttention(value){
  if(!value||!Array.isArray(value.disputes)||!Number.isInteger(value.payments_checked))throw new Error('Invalid disputes');
@@ -80,7 +81,7 @@ export function validateDefense(value,disputeId){
  if(!value||value.kind!=='dispute_defense'||value.dispute_id!==disputeId||!['strong','partial','weak'].includes(value.assessment)||typeof value.summary!=='string'||typeof value.response_message!=='string'||!DEFENSE_ACTIONS.includes(value.recommended_action)||!Array.isArray(value.gaps)||!Array.isArray(value.points)||value.points.some(p=>!p||typeof p.claim!=='string'||typeof p.quote!=='string'||typeof p.kind!=='string')||!Array.isArray(value.documents)||value.documents.some(d=>!d||typeof d.id!=='string'||typeof d.title!=='string'||typeof d.sendable!=='boolean'||typeof d.consulted!=='boolean'||typeof d.recommended!=='boolean'||typeof d.reason!=='string'))throw Error('AI_JOB_INVALID');
  return value;
 }
-const KINDS=['agreement','document','delivery','acceptance','payment','client_reply'];
+const KINDS=['agreement','document','delivery','acceptance','payment','client_reply','stage','stage_delivery','stage_approval','stage_review'];
 const selectedCount=send=>Array.isArray(send.selected)?send.selected.length:0;
 // Whether a client message is still unanswered: the only moment TeTrato analyzes again after a reply was sent.
 export function needsAnalysis(dispute){const messages=dispute?.messages||[];return !!dispute&&(!messages.some(m=>m.by==='SELLER')||messages.at(-1)?.by==='BUYER'||!!dispute.actions?.includes('provide_evidence'));}

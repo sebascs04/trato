@@ -1,5 +1,6 @@
 """Authenticated financial actions. The client cannot provide provider facts."""
 import json
+import os
 
 from fastapi import APIRouter,Depends,Request
 from fastapi.responses import JSONResponse
@@ -12,6 +13,23 @@ from ..persistence import uuid
 from .domain import Contract
 from .financial_domain import FinancialCheckInput,FinancialAuthorizationInput,FinancialExecutionInput,RecoveryConsentInput,ExternalReceiptInput,RetryAuthorizationInput
 from .repository import RefundRepository
+
+
+def queued_refund_pdf(settings,save):
+    """The one-step refunds save the record PDF like the PDF route does, and also send it to processing: an unread
+    project document would keep TeTrato's questions and the project map waiting for it."""
+    def run(repo,owner,settlement_id,snapshot_id,language,key):
+        result=save(repo,owner,settlement_id,snapshot_id,language,key)
+        document_id=result['artifact']['document_id']
+        if os.getenv('TRATO_FILE_PROCESSING_ENABLED')=='true':
+            from ..file_processing import remember_options
+            document=repo.document(document_id)
+            options=repo.rows('file_processing_options',{'select':'document_id','document_id':'eq.'+document_id,
+                'owner_id':'eq.'+owner,'project_id':'eq.'+document['project_id']})
+            if not options:remember_options(settings,repo,document,language)
+        repo.queue_document(document_id)
+        return result
+    return run
 
 
 def build_refund_financial_router(settings,require_user,repository_factory=None,workflow=None,confirmation=None,pdf_backend=None):
@@ -60,7 +78,7 @@ def build_refund_financial_router(settings,require_user,repository_factory=None,
         except ValueError:raise ApiError('INVALID_REQUEST',422) from None
         if not isinstance(data,dict) or data.get('confirmed') is not True or not isinstance(data.get('project_id'),str):raise ApiError('INVALID_REQUEST',422)
         language='en' if request.headers.get('accept-language','').lower().startswith('en') else 'es'
-        pdf=RefundPdfService(pdf_backend or (lambda:RefundBackendStore(settings))).save
+        pdf=queued_refund_pdf(settings,RefundPdfService(pdf_backend or (lambda:RefundBackendStore(settings))).save)
         return reply(await run_in_threadpool(run,repo,owner,data['project_id'],uuid(request_id),operation_key,finance=workflow,pdf=pdf,complete=complete,language=language))
 
     @router.post('/{settlement_id}/refund')
@@ -74,7 +92,7 @@ def build_refund_financial_router(settings,require_user,repository_factory=None,
         except ValueError:raise ApiError('INVALID_REQUEST',422) from None
         if not isinstance(data,dict) or data.get('confirmed') is not True or not isinstance(data.get('expected_snapshot_id'),str):raise ApiError('INVALID_REQUEST',422)
         language='en' if request.headers.get('accept-language','').lower().startswith('en') else 'es'
-        pdf=RefundPdfService(pdf_backend or (lambda:RefundBackendStore(settings))).save
+        pdf=queued_refund_pdf(settings,RefundPdfService(pdf_backend or (lambda:RefundBackendStore(settings))).save)
         return reply(await run_in_threadpool(run,repo,owner,uuid(settlement_id),uuid(data['expected_snapshot_id']),operation_key,finance=workflow,pdf=pdf,complete=complete,language=language))
 
     @router.get('/{settlement_id}/financial')

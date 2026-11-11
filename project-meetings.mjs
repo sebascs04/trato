@@ -63,7 +63,8 @@ export function installProjectMeetings(cloud){
  // TeTrato's meeting assistant lives in the right-hand drawer, outside the tab: repaints never touch it.
  let drawer=null,drawerProject=null,assistant=null;
  function openAssistant(project,meeting='',meetingId=null){
-  if(drawer&&drawerProject!==project){drawer.remove();drawer=null;assistant=null;}
+  // Another project's assistant stops listening before it goes away.
+  if(drawer&&drawerProject!==project){void assistant?.stop?.();drawer.remove();drawer=null;assistant=null;}
   if(drawer&&meeting)assistant?.setMeeting(meeting,meetingId);
   if(!drawer){
    drawer=doc.createElement('dialog');drawer.className='case-assistant-drawer meeting-assistant-drawer';drawer.setAttribute('aria-labelledby','meeting-assistant-title');

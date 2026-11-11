@@ -122,10 +122,26 @@ export function mountMeetingAssistant(root,{context,meeting='',meetingId=null}){
   // When the client asks something, TeTrato suggests the answer by itself: one at a time, at most every 8 s.
   if(who==='client'&&/[?¿]/.test(event.text)&&Date.now()-lastAuto>8000)autoSuggest();
  };
+ // One meeting listens at a time. Each start gets a number; a connection from an earlier start is closed and
+ // anything it still sends is ignored, so a voice is never transcribed twice and nothing listens after the end.
+ let runId=0;
+ async function stopCaptures(){
+  runId+=1;const old=[live,mine];live=null;mine=null;
+  for(const capture of old)if(capture){try{await capture.close();}catch{}}
+ }
  async function startLive(){
+  await stopCaptures();const run=runId;
   s.phase='connecting';s.error='';paint();
+  // The microphone comes first, so the browser asks in a sensible order: your voice, then the Meet tab.
+  // Without it the meeting does not start halfway: the message says how to allow it.
   try{
-   live=await startLiveAudioCapture({source:'screen',language:lang(),mode:s.type,context:liveContext(),sessionId:`meeting-${Date.now()}-client`,onEvent:event=>{
+   const probe=await navigator.mediaDevices.getUserMedia({audio:true,video:false});
+   for(const track of probe.getTracks())track.stop();
+  }catch{if(run!==runId)return;s.phase='idle';s.error=t('micBlocked');paint();return;}
+  if(run!==runId)return;
+  try{
+   const capture=await startLiveAudioCapture({source:'screen',language:lang(),mode:s.type,context:liveContext(),sessionId:`meeting-${Date.now()}-client`,onEvent:event=>{
+    if(run!==runId)return;
     if(event.type==='transcription')heard('client',event);
     else if(event.type==='suggestion'){
      // One request, one answer: only the piece the freelancer asked for.
@@ -139,15 +155,19 @@ export function mountMeetingAssistant(root,{context,meeting='',meetingId=null}){
     else if(event.type==='status')s.phase=event.status==='pause'?'paused':'running';
     paint();
    }});
-   s.phase='running';
-  }catch(failure){live=null;s.phase='idle';s.error=failure?.message||t('error');paint();return;}
+   if(run!==runId){try{await capture.close();}catch{}return;}
+   live=capture;s.phase='running';
+  }catch(failure){if(run!==runId)return;live=null;s.phase='idle';s.error=failure?.message||t('error');paint();return;}
   paint();
   // Your own voice, on its own connection. Without a microphone the meeting goes on with the client alone.
   try{
-   mine=await startLiveAudioCapture({source:'microphone',language:lang(),mode:s.type,context:liveContext(),sessionId:`meeting-${Date.now()}-you`,onEvent:event=>{
+   const capture=await startLiveAudioCapture({source:'microphone',language:lang(),mode:s.type,context:liveContext(),sessionId:`meeting-${Date.now()}-you`,onEvent:event=>{
+    if(run!==runId)return;
     if(event.type==='transcription'){heard('you',event);paint();}
    }});
-  }catch{mine=null;s.error=t('micMissing');paint();}
+   if(run!==runId){try{await capture.close();}catch{}return;}
+   mine=capture;
+  }catch{if(run!==runId)return;mine=null;s.error=t('micMissing');paint();}
  }
  async function end(){
   clearTimeout(timer);
@@ -161,7 +181,8 @@ export function mountMeetingAssistant(root,{context,meeting='',meetingId=null}){
    try{await live.close();}catch{}
    live=null;
   }
-  if(mine){try{await mine.close();}catch{}mine=null;}
+  // After the summary nothing keeps listening: both connections close and late events are ignored.
+  await stopCaptures();
   s.phase='ended';paint();openSummary();
   void keep();
  }
@@ -192,7 +213,7 @@ export function mountMeetingAssistant(root,{context,meeting='',meetingId=null}){
  root.addEventListener('click',event=>{
   const b=event.target.closest('button');if(!b||!root.contains(b))return;
   // Changing mode starts clean: a practice conversation never carries over into a live meeting, nor the other way round.
-  if(b.dataset.maMode){if(b.dataset.maMode!==s.mode){clearTimeout(timer);dialog.close();s={...fresh(),mode:b.dataset.maMode,source:s.source,objective:s.objective,type:s.type,meeting:s.meeting};}paint();return;}
+  if(b.dataset.maMode){if(b.dataset.maMode!==s.mode){clearTimeout(timer);void stopCaptures();dialog.close();s={...fresh(),mode:b.dataset.maMode,source:s.source,objective:s.objective,type:s.type,meeting:s.meeting};}paint();return;}
   if(b.matches('[data-ma-start]')){s.transcript=[];s.feed=[];s.summary=null;s.awaitingLine=false;if(s.mode==='practice'){s.phase='running';paint();playPractice();}else void startLive();return;}
   if(b.matches('[data-ma-pause]')){
    const pausing=s.phase==='running';s.phase=pausing?'paused':'running';
@@ -203,7 +224,7 @@ export function mountMeetingAssistant(root,{context,meeting='',meetingId=null}){
   }
   if(b.matches('[data-ma-end]')){void end();return;}
   if(b.matches('[data-ma-summary-open]')){openSummary();return;}
-  if(b.matches('[data-ma-reset]')){clearTimeout(timer);const keep={mode:s.mode,source:s.source,objective:s.objective,type:s.type};s={...fresh(),...keep};paint();return;}
+  if(b.matches('[data-ma-reset]')){clearTimeout(timer);void stopCaptures();const keep={mode:s.mode,source:s.source,objective:s.objective,type:s.type};s={...fresh(),...keep};paint();return;}
   if(b.dataset.maQuick){
    // One question at a time: the button shows TeTrato thinking and the others wait until the answer arrives.
    if(s.asking)return;
@@ -233,5 +254,5 @@ export function mountMeetingAssistant(root,{context,meeting='',meetingId=null}){
  root.addEventListener('input',event=>{if(event.target.dataset.maNote==='objective')s.objective=event.target.value;});
  root.addEventListener('toggle',event=>{if(event.target.matches?.('.ma-notes'))s.notesOpen=event.target.open;},true);
  paint();
- return {setMeeting(title,id=null){if(!['connecting','running','paused','ending'].includes(s.phase)){s.meeting=title||'';s.meetingId=id;paint();}}};
+ return {stop:()=>{clearTimeout(timer);return stopCaptures();},setMeeting(title,id=null){if(!['connecting','running','paused','ending'].includes(s.phase)){s.meeting=title||'';s.meetingId=id;paint();}}};
 }

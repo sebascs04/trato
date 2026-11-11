@@ -136,7 +136,18 @@ class FileProcessing:
         self.settings=settings;self.jobs=jobs if jobs is not None else AIJobs();self.repo_override=repo
         self.gateway=gateway if gateway is not None else VectorGateway(settings)
         self.chunker=chunks if chunks is not None else ProcessorChunks(settings)
-    def active(self,id,lease):
+        # Runs already fully checked in this process: {(job, lease): (document version, context)}.
+        self.checked={}
+    @staticmethod
+    def document_version(repo,data):
+        """One query that changes whenever the document is withdrawn, reclassified, replaced or re-extracted."""
+        rows=repo.rows('documents',{'select':'id,kind,sha256,deleted_at,document_extractions(id,status,result_hash)',
+            'id':'eq.'+data['file_id'],'owner_id':'eq.'+data['owner_id'],'project_id':'eq.'+data['project_id']})
+        return digest(rows) if rows else None
+    def active(self,id,lease,full=False):
+        """The job's context. The lease is checked on every call; the full check (18 queries) runs on the first call of a
+        run and whenever full=True (before publishing to search). In between, one query confirms the document is the same
+        version; any change stops the run with FILE_SOURCE_CHANGED, as the full check would."""
         if os.getenv('TRATO_FILE_PROCESSING_ENABLED')!='true':raise ApiError('FILE_PROCESSING_NOT_CONFIGURED',503)
         id,lease=uuid(id),uuid(lease);row=self.jobs.connection().hgetall(PREFIX+id)
         if not row or row.get('status')!='running' or row.get('execution_id')!=lease:raise ApiError('FILE_JOB_NOT_ACTIVE',409)
@@ -144,7 +155,19 @@ class FileProcessing:
             data=json.loads(row['input'])
             if data['workflow']!='process_file' or row['owner']!=data['owner_id'] or data['thread']['thread_id']!=id:raise ValueError()
         except (ValueError,TypeError,KeyError):raise ApiError('FILE_JOB_INVALID',422) from None
+        known=self.checked.get((id,lease))
+        if known is not None and not full and known[1][1]==data:
+            repo=known[1][0]
+            if self.document_version(repo,data)!=known[0]:
+                self.checked.pop((id,lease),None);raise ApiError('FILE_SOURCE_CHANGED',409)
+            return known[1]
         repo=self.repo_override if self.repo_override is not None else ThreadStore(self.settings).repo
+        # The version is read before the full check: a change during it is caught by the check or by the next call.
+        version=self.document_version(repo,data);context=self.full_check(repo,id,lease,data)
+        while len(self.checked)>=64:self.checked.pop(next(iter(self.checked)))
+        self.checked[(id,lease)]=(version,context)
+        return context
+    def full_check(self,repo,id,lease,data):
         project=repo.project(data['project_id'])
         clients=repo.rows('clients',{'select':'id','id':'eq.'+project['client_id'],'owner_id':'eq.'+data['owner_id'],'deleted_at':'is.null'})
         if not clients:raise ApiError('PROJECT_NOT_FOUND',404)
@@ -191,7 +214,8 @@ class FileProcessing:
                 if error.status!=409 or self.read_artifact(repo,data,stage,key)!=artifact:raise
         return {'stage':stage,'cache_key':key,'artifact_fingerprint':digest(artifact)}
     def execute(self,id,lease,tool,params):
-        repo,data,value,manifest=self.active(id,lease);extraction=self.extraction(value)
+        # Publishing to search is what TeTrato reads: that call always runs the full check.
+        repo,data,value,manifest=self.active(id,lease,full=tool=='index_file_chunks');extraction=self.extraction(value)
         source_key=self.extraction_key(manifest,extraction)
         if tool=='revalidate_file' and params=={}:return manifest
         if tool=='read_extracted_file' and params=={}:return self.chunker.read_text(value)
@@ -266,6 +290,7 @@ class FileProcessing:
                 'status':'failed','generation':data['generation'],'project_id':data['project_id'],
                 'error_code':result.get('error_code','FILE_REVIEW_REQUIRED')})
         self.store(repo,data,'outcome',digest([id,lease]),outcome)
+        self.checked.pop((uuid(id),uuid(lease)),None)
         return {'stored':True,'status':result['status']}
 
 

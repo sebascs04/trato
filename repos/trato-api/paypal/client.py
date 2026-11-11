@@ -131,7 +131,7 @@ class PayPalSandboxClient:
                 raise PayPalError('INVALID_RETURN_URL',status=503)
         payload={'intent':'CAPTURE','purchase_units':[{'reference_id':item.payment_id,'custom_id':item.payment_id,
             'amount':{'currency_code':item.currency,'value':item.amount},'payee':{'merchant_id':self.merchant_id}}],
-            'payment_source':{'paypal':{'experience_context':{'return_url':return_url,'cancel_url':cancel_url,'user_action':'PAY_NOW','shipping_preference':'NO_SHIPPING'}}}}
+            'payment_source':{'paypal':{'experience_context':{'brand_name':'Trato','return_url':return_url,'cancel_url':cancel_url,'user_action':'PAY_NOW','shipping_preference':'NO_SHIPPING'}}}}
         order=self._request('POST','/v2/checkout/orders',payload,request_id)
         self.validate_order(order,item)
         return order

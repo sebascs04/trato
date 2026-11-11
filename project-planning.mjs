@@ -412,7 +412,7 @@ export function installProjectPlanning(cloud){
  }
  function watchSetupModal(){if(boundModal===cloud.modal)return;boundModal=cloud.modal;
   cloud.modal.addEventListener('click',event=>{if(event.target.closest('[data-cloud-close]')&&!event.target.closest('[data-plan-discard]')&&setupHasWork()){event.preventDefault();event.stopImmediatePropagation();askDiscard();}},true);
-  cloud.modal.addEventListener('cancel',event=>{if(wizard?.committing){event.preventDefault();return;}
+  cloud.modal.addEventListener('cancel',event=>{if(event.target!==cloud.modal)return;if(wizard?.committing){event.preventDefault();return;}
    if(cloud.modal.querySelector('[data-plan-discard]')){event.preventDefault();cloud.modal.querySelector('[data-plan-discard]').remove();return;}
    if(setupHasWork()){event.preventDefault();askDiscard();}});
   cloud.modal.addEventListener('close',()=>{if(!cloud.modal.open&&wizard){

@@ -33,11 +33,12 @@ test('a prepared response must belong to this dispute and is rendered escaped, m
  const {renderSendConfirm}=await import('../dispute-workspace.mjs');assert.match(renderSendConfirm({selected:['d1']}),/data-confirm-send/);assert.doesNotMatch(open,/data-confirm-send/);
  const sent=renderDefense(defense,'x',{status:'sent',allowed:true,selected:['d1'],attachment:'sent',documentsSent:1});assert.doesNotMatch(sent,/data-defense-action="send(-confirm)?"/);assert.match(sent,/data-defense-action="send-another"/);assert.doesNotMatch(sent,/<textarea/);assert.match(sent,/dispute-sent-text/);
 });
-test('the response button only appears when PayPal still allows an answer on an addendum payment',()=>{
+test('the response button only appears when PayPal still allows an answer on an addendum or plan stage payment',()=>{
  assert.match(renderDispute(dispute),/data-dispute-defense="PP-R-VHD-10197086"/);
+ assert.match(renderDispute({...dispute,payment:{...dispute.payment,origin:'initial'}}),/data-dispute-defense="PP-R-VHD-10197086"/);
  assert.doesNotMatch(renderDispute({...dispute,status:'RESOLVED'}),/data-dispute-defense/);
  assert.doesNotMatch(renderDispute({...dispute,actions:['appeal']}),/data-dispute-defense/);
- assert.doesNotMatch(renderDispute({...dispute,payment:{...dispute.payment,origin:'initial'}}),/data-dispute-defense/);
+ assert.doesNotMatch(renderDispute({...dispute,payment:{...dispute.payment,origin:'legacy'}}),/data-dispute-defense/);
 });
 
 test('what PayPal already holds prevents an accidental second send, on any device',async()=>{

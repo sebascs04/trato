@@ -4,13 +4,15 @@ Café Aurora, a small coffee shop, hires Alex Vega to build its website for USD 
 
 Everything is fictional and runs on PayPal Sandbox, so no real money moves.
 
+> **You are reading the user manual.** The sample PDFs live in six folders right next to this file. To see them, go back to the folder [trato/ejemplos/cafe-aurora-en](https://github.com/sebascs04/trato/tree/main/ejemplos/cafe-aurora-en), download the files of the step you are on, and then return here to follow it. Each step below also links straight to its folder.
+
 ## Before you start
 
 You need three things:
 
 1. **The Trato login** from the Devpost submission. Open the demo at https://trato-web-68896425401.us-central1.run.app and sign in. If the interface appears in Spanish, switch it in **Profile → Language → English**.
 2. **The PayPal Sandbox buyer account** from the Devpost submission. You use it whenever you pay as the client.
-3. **The PDFs in this folder.** Each subfolder covers one situation and has a short note of its own; download its files before you start that step.
+3. **The sample PDFs**, in the six folders of [trato/ejemplos/cafe-aurora-en](https://github.com/sebascs04/trato/tree/main/ejemplos/cafe-aurora-en). Each folder covers one situation and has a short note of its own; download its files before you start that step.
 
 | Folder | Situation | Step |
 | --- | --- | --- |
@@ -34,6 +36,8 @@ Every project belongs to a client, so the story starts there. Go to **Clients �
 
 ## 3. Start a new project
 
+**Files:** [`1-new-project`](1-new-project)
+
 Lucy's first message describes the website, and TeTrato turns it into a plan.
 
 1. Open the client and click **New project**, then choose **I'm about to start a project → Prepare the work plan**.
@@ -48,6 +52,8 @@ Lucy's first message describes the website, and TeTrato turns it into a plan.
 
 ## 4. Get paid for each deliverable
 
+**Files:** [`2-get-paid-per-deliverable`](2-get-paid-per-deliverable)
+
 Each stage follows the same three moves: Alex delivers, Lucy approves, PayPal pays. Repeat them for deliverables 1, 2 and 3, in order.
 
 1. **Deliver.** In the project, open **Work plan**, click the deliverable and choose **Delivery and payment**. Attach its file from `2-get-paid-per-deliverable/` (for example, `deliverable-1-acknowledgment.pdf` for the first stage) and click **Send to client for review**.
@@ -58,6 +64,8 @@ Each stage follows the same three moves: Alex delivers, Lucy approves, PayPal pa
 To collect a stage with an invoice instead, click **Send PayPal invoice** under **Delivery and payment**. TeTrato writes the invoice concept, **Confirm and send** issues it through the PayPal Agent Toolkit, and Lucy pays it with **Pay invoice in PayPal**.
 
 ## 5. Turn a change into a paid addendum
+
+**Files:** [`3-change-and-addendum`](3-change-and-addendum)
 
 Halfway through, Lucy asks for an online store. Trato turns that request into a new paid agreement instead of free extra work.
 
@@ -71,6 +79,8 @@ When the client answers by email instead of the portal, Alex registers that answ
 
 ## 6. Bring in a project that already started
 
+**Files:** [`4-project-already-started`](4-project-already-started)
+
 Many freelancers arrive at Trato with work already in progress. In this version of the story, Alex and Lucy finished and paid the first stage before using Trato, so TeTrato plans only what is left.
 
 1. Open the client, click **New project** and choose **The project is already underway → Record the initial agreement**.
@@ -83,6 +93,8 @@ Many freelancers arrive at Trato with work already in progress. In this version 
 
 ## 7. Refund part of a payment
 
+**Files:** [`5-refund`](5-refund)
+
 After paying the store addendum, Lucy no longer needs two product pages and asks for USD 40 back. Trato handles it from either side.
 
 **When Lucy asks from her account:**
@@ -94,6 +106,8 @@ After paying the store addendum, Lucy no longer needs two product pages and asks
 **When Alex registers it himself:** open **Refunds → Register refund request**, choose the store payment, enter `40` and the reason, attach `5-refund/client-refund-request-email.pdf` as the proof, and continue from the third move above.
 
 ## 8. Answer a PayPal dispute
+
+**Files:** [`6-dispute`](6-dispute)
 
 A dispute needs no new file, because TeTrato answers with the records the project already has: the stage's terms, the delivered file, the client's approval and the PayPal payment.
 

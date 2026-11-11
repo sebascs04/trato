@@ -36,6 +36,10 @@ def gemini_live_config(language: str = 'es') -> dict[str, Any]:
     return {
         'response_modalities': ['TEXT'],
         'input_audio_transcription': transcription,
+        # A Meet tab is never fully silent: close each sentence after half a second of pause, so the client's
+        # question reaches TeTrato right away instead of after a long wait.
+        'realtime_input_config': {'automatic_activity_detection': {
+            'end_of_speech_sensitivity': 'END_SENSITIVITY_HIGH', 'silence_duration_ms': 500}},
     }
 
 

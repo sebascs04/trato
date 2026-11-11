@@ -6,7 +6,7 @@ import unittest
 from unittest import mock
 
 from trato_api.meeting_copilot import is_origin_allowed
-from trato_api.meeting_copilot_provider import vertex_settings
+from trato_api.meeting_copilot_provider import gemini_live_config, vertex_settings
 
 
 class MeetingCloudConfigTests(unittest.TestCase):
@@ -36,6 +36,12 @@ class MeetingCloudConfigTests(unittest.TestCase):
         with mock.patch.dict(os.environ, {'WEB_ORIGIN': 'https://trato.example.app/'}, clear=False):
             self.assertTrue(is_origin_allowed('https://trato.example.app'))
             self.assertFalse(is_origin_allowed('https://other.example.app'))
+
+    def test_sentences_close_quickly_so_questions_are_answered_fast(self):
+        detection = gemini_live_config('en')['realtime_input_config']['automatic_activity_detection']
+        self.assertEqual(detection['end_of_speech_sensitivity'], 'END_SENSITIVITY_HIGH')
+        self.assertLessEqual(detection['silence_duration_ms'], 800)
+        self.assertEqual(gemini_live_config('en')['input_audio_transcription'], {'language_codes': ['en-US']})
 
 
 if __name__ == '__main__':

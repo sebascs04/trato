@@ -70,6 +70,8 @@ def render_record_pdf(record, project_name, language):
                 add('\n'.join(f'• {item}' for item in summary[key]))
         add(labels['conversation'], True)
         for line in record.get('transcript') or []:
+            if str(line.get('speaker', '')).startswith('tetrato-'):
+                continue  # TeTrato's help to the freelancer is not part of what was said in the call.
             add(f"{labels.get(line.get('speaker'), labels['call'])}: {line.get('text', '')}")
         out = BytesIO()
         SimpleDocTemplate(out, pagesize=(210 * mm, 297 * mm), leftMargin=20 * mm, rightMargin=20 * mm, topMargin=18 * mm,

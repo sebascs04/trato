@@ -75,7 +75,8 @@
 .ma-quick>div{display:flex;flex-wrap:wrap;gap:6px}
 .ma-quick button{padding:7px 12px;border:1px solid #e0d3ed;border-radius:999px;background:#f5effb;color:#6f4f93;font:inherit;font-size:12px;cursor:pointer}
 .ma-quick button:hover{background:#ece2f7}
-.ma-transcript li.ma-help{justify-self:stretch;max-width:none;margin:-2px 0 2px 14px;border-radius:10px;border-left:3px solid var(--purple,#7555b5);background:var(--surface,#fff);box-shadow:0 1px 6px #2a1f3a14;animation:ma-in .2s ease-out}
+.ma-transcript li.ma-help{justify-self:stretch;max-width:none;margin:-2px 0 2px 14px;border-radius:10px;border-left:3px solid var(--purple,#7555b5);background:var(--surface,#fff);box-shadow:0 1px 6px #2a1f3a14}
+.ma-transcript li.ma-help.is-new{animation:ma-in .2s ease-out}
 .ma-transcript li.ma-help.is-question{border-left-color:#3d6fb4}
 .ma-transcript li.ma-help.is-risk{border-left-color:#b7791f;background:#fffaf0}
 .ma-help small{display:flex!important;align-items:center;gap:6px;color:var(--purple,#7555b5)!important}

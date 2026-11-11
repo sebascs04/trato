@@ -33,7 +33,7 @@ export function assistantHtml(s,context){
  const error=s.error?`<p class="cloud-error" role="alert">${esc(s.error)}</p>`:'';
  const who=speaker=>speaker==='you'?t('you'):speaker==='client'?t('client'):esc(speaker);
  // TeTrato's help sits right under the message it is about, so it is clear what it answers.
- const help=index=>s.feed.filter(f=>f.at===index).map(f=>`<li class="ma-help is-${f.kind}"><small><img src="/assets/mascot/trato-guide.png" alt="" width="18" height="18">TeTrato · ${t(f.kind)}</small><p>${esc(f.text)}</p></li>`).join('');
+ const help=index=>s.feed.filter(f=>f.at===index).map(f=>`<li class="ma-help is-${f.kind}${f.shown?'':' is-new'}"><small><img src="/assets/mascot/trato-guide.png" alt="" width="18" height="18">TeTrato · ${t(f.kind)}</small><p>${esc(f.text)}</p></li>`).join('');
  // In a live meeting the speaker can be corrected with one click: You ⇄ Client.
  const label=l=>`<small>${who(l.speaker)}</small>`;
  const lines=help(-1)+s.transcript.map((l,i)=>`<li class="is-${l.speaker==='you'?'mine':'theirs'}">${label(l,i)}<p>${esc(l.text)}</p></li>${help(i)}`).join('')+(s.interim?`<li class="is-theirs is-partial"><p>${esc(s.interim)}</p></li>`:'');
@@ -74,6 +74,8 @@ export function mountMeetingAssistant(root,{context,meeting='',meetingId=null}){
   const old=root.querySelector('[data-ma-transcript]'),follow=!old||old.scrollHeight-old.scrollTop-old.clientHeight<40,top=old?.scrollTop||0,outer=root.scrollTop;
   const outerFollow=root.scrollHeight-root.scrollTop-root.clientHeight<80;
   root.innerHTML=assistantHtml(s,context);
+  // Help fades in once, when it arrives; later repaints show it still.
+  for(const f of s.feed)f.shown=true;
   const list=root.querySelector('[data-ma-transcript]');
   if(list)list.scrollTop=follow?list.scrollHeight:top;
   // The drawer itself follows too while the reader is at its bottom, so the newest line and the help stay in view.
@@ -94,7 +96,16 @@ export function mountMeetingAssistant(root,{context,meeting='',meetingId=null}){
  // Two voices, two transcriptions: the Meet tab is always the client and the microphone is always you, so no
  // line has to be guessed. Help and the summary go through the client's connection, which carries the whole conversation.
  const heard=(who,event)=>{
-  if(event.phase==='partial'){s.interim=event.text||'';s.interimWho=who;return;}
+  if(event.phase==='partial'){
+   s.interim=event.text||'';s.interimWho=who;
+   // A question is visible before the sentence closes: TeTrato starts on it now, with the line as heard so far.
+   if(who==='client'&&/[?¿]/.test(s.interim)&&Date.now()-lastAuto>8000&&!s.asking&&live){
+    const ctx=transcriptContext();ctx.transcript.push({speaker:'Client',text:s.interim});
+    try{live.send(ctx);}catch{}
+    autoSuggest();
+   }
+   return;
+  }
   if(event.phase!=='final'||!event.text)return;
   if(s.interimWho===who)s.interim='';
   s.transcript.push({speaker:who,text:event.text});
@@ -150,13 +161,19 @@ export function mountMeetingAssistant(root,{context,meeting='',meetingId=null}){
   lastAuto=Date.now();s.asking='what-reply';clearTimeout(askTimer);askTimer=setTimeout(()=>{if(s.asking){s.asking='';paint();}},30000);
   try{live.send({type:'suggestion-request',kind:'what-reply'});}catch{s.asking='';}
  }
+ // The conversation as it happened, with TeTrato's help right under the line it answered (at most 400 lines in all).
+ const keptLines=()=>{
+  const line=l=>({speaker:l.speaker==='you'?'you':l.speaker==='client'?'client':'call',text:l.text});
+  const tips=at=>s.feed.filter(f=>f.at===at&&f.text).map(f=>({speaker:'tetrato-'+f.kind,text:f.text}));
+  return [...tips(-1),...s.transcript.flatMap((l,i)=>[line(l),...tips(i)])].slice(0,400);
+ };
  async function keep(){
   if(!s.transcript.length||!context.saveRecord)return;
   s.saved='saving';paint();
   const sum=s.summary||{};
   try{
    const saved=await context.saveRecord({title:s.meeting||s.summary?.title||t('untitled'),meeting_id:s.meetingId||null,summary:{decisions:sum.decisions||[],actionItems:sum.actionItems||[],risks:sum.risks||[],nextSteps:sum.nextSteps||[]},
-    transcript:s.transcript.map(l=>({speaker:l.speaker==='you'?'you':l.speaker==='client'?'client':'call',text:l.text}))});
+    transcript:keptLines()});
    s.saved='saved';s.recordId=saved?.id||null;
    // The summary may already be open: it gains its Prepare addendum button now that the meeting is kept.
    if(dialog.open)openSummary();

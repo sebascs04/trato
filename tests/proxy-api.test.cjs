@@ -51,12 +51,12 @@ test('PayPal webhook signature headers reach only the dedicated verification end
   const {proxyApiRequest}=await import('../proxy-api.mjs');
   const signature={'paypal-auth-algo':'SHA256withRSA','paypal-cert-url':'https://api.sandbox.paypal.com/cert.pem','paypal-transmission-id':'transmission-test','paypal-transmission-sig':'signature-test','paypal-transmission-time':'2026-11-01T00:00:00Z'};
   const upstream=http.createServer((req,res)=>{
-    for(const [name,value] of Object.entries(signature))assert.equal(req.headers[name],['/api/v1/webhooks/paypal','/api/v1/refunds/webhooks/paypal'].includes(req.url)?value:undefined);
+    for(const [name,value] of Object.entries(signature))assert.equal(req.headers[name],['/api/v1/webhooks/paypal','/api/v1/refunds/webhooks/paypal','/api/v1/payments/webhooks/paypal','/api/v1/disputes/webhooks/paypal'].includes(req.url)?value:undefined);
     assert.equal(req.headers.cookie,undefined);res.writeHead(200);res.end('ok');
   });
   const base=await listen(upstream),proxy=http.createServer((req,res)=>proxyApiRequest(req,res,base));
   try{
     const address=await listen(proxy);
-    for(const path of ['/api/v1/webhooks/paypal','/api/v1/refunds/webhooks/paypal','/api/v1/refunds/webhooks/paypal/','/api/v1/refunds/webhooks/paypal/extra','/api/v1/clients'])assert.equal((await fetch(address+path,{method:'POST',body:'{}',headers:{...signature,Cookie:'private=omit'}})).status,200);
+    for(const path of ['/api/v1/webhooks/paypal','/api/v1/refunds/webhooks/paypal','/api/v1/payments/webhooks/paypal','/api/v1/disputes/webhooks/paypal','/api/v1/disputes/webhooks/paypal/x','/api/v1/refunds/webhooks/paypal/','/api/v1/refunds/webhooks/paypal/extra','/api/v1/clients'])assert.equal((await fetch(address+path,{method:'POST',body:'{}',headers:{...signature,Cookie:'private=omit'}})).status,200);
   }finally{await close(proxy);await close(upstream);}
 });

@@ -21,6 +21,12 @@ const PRACTICE={
   summary:{decisions:['La app móvil se trata como una fase 2 aparte.','La fecha de lanzamiento del proyecto actual no cambia.'],actionItems:['Enviar una cotización aparte para la app móvil.','Definir con el cliente las funciones imprescindibles.'],risks:['Ampliación de alcance si la fase 2 no queda escrita como trabajo adicional.'],nextSteps:['Preparar la cotización de la fase 2 como un pedido de cambio en Trato.']}}
 };
 
+// A short pause can split one sentence in two: a piece from the same person right after an unfinished line joins it.
+export function addHeardLine(transcript,who,text,now){
+ const last=transcript[transcript.length-1];
+ if(last&&last.speaker===who&&now-(last.heardAt||0)<2500&&!/[.!?…]["»”]?$/.test(last.text.trim())){last.text=`${last.text.trim()} ${text.trim()}`;last.heardAt=now;return;}
+ transcript.push({speaker:who,text,heardAt:now});
+}
 export function assistantHtml(s,context){
  const live=s.mode==='live',busy=['connecting','running','paused','ending'].includes(s.phase);
  const chips=[context.client,context.project,s.meeting||''].filter(Boolean).map(v=>`<span>${esc(v)}</span>`).join('');
@@ -108,7 +114,7 @@ export function mountMeetingAssistant(root,{context,meeting='',meetingId=null}){
   }
   if(event.phase!=='final'||!event.text)return;
   if(s.interimWho===who)s.interim='';
-  s.transcript.push({speaker:who,text:event.text});
+  addHeardLine(s.transcript,who,event.text,Date.now());
   try{live?.send(transcriptContext());}catch{}
   // When the client asks something, TeTrato suggests the answer by itself: one at a time, at most every 8 s.
   if(who==='client'&&/[?¿]/.test(event.text)&&Date.now()-lastAuto>8000)autoSuggest();

@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {assistantHtml,summaryHtml} from '../meeting-assistant.mjs';
+import {assistantHtml,summaryHtml,addHeardLine} from '../meeting-assistant.mjs';
 
 const base={mode:'practice',phase:'idle',source:'screen',objective:'',type:'general',notesOpen:false,meeting:'Review the store',transcript:[],interim:'',feed:[],summary:null,error:''};
 const context={client:'Café Aurora',project:'Website <Aurora>'};
@@ -42,4 +42,15 @@ test('the summary shows only after the meeting ends, with the sections that have
  assert.doesNotMatch(assistantHtml({...base,phase:'running',summary},context),/data-ma-summary-open/);
  const dialog=summaryHtml(summary);
  assert.match(dialog,/Phase 2 &lt;app&gt;/);assert.match(dialog,/is-decisions/);assert.doesNotMatch(dialog,/is-risks/);
+});
+
+test('a sentence split by a short pause stays one line; a finished sentence or another speaker starts a new one',()=>{
+ const lines=[];
+ addHeardLine(lines,'client','The homepage looks great. Can we add',1000);
+ addHeardLine(lines,'client','online reservations?',2000);
+ assert.equal(lines.length,1);assert.equal(lines[0].text,'The homepage looks great. Can we add online reservations?');
+ addHeardLine(lines,'client','Customers keep asking.',2500);
+ assert.equal(lines.length,2);
+ addHeardLine(lines,'you','Good idea, it',3000);addHeardLine(lines,'you','would be new work.',9000);
+ assert.equal(lines.length,4);
 });

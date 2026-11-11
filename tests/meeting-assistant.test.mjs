@@ -54,3 +54,9 @@ test('a sentence split by a short pause stays one line; a finished sentence or a
  addHeardLine(lines,'you','Good idea, it',3000);addHeardLine(lines,'you','would be new work.',9000);
  assert.equal(lines.length,4);
 });
+
+test('help that arrives while the client is still speaking shows under that sentence, never above the conversation',()=>{
+ const html=assistantHtml({...base,mode:'live',phase:'running',transcript:[{speaker:'you',text:'Hello'}],interim:'Can we add online reservations?',feed:[{kind:'answer',text:'Offer it as new work.',at:null,about:''}]},context);
+ const you=html.indexOf('Hello'),question=html.indexOf('Can we add online reservations?'),help=html.indexOf('Offer it as new work.');
+ assert.ok(you>=0&&question>you&&help>question);
+});

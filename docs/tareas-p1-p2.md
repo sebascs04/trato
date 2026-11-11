@@ -22,11 +22,9 @@ Este reparto sustituye cualquier sugerencia anterior de ampliar estas ideas ante
 - el responsable de cambios y devoluciones conserva cambios, aceptación, cobro PayPal y devoluciones. Comprobar el recorrido integrado cuando entregue sus cambios, sin duplicar su trabajo.
 - Cerrar errores observados por el responsable del proyecto, estados de carga, citas/contexto y navegación. No sustituir una integración fallida por una demo.
 - Preparar materiales e instrucciones para pulsar Submit project antes del cierre de la revisión anticipada del 5, hora del Pacífico. El objetivo interno sigue siendo llegar antes, idealmente el 4.
-- Excepción pequeña autorizada por el responsable del proyecto: adelantar una tabla AG Grid Community de proyectos, de solo consulta, con búsqueda/ordenación y acceso al proyecto. Reutiliza datos ya autorizados; no añade contratos de pagos, nuevas consultas de IA ni un dashboard financiero. el equipo responsable, tras liberar archivos comunes con el equipo.
 
 ### Fase 2: desde el preview del 5 hasta la entrega final del 12 de noviembre
 
-1. Ampliar AG Grid con una vista útil de proyectos/cobros y filtros, después de acordar los datos reales con el responsable de cambios y devoluciones. No mezclar monedas ni inferir pagos.
 2. Evaluar PayPal Agentic Commerce Services, acceso requerido y configuración. No equivale a una orden de activar servicios ni contratar planes.
 3. Explorar las reuniones en vivo propuestas por una colaboradora: audio/transcripción y un agente que organiza lo conversado según el modo elegido. Referencia: docs/reuniones-en-vivo.md. Validar acceso, cuotas y costo antes de una prueba autorizada; no activar servicios por este plan.
 

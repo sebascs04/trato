@@ -138,4 +138,4 @@ el responsable del proyecto, 3 de noviembre de 2026: dejar la evaluación y conf
 
 ## Ventana de segunda fase: 5–12 de noviembre de 2026
 
-Acuerdo del responsable del proyecto, 3 de noviembre: cerrar primero los recorridos actuales para el preview del 5; después trabajar AG Grid, PayPal Agentic Commerce Services y reuniones en vivo de una colaboradora hasta la entrega final del 12. Se permite adelantar únicamente una tabla mínima de proyectos con AG Grid Community durante la primera fase, sin ampliar backend ni pagos. Reparto y límites vigentes en docs/tareas-p1-p2.md. Ninguna idea de esta fase activa recursos o autoriza una compra por sí sola.
+Acuerdo del responsable del proyecto, 3 de noviembre: cerrar primero los recorridos actuales para el preview del 5; después trabajar PayPal Agentic Commerce Services y reuniones en vivo de una colaboradora hasta la entrega final del 12. Reparto y límites vigentes en docs/tareas-p1-p2.md. Ninguna idea de esta fase activa recursos o autoriza una compra por sí sola.

@@ -771,7 +771,10 @@ export class ConnectedWorkspace {
     const timeline=`<section class="workspace-panel cloud-client-steps" aria-label="${uiText('clientAccount.stepsLabel')}"><h3>${uiText('clientAccount.stepsTitle')}</h3><ol>${steps}</ol></section>`;
     const items=this.clientAgreements||[];
     // Deliverables of the work plans count like addenda: a delivery to review, a payment to make, a dispute on its payment.
-    const stages=this.clientStageState?(this.clientPlans||[]):[],stageKind=stage=>this.clientStageState(stage)[0];
+    const stages=this.clientStageState?(this.clientPlans||[]):[];
+    // An upcoming deliverable waits for the freelancer, and an approved one for its payment request: neither asks the client
+    // for anything yet, and neither is closed. Only a delivery to review or a payment to make counts here.
+    const stageKind=stage=>{const [kind,label]=this.clientStageState(stage);return label==='clientPlan.upcoming'||label==='clientPlan.approved'?'waiting':kind;};
     if(!items.length&&!stages.length){workspace.innerHTML=`<div class="cloud-home cloud-client-account-home"><section class="workspace-panel cloud-home-intro"><img src="/assets/mascot/trato-guide.png" alt="" width="120" height="120"><div><span class="eyebrow">${uiText('clientAccount.eyebrow')}</span><h2>${uiText('clientAccount.emptyTitle')}</h2><p>${uiText('clientAccount.emptyCopy')}</p></div></section>${timeline}</div>`;return;}
     const count=kind=>items.filter(item=>this.clientAgreementState(item)[0]===kind).length+stages.filter(stage=>stageKind(stage)===kind).length;
     const disputed=this.clientDisputes?items.filter(item=>this.clientDisputes[item.proposal_id]&&this.clientDisputes[item.proposal_id].status!=='RESOLVED'):[];

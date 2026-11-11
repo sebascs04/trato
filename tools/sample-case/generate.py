@@ -1,4 +1,4 @@
-"""Regenerates the case PDFs from their editable Markdown sources."""
+"""Regenerates the Café Aurora sample PDFs in ejemplos/cafe-aurora-en from their editable Markdown sources."""
 from pathlib import Path
 from xml.sax.saxutils import escape
 import json
@@ -8,6 +8,8 @@ from reportlab.lib.units import mm
 from reportlab.platypus import SimpleDocTemplate, Paragraph
 
 ROOT = Path(__file__).resolve().parent
+# The PDFs go to the judges' folder; this generator and its sources stay out of their way.
+OUTPUT = (ROOT / '..' / '..' / 'ejemplos' / 'cafe-aurora-en').resolve()
 PURPLE = colors.HexColor('#7051c6')
 INK = colors.HexColor('#302837')
 MUTED = colors.HexColor('#766c82')
@@ -65,11 +67,14 @@ def main():
         source = (ROOT / item['source']).resolve()
         if not source.is_relative_to((ROOT / 'sources').resolve()) or not source.is_file():
             raise ValueError('Source must be inside sources/')
-        if Path(item['pdf']).name != item['pdf'] or not item['pdf'].endswith('.pdf'):
-            raise ValueError('Invalid PDF name')
+        # Each PDF sits in the folder of the situation it is for: one folder level, inside this case.
+        target = (OUTPUT / item['pdf']).resolve()
+        if (not target.is_relative_to(OUTPUT) or target.suffix != '.pdf' or len(Path(item['pdf']).parts) != 2):
+            raise ValueError('Invalid PDF path')
+        target.parent.mkdir(exist_ok=True)
         text = source.read_text(encoding='utf-8')
         title = text.splitlines()[0].removeprefix('# ')
-        pdf = SimpleDocTemplate(str(ROOT / item['pdf']), pagesize=(210 * mm, 297 * mm),
+        pdf = SimpleDocTemplate(str(target), pagesize=(210 * mm, 297 * mm),
             leftMargin=22 * mm, rightMargin=22 * mm, topMargin=29 * mm, bottomMargin=28 * mm,
             title=title, author='Trato', invariant=1, pageCompression=1)
         pdf.build(story_from_markdown(text), onFirstPage=frame, onLaterPages=frame)

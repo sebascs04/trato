@@ -674,6 +674,8 @@ body.cloud-design{--bg:#faf9fc;--paper:#fff;--surface:#fff;--surface-soft:#f7f5f
 .cloud-design .cloud-review-close{display:inline-flex;align-items:center;gap:6px;color:#96392f;min-height:36px}
 .cloud-design .cloud-review-close:hover{color:#7a2c24}
 .cloud-design .cloud-review-close .ui-icon{width:16px;height:16px}
+/* Under Close request: what to do when the wrong file was registered. */
+.cloud-design .cloud-review-hint{margin:-4px 0 12px;color:var(--muted,#6b6578);font-size:13px;text-align:right}
 .cloud-design .cloud-change-review>.cloud-flow-actions{display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap}
 .cloud-design .cloud-change-review>.cloud-flow-actions>.cloud-notice{flex:1 1 280px;margin:0}
 .cloud-design .cloud-change-review>.cloud-flow-actions>.button{margin-left:auto}

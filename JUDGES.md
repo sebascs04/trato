@@ -16,9 +16,10 @@
 | Change | Client's change request | AI compares it with the agreement and drafts scope, conditions and effort; you set your rate |
 | Addendum | Versioned PDF sent by email | Each version keeps its own PDF, sending and acceptance |
 | Client's answer | Acceptance or change request in the client portal | The client reviews from a secure link, with no account needed |
-| Payment | PayPal checkout or a PayPal invoice issued by TeTrato | Paid only when the backend verifies the capture with PayPal |
+| Payment | PayPal's own buttons inside Trato, or a PayPal invoice issued by TeTrato | Paid only when the backend verifies the capture with PayPal |
+| Refund | The client's refund request and its proof | The freelancer refunds the original PayPal payment in one step, from Trato |
 | Problem | The client's report in Trato and its conversation | The freelancer replies or turns it into a new request; only the client closes it |
-| Dispute | The project's evidence | A dispute on a verified payment is flagged on the home page and opens in the project, with a response prepared from that evidence |
+| Dispute | The project's evidence | A dispute on a verified payment (deliverable or addendum) is flagged on the home page and opens in the project, with a response prepared from that evidence |
 | Audit | Project history and map | Every phase above, including each step the client takes, with its documents, in one timeline |
 
 ## Step-by-step test (about 15 minutes)
@@ -30,14 +31,23 @@ Follow **[ejemplos/cafe-aurora-en/README.md](ejemplos/cafe-aurora-en/README.md)*
 3. Turn a scope change into a paid addendum. AI drafts it from the documents. Acting as the client in the portal, you request changes, then accept the new version and pay.
 4. Open the project history and map to see every phase with its documents, ask the project assistant, and try a negotiation rehearsal.
 
-Your judge account may also include an example project you can open first to see the result.
+### Your judge accounts are already loaded
+
+The judge **freelancer** account has three projects for the client **Café Aurora**, and the judge **client** account sees the same three projects from the client's side:
+
+- **Café Aurora website — completed example:** all three deliverables and the store addendum paid, with its history, map and documents. A PayPal dispute is open on one payment, with TeTrato's response prepared and not sent.
+- **Café Aurora website — plan ready:** the first deliverable approved and paid; the rest is yours to try.
+- **Café Aurora website — started before Trato:** a project that began outside Trato. TeTrato planned only the work that was left, and a delivery waits for the client's approval.
+
+To receive Trato's emails yourself, create your own account with your real email and follow the step-by-step test.
 
 ### Paying as the client
 
 Use your own email as the client's contact email so that the client's emails reach you.
 
 - **Addenda:** the email links to the client portal. There you can **Request changes**, **Accept addendum** and **Pay with PayPal**, without a Trato account.
-- **Deliverables:** sign up in Trato with the client's email and choose **Client**. In **My projects**, open the project and its **Work plan**: each deliverable shows **Approve delivery** or **Something's missing**, then **Pay with PayPal** or **Pay invoice in PayPal**. The payment email links to the same payment.
+- **Deliverables:** sign up in Trato with the client's email and choose **Client**. In **My projects**, open the project and its **Work plan**: each deliverable shows **Approve delivery** or **Something's missing**, then PayPal's own payment buttons, right inside Trato, or **Pay invoice in PayPal**. The payment email links to the same payment.
+- **Ask TeTrato (client):** the button in the corner answers questions about the client's own projects, such as *"How much have I paid?"*, with the records it used. In the portal it can also accept an addendum or open its payment, always after the client confirms.
 
 Log in with the **Sandbox buyer account provided in Devpost**, or any PayPal Sandbox buyer account, and approve. Like a real client's accountant or company account, any PayPal account can pay. Trato verifies the order, amount, receiving merchant and currency, and the payment counts only after its backend verifies the capture with PayPal.
 
@@ -45,13 +55,25 @@ Log in with the **Sandbox buyer account provided in Devpost**, or any PayPal San
 
 After sending a deliverable's payment email, **Still unpaid?** appears in **Delivery and payment**. Click **Send PayPal invoice**: TeTrato writes the invoice concept from the agreement, and **Confirm and send** issues the invoice in PayPal and emails the client its link. The earlier payment link stops working, so the client pays once, with **Pay invoice in PayPal**. An accepted addendum offers **Send PayPal invoice** too. **Why hasn't it gone through?** asks TeTrato to read the payment in PayPal and explain its state.
 
+### Optional: a refund
+
+As the client, **Request a refund** on a paid deliverable or addendum and say why. As the freelancer, open **Refunds** in the project: TeTrato can draft the decision from the evidence, and **Refund with PayPal** returns the money from the original payment after you confirm it in a PayPal-style window.
+
 ### Optional: a PayPal dispute
 
-After paying an addendum, open a dispute on that payment as the buyer at https://www.sandbox.paypal.com/resolutioncenter (**Report a Problem**). A few minutes later, reload Trato's home page: **A client opened a PayPal dispute** appears. Click **Open dispute**, then **Prepare response with TeTrato** for a reply that cites the project's documents. Nothing goes to PayPal until you click **Send to client**.
+After paying a deliverable or an addendum, open a dispute on that payment as the buyer at https://www.sandbox.paypal.com/resolutioncenter (**Report a Problem**). A few minutes later, reload Trato's home page: **A client opened a PayPal dispute** appears. Click **Open dispute**, then **Prepare response with TeTrato** for a reply that cites the project's documents. Nothing goes to PayPal until you click **Send to client**.
 
 ### Optional: a problem reported in Trato
 
 On a paid addendum with no PayPal dispute, the client portal shows **Report a problem** under the payment: choose a reason, describe it and click **Send to my freelancer**, or let **Ask TeTrato** draft it. As the freelancer, **A client reported a problem** appears on the home page; **Open** leads to **Disputes & problems → Client problems**, where you **Reply** or click **Register as new request** to open the usual request form with the report attached. Back in the portal, the client closes it with **It's resolved** or **Still not resolved**.
+
+### Optional: a project that already started
+
+Choose **New project → The project is already underway**, upload what you already agreed (agreement, conversations, deliveries) and choose each document's type. TeTrato proposes a plan for **only the work that is left**, with the amount still to be paid.
+
+### Fixing an upload mistake
+
+In the project's **Documents**, **Change type** or **Remove** corrects a document uploaded by mistake, as long as nothing relies on it yet. Documents that an addendum, a payment, a delivery the client saw, a refund or a dispute already rely on stay locked as evidence.
 
 ## Notes
 

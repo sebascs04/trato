@@ -299,3 +299,6 @@ blockquote.refund-reason { margin: 0; padding: 10px 14px; border-left: 3px solid
 .refund-pp-confirm:focus-visible,.refund-pp-x:focus-visible{outline:2px solid #003087;outline-offset:2px}
 .refund-pp-check{display:inline-grid;place-items:center;width:52px;height:52px;border-radius:50%;background:#e7f6ec;color:#1a7f37}.refund-pp-check .ui-icon{width:26px;height:26px}
 .refund-pp-status{margin:0 0 18px;font-size:14px}
+
+/* Client refund request: reply, decline and the main step side by side; they wrap on narrow screens. */
+.refund-thread-actions{display:flex;flex-wrap:wrap;align-items:center;justify-content:flex-end;gap:8px}

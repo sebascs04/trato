@@ -15,14 +15,17 @@ Scope changes are usually agreed in loose messages. The work grows, the price do
 | For | Feature | How it works |
 |---|---|---|
 | Freelancer | **Plan from the agreement** | AI proposes deliverables and staged payments from the project's documents |
+| Freelancer | **Projects already underway** | Upload what was already agreed and done elsewhere; AI plans only the work that is left and its remaining amount |
 | Both | **Approved deliverables** | The freelancer sends each delivery; the client approves it or says what is missing in their account, and only an approved stage is charged |
+| Client | **Pay inside Trato** | PayPal's official buttons (JavaScript SDK) on every payment the client makes; the backend creates the order and verifies the capture |
 | Freelancer | **PayPal invoices by TeTrato** | Agentic commerce: TeTrato writes the concept and issues a PayPal invoice through the official PayPal Agent Toolkit for an addendum or a deliverable, after the freelancer confirms |
 | Freelancer | **Payment detective** | TeTrato reads the payment's live state in PayPal and explains in plain words why it has not gone through and what to do |
 | Freelancer | **Addenda from change requests** | AI compares the request with the agreement and drafts scope, conditions and effort. Each version keeps its own PDF, delivery and acceptance |
 | Client | **Client portal** | Review, request changes, accept and pay from a secure emailed link, with no account needed. An optional client account opens each project with its work plan, changes, and disputes and problems |
 | Client | **Report a problem** | After paying, the client reports a problem in Trato, or TeTrato drafts it. The freelancer replies or turns it into a new request; only the client closes it, and the conversation stays as evidence |
-| Freelancer | **PayPal disputes** | A new dispute on a verified payment is flagged on the home page. It opens in the project, read through the official PayPal Agent Toolkit, with a response prepared from the project's evidence that the freelancer reviews and sends |
-| Freelancer | **TeTrato assistant** | Answers questions about the project and cites its documents |
+| Both | **Refunds** | The client requests a refund with its reason; TeTrato drafts the decision from the evidence and the freelancer refunds the original PayPal payment in one step |
+| Freelancer | **PayPal disputes** | A new dispute on a verified payment, for a deliverable or an addendum, is flagged on the home page. It opens in the project, read through the official PayPal Agent Toolkit, with a response prepared from the project's evidence that the freelancer reviews and sends |
+| Both | **TeTrato assistant** | Answers the freelancer's questions about a project, and the client's about their own projects and payments, citing the records it used |
 | Freelancer | **Rehearsals** | Practice a difficult conversation with an AI client, then get coaching with cited sources |
 | Both | **History and map** | Every phase and document, in one timeline and one graph. The timeline also records each step the client takes: change requests from the portal, approvals of each delivery and every payment request sent |
 
@@ -49,7 +52,7 @@ Redis queue ── trato-worker (LangGraph + Gemini) ── generic processes de
 
 | Layer | Technology |
 |---|---|
-| **Payments** | PayPal Sandbox: Orders, Invoicing, Disputes, webhooks and the PayPal Agent Toolkit |
+| **Payments** | PayPal Sandbox: JavaScript SDK buttons, Orders, Invoicing, Refunds, Disputes, webhooks and the PayPal Agent Toolkit |
 | **AI** | Google Gemini through LangGraph and LangChain |
 | **Data** | Supabase (Postgres with row-level security, Auth, Storage), Neo4j (project graph), Weaviate (vector search) |
 | **Email** | Gmail API |

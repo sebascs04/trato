@@ -184,7 +184,8 @@ export function installPlanPayments(cloud){
   const request=[...(cloud.clientRefundRequests||[])].reverse().find(r=>r.project_id===item.project_id&&r.proposal_id===proposalId&&unsettled(r));
   // One open path per payment: while the refund request is open or on its way, Report a problem is not offered beside it.
   if(request)return {notice:refundRequestNotice(request,{portal:true}),hideReport:true};
-  const closed=addendumRefundClosed(item);if(closed)return {notice:refundRequestNotice(closed,{portal:true})};
+  // Only a request the freelancer declined closes this path; after withdrawing their own, the client can ask again.
+  const closed=addendumRefundClosed(item);if(closed?.status==='declined')return {notice:refundRequestNotice(closed,{portal:true})};
   // One open path per payment: with a problem reported and open, the refund is talked about there.
   if(cloud.clientProblems?.[proposalId]?.status==='open')return {};
   // Same with a PayPal dispute still open on it: PayPal decides that money, so no refund is asked beside it.
@@ -209,10 +210,13 @@ export function installPlanPayments(cloud){
   const reported=problem?(problem.status==='open'&&problem.request_paid?['pay','clientAccount.state.problemToClose']:{open:['dispute','clientAccount.state.problemOpen'],unresolved:['dispute','clientAccount.state.problemUnresolved'],resolved:['paid','clientAccount.state.problemResolved']}[problem.status]):null;
   return request?['waiting',request.status==='open'?'clientPlan.refundRequested':'clientPlan.refundInProgress']:reported?reported:refunded?['paid',refunded]:done?['paid','clientPlan.paid']:stageNeedsReview(item)?['open','clientPlan.reviewDelivery']:item.review_decision==='changes_requested'?['waiting','clientAccount.state.changesRequested']:invoice?['pay','clientAccount.state.invoiceToPay']:item.pay_url?['pay','clientAccount.state.toPay']:item.review_decision==='approved'?['done','clientPlan.approved']:['open','clientPlan.upcoming'];
  }
+ // The client's overview counts deliverables with the same states and rows as the work plan (connected-workspace.mjs).
+ cloud.clientStageState=item=>clientStageState(item);
+ cloud.clientStageRow=(item,options)=>clientStageRow(item,options);
  // The list stays short: one row per deliverable; its delivery, decision and payment open in their own view.
- function clientStageRow(item){
+ function clientStageRow(item,{withProject=false}={}){
   const [kind,label]=clientStageState(item);
-  return `<li><button type="button" class="cloud-client-agreement-row" data-client-plan="stage" data-project="${esc(item.project_id)}" data-position="${item.position}"><span class="cloud-client-agreement-text"><strong>${t('deliverable',{number:item.position})} · ${esc(item.title)}</strong><small>${money(item.amount)}</small></span><span class="cloud-client-agreement-state ${kind}">${uiText(label)}</span>${icon('arrow-right')}</button></li>`;
+  return `<li><button type="button" class="cloud-client-agreement-row" data-client-plan="stage" data-project="${esc(item.project_id)}" data-position="${item.position}"><span class="cloud-client-agreement-text"><strong>${t('deliverable',{number:item.position})} · ${esc(item.title)}</strong><small>${withProject?`${esc(item.project_name)} · `:''}${money(item.amount)}</small></span><span class="cloud-client-agreement-state ${kind}">${uiText(label)}</span>${icon('arrow-right')}</button></li>`;
  }
  // Pay a deliverable without leaving the window: PayPal's own buttons for the order already sent to the client.
  // The checkout token is the one in the client's own payment link; the server captures and verifies as on that page.
@@ -245,8 +249,9 @@ export function installPlanPayments(cloud){
   const pay=!done&&item.pay_url?`<footer class="dialog-actions">${invoice?'':`<div class="client-stage-paypal" data-stage-paypal data-project="${esc(item.project_id)}" data-position="${item.position}"></div>`}<a class="button" data-stage-pay-link href="${esc(item.pay_url)}" target="_blank" rel="noopener" ${invoice?'':'hidden'}>${icon(invoice?'file-text':'wallet')}${uiText(invoice?'portal.invoiceAction':'portal.payAction')}${icon('arrow-up-right')}</a></footer>`:'';
   // Paid: the client can ask for money back. It is a request the freelancer reviews in Refunds; only PayPal confirms a refund.
   const request=done?stageRefundRequest(item):null,cents=minor=>new Intl.NumberFormat(uiLocale(),{style:'currency',currency:'USD'}).format(minor/100);
-  const closedRequest=done&&!request?stageRefundClosed(item):null;void cents;
-  const refund=request||closedRequest?refundRequestNotice(request||closedRequest)
+  // Only a request the freelancer declined closes this path; after withdrawing their own, the client can ask again.
+  const closedRequest=done&&!request?stageRefundClosed(item):null,declined=closedRequest?.status==='declined'?closedRequest:null;void cents;
+  const refund=request||declined?refundRequestNotice(request||declined)
    :refundLeft(item)>0&&cloud.clientProblems?.[`stage:${item.project_id}:${item.position}`]?.status!=='open'?`<footer class="dialog-actions"><button type="button" class="button secondary" data-client-plan="refund" ${data}>${icon('undo-2')}${uiText('clientPlan.refundAction')}</button></footer>`:'';
   return `<section class="plan-delivery-payment"><header><div><span class="eyebrow">${t('deliverable',{number:item.position})}</span><h3>${esc(item.title)}</h3></div><strong>${money(item.amount)}</strong></header><p><span class="cloud-client-agreement-state ${kind}">${uiText(label)}</span></p>${item.payment_condition?`<p class="plan-evidence-help">${esc(item.payment_condition)}</p>`:''}${delivery}${note}${review}${pay}${refund}${done&&!(request&&!cloud.clientProblems?.[`stage:${item.project_id}:${item.position}`])?cloud.stageProblemMarkup?.(item)||'':''}</section>`;
  }
@@ -316,9 +321,14 @@ export function installPlanPayments(cloud){
   if(!projects.size){workspace.innerHTML=`<section class="workspace-panel cloud-home-intro"><img src="/assets/mascot/trato-guide.png" alt="" width="120" height="120"><div><h2>${uiText('clientAccount.emptyTitle')}</h2><p>${uiText('clientAccount.emptyCopy')}</p></div></section>`;return;}
   const open=projects.get(recall('trato:client-project'));
   if(!open){
-   // One card per project: who it is with, how it goes and how many things wait for the client.
-   workspace.innerHTML=`<div class="cloud-client-projects">${[...projects.values()].map(project=>{const paid=project.stages.filter(s=>s.payment_status==='completed').length,pending=project.planPending;
-    return `<section class="workspace-panel cloud-client-freelancer"><button type="button" class="cloud-client-agreement-row" data-client-plan="open" data-project="${esc(project.id)}"><span class="cloud-client-agreement-text"><strong>${esc(project.name)}${badge(pending)}</strong><small>${uiText('clientAccount.freelancer')}: ${esc(project.email)}${project.stages.length?' · '+uiText('clientPlan.progress',{paid,total:project.stages.length}):''}</small></span>${icon('arrow-right')}</button></section>`;}).join('')}</div>`;return;
+   // One card per freelancer, with the projects the client has with them: how each goes and what waits for the client.
+   const byFreelancer=new Map();for(const project of projects.values()){if(!byFreelancer.has(project.email))byFreelancer.set(project.email,[]);byFreelancer.get(project.email).push(project);}
+   const row=project=>{const paid=project.stages.filter(s=>s.payment_status==='completed').length,total=project.stages.length;
+    const progress=total?`<small>${uiText('clientPlan.progress',{paid,total})}</small><span class="cloud-client-progress" aria-hidden="true"><span style="width:${Math.round(100*paid/total)}%"></span></span>`:'';
+    return `<li><button type="button" class="cloud-client-agreement-row" data-client-plan="open" data-project="${esc(project.id)}"><span class="cloud-client-agreement-text"><strong>${esc(project.name)}${badge(project.planPending)}</strong>${progress}</span>${icon('arrow-right')}</button></li>`;};
+   // Same identity block as the freelancer's client directory: initials, who it is and how many projects.
+   const header=(email,list)=>`<header class="cloud-directory-identity"><span class="cloud-directory-avatar" aria-hidden="true">${esc((email||'').slice(0,2).toUpperCase())}</span><div><span class="eyebrow">${uiText('clientAccount.freelancer')}</span><strong>${esc(email)}</strong><small class="cloud-directory-count">${list.length===1?uiText('clientAccount.oneProject'):uiText('clientAccount.projectCount',{count:list.length})}</small></div></header>`;
+   workspace.innerHTML=`<div class="cloud-client-projects">${[...byFreelancer].map(([email,list])=>`<section class="workspace-panel cloud-client-freelancer cloud-client-agreements">${header(email,list)}<ul>${list.map(row).join('')}</ul></section>`).join('')}</div>`;return;
   }
   const dispute=item=>this.clientDisputes?.[item.proposal_id],problem=item=>item.payment_status==='completed'?this.clientProblems?.[item.proposal_id]:null;
   const disputed=open.items.filter(dispute),reported=open.items.filter(problem);

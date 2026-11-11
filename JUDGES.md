@@ -1,4 +1,4 @@
-# Testing Trato — guide for judges
+# Testing Trato: a guide for judges
 
 **Trato is a workspace for freelancers where every phase of a project leaves documentary evidence, and getting paid is tied to that evidence.** The initial agreement, the client's change requests, each addendum version, the client's acceptance and the sign-off of every deliverable are kept as documents in the project. **Gemini** agents read those documents to propose plans and changes (always citing them), and **PayPal** payments are only marked as paid when the backend verifies the capture. TeTrato, Trato's agent, works on PayPal for the freelancer through the official **PayPal Agent Toolkit**: it issues invoices, explains stuck payments and prepares dispute responses, always after the freelancer confirms. Hosted on **Google Cloud**.
 
@@ -35,9 +35,9 @@ Follow **[ejemplos/cafe-aurora-en/README.md](ejemplos/cafe-aurora-en/README.md)*
 
 The judge **freelancer** account has three projects for the client **Café Aurora**, and the judge **client** account sees the same three projects from the client's side:
 
-- **Café Aurora website — completed example:** all three deliverables and the store addendum paid, with its history, map and documents. A PayPal dispute is open on one payment, with TeTrato's response prepared and not sent.
-- **Café Aurora website — plan ready:** the first deliverable approved and paid; the rest is yours to try.
-- **Café Aurora website — started before Trato:** a project that began outside Trato. TeTrato planned only the work that was left, and a delivery waits for the client's approval.
+- **Café Aurora website (completed example):** all three deliverables and the store addendum paid, with its history, map and documents. A PayPal dispute is open on one payment, with TeTrato's response prepared and not sent.
+- **Café Aurora website (plan ready):** the first deliverable approved and paid; the rest is yours to try.
+- **Café Aurora website (started before Trato):** a project that began outside Trato. TeTrato planned only the work that was left, and a delivery waits for the client's approval.
 
 To receive Trato's emails yourself, create your own account with your real email and follow the step-by-step test.
 

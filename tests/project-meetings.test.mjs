@@ -43,3 +43,9 @@ test("a past meeting shows in the tray with what TeTrato kept, and its conversat
  assert.match(talk, /<details/); assert.doesNotMatch(talk, /<details[^>]* open/);
  assert.match(talk, /Hola &lt;b&gt;/); assert.match(talk, /is-mine/);
 });
+
+test("one summary point is written in the singular", async () => {
+ const {renderRecordRow} = await import("../project-meetings.mjs");
+ const row = renderRecordRow({id: "r3", title: "Review", created_at: "2026-11-10T10:00:00Z", summary: {decisions: ["a"]}, transcript: [{speaker: "client", text: "Hi"}]});
+ assert.match(row, /· 1 (summary point|punto de resumen)</);
+});

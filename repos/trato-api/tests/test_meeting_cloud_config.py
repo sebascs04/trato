@@ -6,7 +6,7 @@ import unittest
 from unittest import mock
 
 from trato_api.meeting_copilot import is_origin_allowed
-from trato_api.meeting_copilot_provider import gemini_live_config, vertex_settings
+from trato_api.meeting_copilot_provider import gemini_live_config, normalize_summary, vertex_settings
 
 
 class MeetingCloudConfigTests(unittest.TestCase):
@@ -41,6 +41,21 @@ class MeetingCloudConfigTests(unittest.TestCase):
         detection = gemini_live_config('en')['realtime_input_config']['automatic_activity_detection']
         self.assertEqual(detection['silence_duration_ms'], 1000)
         self.assertEqual(gemini_live_config('en')['input_audio_transcription'], {'language_codes': ['en-US']})
+
+    def test_a_summary_wrapped_differently_keeps_its_words(self):
+        summary = normalize_summary({'title': ['Store review'], 'closing': ['Thanks', 'see you Friday'],
+                                     'decisions': [{'text': 'Reservations are new work'}, 'Keep it simple'],
+                                     'action_items': 'Send the addendum by Friday', 'risks': [], 'next_steps': None})
+        self.assertEqual(summary['title'], 'Store review')
+        self.assertEqual(summary['closing'], 'Thanks see you Friday')
+        self.assertEqual(summary['decisions'], ['Reservations are new work', 'Keep it simple'])
+        self.assertEqual(summary['action_items'], ['Send the addendum by Friday'])
+        self.assertEqual(summary['risks'], [])
+        self.assertEqual(summary['next_steps'], [])
+
+    def test_an_answer_without_any_summary_list_is_still_refused(self):
+        self.assertIsNone(normalize_summary({'title': 'x', 'closing': 'y'}))
+        self.assertIsNone(normalize_summary(['not', 'an', 'object']))
 
 
 if __name__ == '__main__':

@@ -24,6 +24,16 @@ test('a meeting row escapes its topic, shows its time zone and offers the invita
  assert.match(meetingWhen(meeting()),/America\/Lima/);
 });
 
+test("a past meeting keeps TeTrato's help under the line it answered, without counting it as a line", async () => {
+ const {renderRecordRow, recordConversationHtml} = await import("../project-meetings.mjs");
+ const record = {id: "r2", title: "Review", created_at: "2026-11-10T10:00:00Z", summary: {}, transcript: [{speaker: "client", text: "Can we add reservations?"}, {speaker: "tetrato-answer", text: "Offer it as <new> work."}, {speaker: "you", text: "New work."}]};
+ const talk = recordConversationHtml(record);
+ assert.match(talk, /class="ma-help is-answer"/); assert.match(talk, /Offer it as &lt;new&gt; work\./);
+ assert.ok(talk.indexOf("reservations") < talk.indexOf("Offer it") && talk.indexOf("Offer it") < talk.indexOf("New work."));
+ assert.match(talk, /\(2\)/);
+ assert.match(renderRecordRow(record), /· 2 /);
+});
+
 test("a past meeting shows in the tray with what TeTrato kept, and its conversation stays folded", async () => {
  const {renderRecordRow, recordConversationHtml} = await import("../project-meetings.mjs");
  const record = {id: "r1", title: "Review <store>", created_at: "2026-11-10T10:00:00Z", summary: {decisions: ["a"], risks: ["b", "c"]}, transcript: [{speaker: "client", text: "Hola <b>"}, {speaker: "you", text: "Sí"}]};

@@ -21,11 +21,15 @@ export function renderMeetingRow(m){
 export function renderRecordRow(r){
  const d=new Date(r.created_at),when=Number.isFinite(d.getTime())?new Intl.DateTimeFormat(uiLocale(),{dateStyle:'medium',timeStyle:'short'}).format(d):'';
  const points=['decisions','actionItems','risks','nextSteps'].reduce((n,k)=>n+(r.summary?.[k]?.length||0),0);
- return `<li class="project-meeting is-record"><div><strong>${esc(r.title)}</strong><small>${esc(when)} · ${esc(t('recordCounts',{lines:(r.transcript||[]).length,points}))}</small></div><div class="project-meeting-actions"><button type="button" class="button secondary" data-meeting-record="${esc(r.id)}" aria-haspopup="dialog">${icon('eye')}${t('recordOpen')}</button></div></li>`;
+ return `<li class="project-meeting is-record"><div><strong>${esc(r.title)}</strong><small>${esc(when)} · ${esc(t('recordCounts',{lines:peopleLines(r).length,points}))}</small></div><div class="project-meeting-actions"><button type="button" class="button secondary" data-meeting-record="${esc(r.id)}" aria-haspopup="dialog">${icon('eye')}${t('recordOpen')}</button></div></li>`;
 }
+// TeTrato's help kept with a meeting: 'tetrato-answer', 'tetrato-question', 'tetrato-risk' or 'tetrato-tip'.
+const tetratoKind=speaker=>{const k=String(speaker||'').startsWith('tetrato-')?speaker.slice(8):'';return ['answer','question','risk','tip'].includes(k)?k:'';};
+const tetratoLabel=k=>({answer:uiText('meetingAssistant.answer'),question:uiText('meetingAssistant.question'),risk:uiText('meetingAssistant.risk'),tip:uiText('meetingAssistant.tip')})[k];
+const peopleLines=record=>(record.transcript||[]).filter(l=>!tetratoKind(l.speaker));
 export function recordConversationHtml(record){
  const who=s=>s==='you'?uiText('meetingAssistant.you'):s==='client'?uiText('meetingAssistant.client'):uiText('meetingAssistant.call');
- return `<details class="project-meeting-record-talk"><summary>${icon('messages-square')}${t('recordConversation',{count:(record.transcript||[]).length})}</summary><ol class="ma-transcript">${(record.transcript||[]).map(l=>`<li class="is-${l.speaker==='you'?'mine':'theirs'}"><small>${esc(who(l.speaker))}</small><p>${esc(l.text)}</p></li>`).join('')}</ol></details>`;
+ return `<details class="project-meeting-record-talk"><summary>${icon('messages-square')}${t('recordConversation',{count:peopleLines(record).length})}</summary><ol class="ma-transcript">${(record.transcript||[]).map(l=>tetratoKind(l.speaker)?`<li class="ma-help is-${tetratoKind(l.speaker)}"><small><img src="/assets/mascot/trato-guide.png" alt="" width="18" height="18">TeTrato · ${esc(tetratoLabel(tetratoKind(l.speaker)))}</small><p>${esc(l.text)}</p></li>`:`<li class="is-${l.speaker==='you'?'mine':'theirs'}"><small>${esc(who(l.speaker))}</small><p>${esc(l.text)}</p></li>`).join('')}</ol></details>`;
 }
 export function meetingFormHtml(draft,error=''){
  return `<form class="project-meeting-form" data-meeting-form><label class="field" for="meeting-title">${t('title')}</label><input class="context-box" id="meeting-title" name="title" required maxlength="200" value="${esc(draft.title)}" placeholder="${esc(t('titlePlaceholder'))}">

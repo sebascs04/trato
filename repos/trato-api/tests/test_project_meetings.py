@@ -151,6 +151,25 @@ class MeetingRecordTests(unittest.TestCase):
         self.assertTrue(content.startswith(b'%PDF-'))
         self.assertGreater(len(content), 1000)
 
+    def test_tetrato_help_stays_out_of_the_client_request_pdf(self):
+        from unittest import mock
+        import reportlab.platypus
+        from trato_api.project_meetings import render_record_pdf
+        written, real = [], reportlab.platypus.Paragraph
+        def capture(text, *args, **kwargs):
+            written.append(text)
+            return real(text, *args, **kwargs)
+        record = {'title': 'Review', 'created_at': '2026-11-10T10:00:00Z', 'summary': {},
+                  'transcript': [{'speaker': 'client', 'text': 'Can we add reservations?'},
+                                 {'speaker': 'tetrato-answer', 'text': 'Offer it as new work.'},
+                                 {'speaker': 'you', 'text': 'It would be new work.'}]}
+        with mock.patch.object(reportlab.platypus, 'Paragraph', capture):
+            render_record_pdf(record, 'Café Aurora', 'en')
+        text = ' '.join(written)
+        self.assertIn('Can we add reservations?', text)
+        self.assertIn('It would be new work.', text)
+        self.assertNotIn('Offer it as new work.', text)
+
 
 if __name__ == '__main__':
     unittest.main()

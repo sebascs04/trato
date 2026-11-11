@@ -57,10 +57,10 @@ async function bootTrato() {
       // el código (section-assistant.mjs, /api/v1/ai/section-questions) queda para un posible TeTrato único.
       const {installDemoWorkspace}=await import('/demo-workspace.mjs');
       installDemoWorkspace(window.TratoCloud);
-    } catch {throw new Error('No se pudo abrir tu espacio. Recarga para volver a intentar.');}
+    } catch {throw new Error('Your workspace could not open. Reload to try again.');}
     const script = document.createElement('script');
     script.src = '/app.js';
-    script.onerror = () => showBootError('No se pudo cargar la aplicación. Recarga la página.');
+    script.onerror = () => showBootError('Trato could not load. Please reload the page.');
     document.head.append(script);
   } catch (error) { showBootError(error.message); }
 }
@@ -70,7 +70,7 @@ function showBootError(message) {
   const notice = document.createElement('div');
   notice.className = 'data-error';
   notice.setAttribute('role', 'alert');
-  notice.textContent = `No se pudo abrir Trato. ${message}`;
+  notice.textContent = `Trato could not open. ${message}`;
   document.body.prepend(notice);
 }
 bootTrato();

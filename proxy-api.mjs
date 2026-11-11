@@ -3,6 +3,8 @@ import https from 'node:https';
 import {browserOriginAllowed} from './web-origin.mjs';
 import {readFileSync} from 'node:fs';
 
+const PAYPAL_WEBHOOKS = ['/api/v1/webhooks/paypal','/api/v1/refunds/webhooks/paypal','/api/v1/payments/webhooks/paypal','/api/v1/disputes/webhooks/paypal'];
+
 const localPorts = JSON.parse(readFileSync(new URL('./local-ports.json', import.meta.url), 'utf8'));
 
 // Fixed server-side destination. Browser requests cannot choose an upstream host.
@@ -20,7 +22,8 @@ export function proxyApiRequest(req, res, base = process.env.TRATO_API_URL || `h
   for (const name of ['authorization','content-type','content-length','idempotency-key','accept-language','origin']) {
     if (req.headers[name]) headers[name] = req.headers[name];
   }
-  if(['/api/v1/webhooks/paypal','/api/v1/refunds/webhooks/paypal'].includes(url.pathname)){
+  // Every PayPal listener verifies the signature in the API, so each one needs PayPal's signature headers.
+  if(PAYPAL_WEBHOOKS.includes(url.pathname)){
     for(const name of ['paypal-auth-algo','paypal-cert-url','paypal-transmission-id','paypal-transmission-sig','paypal-transmission-time']){
       if(req.headers[name])headers[name]=req.headers[name];
     }

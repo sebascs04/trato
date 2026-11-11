@@ -200,6 +200,9 @@ export function installPlanPayments(cloud){
   const request=addendumRefundRequest(item);
   return request?['paid',request.status==='open'?'clientPlan.refundRequested':'clientPlan.refundInProgress']:agreementState(item);
  };
+ const REFUNDED_PROBLEM={
+  'clientAccount.state.partiallyRefunded':{'clientAccount.state.problemOpen':'clientAccount.state.partialProblemOpen','clientAccount.state.problemToClose':'clientAccount.state.partialProblemToClose','clientAccount.state.problemResolved':'clientAccount.state.partialProblemResolved','clientAccount.state.problemUnresolved':'clientAccount.state.partialProblemUnresolved'},
+  'clientAccount.state.refunded':{'clientAccount.state.problemOpen':'clientAccount.state.refundedProblemOpen','clientAccount.state.problemToClose':'clientAccount.state.refundedProblemToClose','clientAccount.state.problemResolved':'clientAccount.state.refundedProblemResolved','clientAccount.state.problemUnresolved':'clientAccount.state.refundedProblemUnresolved'}};
  function clientStageState(item){
   const invoice=item.payment_method==='invoice'&&item.pay_url,done=item.payment_status==='completed';
   // A refund PayPal confirmed on the stage payment, as the addenda show it (clientAgreementState).
@@ -208,7 +211,9 @@ export function installPlanPayments(cloud){
   // A problem the client reported on this paid deliverable (stage-problems.mjs), named like on an addendum.
   const problem=done?cloud.clientProblems?.[`stage:${item.project_id}:${item.position}`]:null;
   const reported=problem?(problem.status==='open'&&problem.request_paid?['pay','clientAccount.state.problemToClose']:{open:['dispute','clientAccount.state.problemOpen'],unresolved:['dispute','clientAccount.state.problemUnresolved'],resolved:['paid','clientAccount.state.problemResolved']}[problem.status]):null;
-  return request?['waiting',request.status==='open'?'clientPlan.refundRequested':'clientPlan.refundInProgress']:reported?reported:refunded?['paid',refunded]:done?['paid','clientPlan.paid']:stageNeedsReview(item)?['open','clientPlan.reviewDelivery']:item.review_decision==='changes_requested'?['waiting','clientAccount.state.changesRequested']:invoice?['pay','clientAccount.state.invoiceToPay']:item.pay_url?['pay','clientAccount.state.toPay']:item.review_decision==='approved'?['done','clientPlan.approved']:['open','clientPlan.upcoming'];
+  // A refund already confirmed stays in the label when the client also reported a problem.
+  const refundedReport=refunded&&reported?[reported[0],REFUNDED_PROBLEM[refunded]?.[reported[1]]||reported[1]]:null;
+  return request?['waiting',request.status==='open'?'clientPlan.refundRequested':'clientPlan.refundInProgress']:refundedReport?refundedReport:reported?reported:refunded?['paid',refunded]:done?['paid','clientPlan.paid']:stageNeedsReview(item)?['open','clientPlan.reviewDelivery']:item.review_decision==='changes_requested'?['waiting','clientAccount.state.changesRequested']:invoice?['pay','clientAccount.state.invoiceToPay']:item.pay_url?['pay','clientAccount.state.toPay']:item.review_decision==='approved'?['done','clientPlan.approved']:['open','clientPlan.upcoming'];
  }
  // The client's overview counts deliverables with the same states and rows as the work plan (connected-workspace.mjs).
  cloud.clientStageState=item=>clientStageState(item);
@@ -486,7 +491,8 @@ export function installPlanPayments(cloud){
   const step=stagePaymentStep(pay);
   if(step==='paid')return '';
   if(step==='finish_invoice')return `<div class="plan-payment-pending"><button class="button" type="button" data-plan-pay="invoice">${uiText('invoice.retry')}</button></div>`;
-  if(step==='send_email')return `<div class="plan-payment-mail-actions"><span class="plan-payment-status">${t('readyToSend')}</span><button class="button" type="button" data-plan-pay="email">${icon('mail')}${pay.method==='invoice'?uiText('invoice.email'):t('reviewEmail')}</button></div>${pay.method==='invoice'?invoiceActions(pay):''}`;
+  // Until something is sent both ways stay open: the payment email, or a PayPal invoice (also after closing its preview).
+  if(step==='send_email')return `<div class="plan-payment-mail-actions"><span class="plan-payment-status">${t('readyToSend')}</span><button class="button" type="button" data-plan-pay="email">${icon('mail')}${pay.method==='invoice'?uiText('invoice.email'):t('reviewEmail')}</button></div>${invoiceActions(pay)}`;
   if(step==='await_payment')return pay.method==='invoice'?invoiceSent(pay):`<p class="plan-payment-status">${esc(emailSentOn(pay))}</p>${invoiceFollowUp(pay)}`;
   if(step==='prepare_order')return `<div class="plan-payment-pending"><span class="plan-payment-status">${t('preparingOrder')}</span><button class="button secondary" type="button" data-plan-pay="verify">${t('checkPreparation')}</button></div>`;
   return `<div class="plan-payment-pending"><span class="plan-payment-status">${t(step==='sending_email'?'sendingEmail':'emailUnconfirmed')}</span><button class="text-button" type="button" data-plan-pay="reload">${t('checkEmailStatus')}</button></div>`;

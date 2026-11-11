@@ -185,7 +185,8 @@ const server = http.createServer(async (req, res) => {
   try {
     let body = await readFile(new URL(asset[0], import.meta.url));
     if (pathname === '/privacidad') {
-      const language = searchParams.get('lang') === 'en' ? 'en' : 'es';
+      // English unless the link asks for Spanish, like the rest of Trato on a first visit.
+      const language = searchParams.get('lang') === 'es' ? 'es' : 'en';
       body = body.toString('utf8').replace(/\{\{([\w.]+)\}\}/g, (_, key) =>
         key === 'lang' ? language : textForLanguage(language, key));
     }

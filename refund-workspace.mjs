@@ -499,7 +499,7 @@ export function installRefundWorkspace(cloud){
   const zero=!(amount>0),busy=s.quickRefunding;
   const details=parent.status==='refund_pending'&&s.financeData?`<details class="refund-fold"><summary>${icon('file-text')}<span>${t('wizard.paymentDetails')}</span>${icon('chevron-down')}</summary><div class="refund-fold-body">${renderRefundFinance(s,6)}</div></details>`:'';
   const label=busy?t('clientRequests.refunding'):zero?t('wizard.closeNoRefund'):t('clientRequests.refund',{amount:money(amount)});
-  return `<article class="refund-card refund-confirm-card"><h3>${zero?t('wizard.closeNoRefundTitle'):t('wizard.refundTitle',{amount:money(amount)})}</h3><p>${t(zero?'wizard.closeNoRefundCopy':'wizard.refundCopy')}</p>${saved}<div class="refund-actions"><button type="button" class="button" data-refund-action="quick-refund" ${busy?'disabled':''}>${label}</button></div></article>${details}`;
+  return `<article class="refund-card refund-confirm-card"><h3>${zero?t('wizard.closeNoRefundTitle'):t('wizard.refundTitle',{amount:money(amount)})}</h3><p>${t(zero?'wizard.closeNoRefundCopy':'wizard.refundCopy')}</p>${saved}<div class="refund-actions"><button type="button" class="button" data-refund-action="quick-refund" ${busy?'disabled':''}>${label}</button>${editable(s)&&!busy&&!zero?`<button type="button" class="button secondary" data-refund-action="edit">${icon('pencil')}${t('wizard.changeAmount')}</button>`:''}</div></article>${details}`;
  }
  function detailHtml(s){
   const parent=s.detail?.settlement;if(!parent)return '';

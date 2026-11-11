@@ -6,7 +6,8 @@ const storageKey='trato:ui-language';
 let language='es';
 if(typeof window!=='undefined'){
  const saved=window.localStorage.getItem(storageKey);
- if(saved!==null){if(!Object.hasOwn(catalogs,saved))throw Error('Unsupported Trato language');language=saved;}
+ // English unless this browser chose Spanish: a first visit is always in English.
+ if(saved!==null){if(!Object.hasOwn(catalogs,saved))throw Error('Unsupported Trato language');language=saved;}else language='en';
  document.documentElement.lang=language;
 }
 export const uiLanguage=()=>language;

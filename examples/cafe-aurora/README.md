@@ -4,7 +4,7 @@ Café Aurora, a small coffee shop, hires Alex Vega to build its website for USD 
 
 Everything is fictional and runs on PayPal Sandbox, so no real money moves.
 
-> **You are reading the user manual.** The sample PDFs live in six folders right next to this file. To see them, go back to the folder [trato/ejemplos/cafe-aurora-en](https://github.com/sebascs04/trato/tree/main/ejemplos/cafe-aurora-en), download the files of the step you are on, and then return here to follow it. Each step below also links straight to its folder.
+> **You are reading the user manual.** The sample PDFs live in six folders right next to this file. To see them, go back to the folder [trato/examples/cafe-aurora](https://github.com/sebascs04/trato/tree/main/examples/cafe-aurora), download the files of the step you are on, and then return here to follow it. Each step below also links straight to its folder.
 
 ## Before you start
 
@@ -12,7 +12,7 @@ You need three things:
 
 1. **The Trato login** from the Devpost submission. Open the demo at https://trato-web-68896425401.us-central1.run.app and sign in. If the interface appears in Spanish, switch it in **Profile → Language → English**.
 2. **The PayPal Sandbox buyer account** from the Devpost submission. You use it whenever you pay as the client.
-3. **The sample PDFs**, in the six folders of [trato/ejemplos/cafe-aurora-en](https://github.com/sebascs04/trato/tree/main/ejemplos/cafe-aurora-en). Each folder covers one situation and has a short note of its own; download its files before you start that step.
+3. **The sample PDFs**, in the six folders of [trato/examples/cafe-aurora](https://github.com/sebascs04/trato/tree/main/examples/cafe-aurora). Each folder covers one situation and has a short note of its own; download its files before you start that step.
 
 | Folder | Situation | Step |
 | --- | --- | --- |

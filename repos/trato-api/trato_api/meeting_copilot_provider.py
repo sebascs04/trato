@@ -73,6 +73,13 @@ def vertex_settings(env=None) -> dict[str, str] | None:
     env = os.environ if env is None else env
     settings = {'project': env.get('TRATO_GOOGLE_CLOUD_PROJECT', ''), 'credentials_file': env.get('TRATO_GOOGLE_CREDENTIALS_FILE', ''),
                 'location': env.get('TRATO_MEETING_LIVE_LOCATION', 'global')}
+    # Without an explicit project, use the one of the service account itself (the same project the workers use).
+    if not settings['project'] and settings['credentials_file'] and os.path.isfile(settings['credentials_file']):
+        try:
+            with open(settings['credentials_file'], encoding='utf-8') as handle:
+                settings['project'] = str(json.load(handle).get('project_id') or '')
+        except (OSError, ValueError):
+            settings['project'] = ''
     if env.get('TRATO_GEMINI_BACKEND') != 'vertex' or not all(settings.values()) or not os.path.isfile(settings['credentials_file']):
         return None
     return settings

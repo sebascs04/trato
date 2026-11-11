@@ -48,7 +48,7 @@ The hackathon asks for a working project that meaningfully uses **both PayPal an
 | Meaningful PayPal integration | Every payment in the product runs on PayPal: checkout, invoices, refunds, disputes and webhooks (table below) |
 | Meaningful AI | Gemini agents plan the work, draft addenda, write invoice concepts, explain stuck payments, decide refunds and answer disputes, always citing project documents |
 | Working prototype | Live demo on Google Cloud, PayPal Sandbox, a judge account with three loaded projects ([JUDGES.md](JUDGES.md)) |
-| Documented | This README, [JUDGES.md](JUDGES.md) and a step-by-step guide with sample PDFs ([ejemplos/cafe-aurora-en](ejemplos/cafe-aurora-en/README.md)) |
+| Documented | This README, [JUDGES.md](JUDGES.md) and a step-by-step guide with sample PDFs ([examples/cafe-aurora](examples/cafe-aurora/README.md)) |
 
 **PayPal capabilities used**
 
@@ -110,28 +110,78 @@ Redis queue ── trato-worker (LangGraph + Gemini) ── generic processes de
 | `repos/trato-web` | Optional technical tool, not the product interface |
 | `supabase` | Database migrations, policies and SQL tests |
 | `deploy` | Google Cloud images and deployment |
-| `ejemplos/cafe-aurora-en` | Fictional documents for testing the full flow |
+| `examples/cafe-aurora` | A user manual with sample documents for every situation |
+| `tools/sample-case` | Sources and generator of the sample PDFs |
 | `tests`, `scripts`, `locales`, `assets` | Frontend tests, tooling, English and Spanish text, static files |
-| `docs` | Design notes and decisions, mostly in Spanish |
 | `backend` | Earlier prototype. The product runs on `repos/trato-api` |
 
 ## Run it locally
 
-The hosted demo is the quickest way to try Trato. To run it yourself you need Node.js 18+, Python 3.12, Redis, Poppler (`pdftotext`) and your own PayPal Sandbox, Supabase, Gemini and Weaviate credentials. Ports are listed in `local-ports.json`.
+The hosted demo is the quickest way to try Trato. To run it on your own machine, follow these steps on Ubuntu 24.04 or WSL 2; macOS works with the equivalent packages.
+
+### 1. Install the tools
+
+You need Git, Node.js 22, Python 3.12, Redis 7 and Poppler (`pdftotext`). On Ubuntu:
+
+```bash
+sudo apt update
+sudo apt install git python3.12 python3.12-venv redis-server poppler-utils
+```
+
+Install Node.js 22 from https://nodejs.org.
+
+### 2. Clone and install the dependencies
 
 ```bash
 git clone https://github.com/sebascs04/trato.git
 cd trato
 npm ci
+python3.12 -m venv repos/trato-file-processor/.venv
+repos/trato-file-processor/.venv/bin/python -m pip install -r repos/trato-file-processor/requirements.lock.txt
+repos/trato-file-processor/.venv/bin/python -m pip install -r repos/trato-api/requirements.lock.txt
+python3.12 -m venv repos/trato-worker/.venv
+repos/trato-worker/.venv/bin/python -m pip install -r repos/trato-worker/requirements.lock.txt
 ```
 
-Set up the Python environments and services with [docs/colaboradores.md](docs/colaboradores.md) (in Spanish). Each `.env.example` lists what a service needs and contains no credentials. Then start everything:
+The API and the file processor share one Python environment, and the worker has its own.
+
+### 3. Create the environment files
 
 ```bash
-python3 scripts/dev-polyrepo.py --with-worker
+cp repos/trato-api/.env.example repos/trato-api/.env
+cp repos/trato-file-processor/.env.example repos/trato-file-processor/.env
+cp repos/trato-worker/.env.example repos/trato-worker/.env
 ```
 
-Open http://localhost:5173.
+Each `.env.example` lists every variable its service reads, without credentials. Fill in your own:
+
+| Service | Variables |
+|---|---|
+| API | `SUPABASE_URL`, `SUPABASE_PUBLISHABLE_KEY`, `SUPABASE_SERVER_KEY`, `FILE_PROCESSOR_TOKEN` (a long random string, the same one as the file processor) |
+| API, PayPal Sandbox | `PAYPAL_ENVIRONMENT=sandbox`, `PAYPAL_CLIENT_ID`, `PAYPAL_CLIENT_SECRET`, `PAYPAL_MERCHANT_ID`, `PAYPAL_RETURN_URL`, `PAYPAL_CANCEL_URL` |
+| Worker, Gemini on Vertex AI | `TRATO_MODEL_PROVIDER=gemini`, `TRATO_GEMINI_BACKEND=vertex`, `TRATO_GEMINI_MODEL`, `TRATO_GOOGLE_CLOUD_PROJECT`, `TRATO_GOOGLE_CLOUD_LOCATION`, `TRATO_GOOGLE_CREDENTIALS_FILE` (absolute path to a service account JSON with the Vertex AI User role) |
+| File processor | `FILE_PROCESSOR_TOKEN` |
+
+Apply the database migrations in `repos/trato-api/supabase/migrations` to your Supabase project.
+
+### 4. Connect the queue, search and email
+
+```bash
+python3.12 scripts/configure-ingestion.py
+repos/trato-file-processor/.venv/bin/python scripts/configure-rehearsal-sources.py --configure
+repos/trato-file-processor/.venv/bin/python scripts/configure-vector.py
+repos/trato-file-processor/.venv/bin/python scripts/configure-gmail.py
+```
+
+These commands set up a private local Redis queue, the rehearsal sources, the Weaviate connection (read from `.local/weaviate/connection.env` with `WEAVIATE_URL` and `WEAVIATE_API_KEY`) and the Gmail OAuth client used to send addenda and payment requests.
+
+### 5. Start Trato
+
+```bash
+python3.12 scripts/dev-polyrepo.py --with-worker
+```
+
+One supervisor starts the web on 5173, the API on 8100, the file processor on 8101, Redis on 6380 and the AI workers. Open http://localhost:5173, create your account and sign in. To pay as a client, use a PayPal Sandbox Personal account, separate from the Business account that receives the payments.
 
 ## Tests
 
@@ -154,4 +204,4 @@ PYTHONPATH=../trato-file-processor ../trato-file-processor/.venv/bin/python -m u
 
 ## License
 
-See [LICENSE](LICENSE).
+Trato is released under the MIT License: see [LICENSE](LICENSE). Third-party licenses, such as the Lucide icons, are in [licenses](licenses).

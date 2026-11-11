@@ -76,7 +76,7 @@ def is_origin_allowed(origin: str | None) -> bool:
         return False
     configured_origins = {
         normalize_origin(value)
-        for value in os.getenv('TRATO_MEETING_ALLOWED_ORIGINS', '').split(',')
+        for value in [*os.getenv('TRATO_MEETING_ALLOWED_ORIGINS', '').split(','), os.getenv('WEB_ORIGIN', '')]
         if value.strip()
     }
     if origin in ALLOWED_ORIGINS or origin in configured_origins:

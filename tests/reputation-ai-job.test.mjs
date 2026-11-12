@@ -50,12 +50,32 @@ test('Reputation separates client and owner state and stops requests after owner
  const nextOwner=new AIJobClient({cloud,scope:'reputation:client-a'});assert.equal(nextOwner.state.status,'idle');
  first.dispose();other.dispose();nextOwner.dispose();
 });
-test('A confirmed failed analysis starts a new job only on explicit retry',async()=>{
+test('A failed analysis is retried quietly twice with new jobs, then waits for an explicit retry',async()=>{
  const {cloud,calls}=fixture();
  cloud.request=async(path,options)=>{calls.push({path,options});return {id:options.headers['Idempotency-Key'],status:'failed',error_code:'AI_OUTPUT_INVALID'};};
- const job=new AIJobClient({cloud,scope:'reputation:client-a'});
+ const delays=AIJobClient.retryDelays;AIJobClient.retryDelays=[30,250];
+ const wait=ms=>new Promise(resolve=>setTimeout(resolve,ms));
+ try{
+  const job=new AIJobClient({cloud,scope:'reputation:client-a'});
+  await job.start('/api/v1/ai/reputation',payload);
+  const first=job.state.id;
+  assert.equal(job.state.status,'queued');assert.equal(job.state.retrying,true);assert.equal(calls.length,1);
+  await wait(120);
+  assert.equal(calls.length,2);assert.notEqual(job.state.id,first);
+  await wait(300);
+  assert.equal(calls.length,3);assert.equal(job.state.status,'failed');assert.equal(job.state.retrying,false);
+  await wait(300);
+  assert.equal(calls.length,3);
+  const last=job.state.id;
+  await job.start('/api/v1/ai/reputation',payload);
+  assert.notEqual(job.state.id,last);assert.equal(calls.length,4);job.dispose();
+ }finally{AIJobClient.retryDelays=delays;}
+});
+
+test('A failure that a retry cannot fix is shown at once',async()=>{
+ const {cloud,calls}=fixture();
+ cloud.request=async(path,options)=>{calls.push({path,options});return {id:options.headers['Idempotency-Key'],status:'failed',error_code:'AI_CONTEXT_INVALID'};};
+ const job=new AIJobClient({cloud,scope:'reputation:client-b'});
  await job.start('/api/v1/ai/reputation',payload);
- const id=job.state.id;assert.equal(job.state.status,'failed');assert.equal(calls.length,1);
- await job.start('/api/v1/ai/reputation',payload);
- assert.notEqual(job.state.id,id);assert.equal(calls.length,2);job.dispose();
+ assert.equal(job.state.status,'failed');assert.equal(calls.length,1);job.dispose();
 });

@@ -931,3 +931,8 @@ body:not(.cloud-client-account) .sidebar nav a.nav-client-only{display:none}
 .document-fix{display:grid;gap:12px;min-width:min(420px,80vw)}.document-fix p{margin:0}
 .cloud-document-remove:hover{color:#b3261e}
 .document-fix .button.danger{background:#b3261e;border-color:#b3261e;color:#fff}
+
+/* TeTrato's shared notice while the AI provider is retried, and when it keeps failing (ai-jobs.mjs). */
+.ai-provider-notice{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);z-index:1000;max-width:min(560px,calc(100vw - 32px));padding:12px 18px;border-radius:12px;background:#f5effb;color:#4b2f6e;border:1px solid #e0d3ed;box-shadow:0 6px 24px #2a1f3a22;font-size:14px;line-height:1.4;text-align:center}
+.ai-provider-reload{display:block;margin:10px auto 0}
+.ai-provider-notice.is-failed{background:#fff6ec;color:#7a4a12;border-color:#f0d6b4}

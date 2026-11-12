@@ -1,6 +1,11 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import {AIJobClient} from '../ai-jobs.mjs';
+import {webcrypto} from 'node:crypto';
+// Node18 contract harness supplies the browser crypto API explicitly.
+globalThis.crypto??=webcrypto;
+// These cases cover the explicit retry, after the quiet automatic ones (tests/ai-job-auto-retry.test.mjs) are spent.
+AIJobClient.retryDelays=[];
 
 const question={question:'Mi cliente pidió una devolución',refund_focus:{task:'intake',step:1}};
 function setup(respond){
